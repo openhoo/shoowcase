@@ -4,6 +4,8 @@ Shoowcase exports HTTP and MCP traces, duration histograms and correlated operat
 
 The legacy control-host `/metrics` scrape endpoint is independent of OTLP. It exposes four process counters. Production disables it unless `SHOOWCASE_METRICS_WORKSPACE` names the exact operator workspace ID; only an effective admin API token from that workspace may scrape it. Local `-dev` defaults to its own workspace.
 
+The [illustrated Grafana guide](grafana.md) shows how to graph the OTLP metrics for HTTP requests, MCP calls and database pools. It includes a disposable local stack and instructions for an existing Grafana installation.
+
 ## Connect a collector
 
 Configure a collector with traces, metrics and logs pipelines listening for OTLP/HTTP. Set these variables on each Shoowcase replica and restart it:

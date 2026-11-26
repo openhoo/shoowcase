@@ -13,6 +13,8 @@ Open **Workspace admin → Workspace settings** as an enrolled identity-provider
 
 In either mode a suspended account is denied private access. An intentionally public live release remains accessible anonymously, subject to the instance-wide public sharing setting.
 
+![Workspace settings with Managed members and groups selected.](media/admin/access-mode.png)
+
 ## Set up a managed tenant
 
 1. Sign in with a workspace administrator account and complete enrollment. The identity provider owns the workspace ID and administrator role.
@@ -20,6 +22,8 @@ In either mode a suspended account is denied private access. An intentionally pu
 3. Under **Groups**, create groups, assign each a role, then add members. An Authors group might have editor rights; a Release team might have publisher rights. A member of both can publish only if the identity provider also permits publication.
 4. Review all existing members, groups, keys and the current admin before switching to managed mode. Existing accounts stay enrolled. An existing publisher without a group becomes a reader immediately. A user who previously only used an IdP access token needs to be provisioned.
 5. Save the managed setting, then verify one reader, one editor and one publisher against a private test site. The **Members** view shows effective roles. Switch back to identity mode only if returning access to all signed workspace identities is intended.
+
+![The Releases group grants Publisher access and has one member. The selected group lets an administrator add and remove people by sign-in ID.](media/admin/groups.png)
 
 | Role | Permissions |
 | --- | --- |

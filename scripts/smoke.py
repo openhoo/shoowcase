@@ -247,7 +247,7 @@ def main():
     token = secrets.token_urlsafe(32)
     with tempfile.TemporaryDirectory(prefix="shoowcase-smoke-") as state:
         # Never inherit a production database URL, token, workspace or issuer.
-        env = {k: v for k, v in os.environ.items() if not k.startswith("SHOOWCASE_")}
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("SHOOWCASE_", "OTEL_"))}
         env.update(SHOOWCASE_LISTEN=f"127.0.0.1:{port}", SHOOWCASE_DEV_TOKEN=token,
                    SHOOWCASE_PUBLIC="true", SHOOWCASE_STATE_DIR=state)
         with subprocess.Popen([binary, "-dev"], cwd=state, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as app:

@@ -191,7 +191,27 @@ async def revoke_pending(page, pending_review, control, endpoint, secret, agent,
     check(await page.get_by_text("extra.css", exact=True).count() == 0, "revoked ticket changed draft")
 
 
-async def manage_workspace_access(page, control):
+async def admin_image(page, directory, name):
+    if directory is None:
+        return
+    # Only called on the disposable tenant fixture. Never capture key receipts
+    # or sign-in callbacks. Restore the mobile viewport for the acceptance test.
+    previous = page.viewport_size
+    try:
+        await page.set_viewport_size({"width": 1200, "height": 840})
+        await page.evaluate("document.fonts.ready")
+        nav = page.get_by_role("navigation", name="Administration views")
+        await nav.evaluate("""el => { document.activeElement.blur(); window.scrollTo({
+            top: window.scrollY + el.getBoundingClientRect().top - 24, behavior: 'instant'
+        }); }""")
+        await page.evaluate("new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))")
+        directory.mkdir(parents=True, exist_ok=True)
+        await page.screenshot(path=directory / f"{name}.png", animations="disabled")
+    finally:
+        await page.set_viewport_size(previous)
+
+
+async def manage_workspace_access(page, control, media=None):
     await page.goto(control + "/admin")
     nav = page.get_by_role("navigation", name="Administration views")
     subject = "workshop-editor"
@@ -223,8 +243,10 @@ async def manage_workspace_access(page, control):
     await fits(page, "workspace access settings")
     await page.get_by_role("button", name="Save workspace settings").click()
     await expect(page.get_by_label("Access mode")).to_have_value("managed")
+    await admin_image(page, media, "access-mode")
     await nav.get_by_role("link", name="Groups").click()
     await page.get_by_role("link", name="Releases").click()
+    await admin_image(page, media, "groups")
     await page.get_by_role("button", name=f"Remove {subject} from group").click()
     await expect(page.get_by_text("This group has no members.")).to_be_visible()
     await page.get_by_text("Delete group", exact=True).first.click()
@@ -240,6 +262,7 @@ async def manage_workspace_access(page, control):
     await expect(page.get_by_role("heading", name="Audit log")).to_be_visible()
     await expect(page.get_by_text("Group deleted", exact=True)).to_be_visible()
     await fits(page, "tenant audit log")
+    await admin_image(page, media, "audit-log")
     export = await page.get_by_role("link", name="Open JSON export").get_attribute("href")
     response = await page.context.request.get(control + export)
     check(response.status == 200, "audit export unavailable")
@@ -283,7 +306,7 @@ async def filter_directory(page):
     await expect(rows).to_have_text(["Field handbook", "Onboarding notes", "Workshop tally"])
 
 
-async def workspace(binary, channel, screenshot):
+async def workspace(binary, channel, screenshot, admin_media):
     async with browser_smoke.local_server(binary) as (endpoint, _, http), async_playwright() as pw:
         control = endpoint.removesuffix("/mcp")
         browser = await pw.chromium.launch(channel=channel)
@@ -292,7 +315,7 @@ async def workspace(binary, channel, screenshot):
             page = await ctx.new_page()
             anon = await browser.new_page(viewport={"width": 320, "height": 780})
             await enroll(page, control)
-            await manage_workspace_access(page, control)
+            await manage_workspace_access(page, control, admin_media)
             secret = await create_key(page, endpoint)
             async with browser_smoke.connect(endpoint, secret) as agent:
                 await add_sample_sites(agent)
@@ -316,6 +339,7 @@ if __name__ == "__main__":
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--browser-channel", default="chrome")
     parser.add_argument("--screenshot", type=Path, help="optional desktop PNG of the synthetic workspace")
+    parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access settings and audit screenshots")
     args = parser.parse_args()
-    asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot))
+    asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot, args.admin_media))
     print("PASS: tenant administration, groups, audit export, filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")

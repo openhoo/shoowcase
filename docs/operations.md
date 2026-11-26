@@ -51,6 +51,8 @@ With public delivery disabled, `get_site` and `list_sites` report `visibility: w
 
 ## Recovery, retention and monitoring
 
+Use the [Grafana dashboards](grafana.md) to investigate HTTP traffic, MCP tool outcomes and database connection waits across service replicas.
+
 Back up PostgreSQL as a single unit. It contains content, active release pointers, history, audit events and auth replay records. Protect backups as private site content. Use managed point-in-time recovery if your organization has an RPO. Choose an RPO/RTO, measure both on your deployment and record the results. An isolated, executable [restore drill](restore-drill.md) verifies a restored release with the application. Never run validation against a production restore destination.
 
 After a disaster restore, keep the ingress private while reviewing publication and access changes since the snapshot. Set `PUBLIC=false` and rotate the session key before restoring traffic. Verify a private site denies a signed-out visitor and ensure no revoked public site is automatically re-exposed. Reconcile restored memberships with the identity provider. A snapshot can also revive revoked personal keys. While ingress is closed, reconcile every subsequent revocation, or revoke all restored keys (`UPDATE sc_agent_keys SET revoked=TRUE`) and have members issue fresh ones. Rotating the session key alone does not invalidate personal keys. Back up deployment configuration and externally managed secrets separately.

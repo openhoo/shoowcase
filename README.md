@@ -114,9 +114,15 @@ The **control host** handles MCP, sign-in, uploads and human approvals. **Site a
 
 In **Admin**, a workspace administrator can add members, manage groups, set role limits, suspend members and revoke keys. In [managed mode](docs/tenant-access.md), members start as viewers and receive editor or publisher rights through group membership. Suspension revokes the member’s keys; restoring the member does not reactivate them. Administrators are assigned through the identity provider.
 
-See [OIDC and PKCE configuration](docs/oidc.md), [audit export and retention](docs/audit.md) and [OpenTelemetry collector setup](docs/telemetry.md).
+See [OIDC and PKCE configuration](docs/oidc.md) and [audit export and retention](docs/audit.md).
 
 Start with [deployment and identity setup](docs/operations.md) and the [container configuration](deploy/compose.yaml). Before accepting company traffic, test your real identity provider and agent client, cross-workspace access, withdrawal and a [restore into a separate database](docs/restore-drill.md). The [verification report](docs/verification.md) and [HTTP measurements](docs/http-benchmark.md) show what was tested and under what conditions.
+
+### Monitor Shoowcase with Grafana
+
+Three dashboards show HTTP service health, MCP tool outcomes and database connection pools. Switch between them with the same time range and replica selection. Open the [illustrated Grafana guide](docs/grafana.md) to run the local example, install the dashboards in an existing Grafana, or add one of your own. For traces and logs, see [OpenTelemetry configuration](docs/telemetry.md).
+
+[![Shoowcase HTTP dashboard in Grafana, with request and latency charts from a local example.](docs/media/grafana/http.png)](docs/grafana.md)
 
 ## Skills and project guide
 

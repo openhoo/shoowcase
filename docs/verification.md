@@ -89,3 +89,10 @@ The feature was exercised locally with synthetic accounts and data on November 2
 | Tenant access | The race suite ran against SQLite and PostgreSQL. It exercised tenant isolation, managed membership, group changes and stale forms, personal keys, private reads and the signed upload and approval paths. The workspace browser smoke exercised the administration views and audit export, including keyboard, axe and narrow-screen checks. |
 | Recovery | The upgrade drill used binaries built from the v0.1.1 and v0.2.0 Git tags. Both SQLite and PostgreSQL 16.16 preserved private data and history. A v0.2.0 member’s existing reader key stayed read-only after upgrade and after restoring the pre-upgrade snapshot. The audit export resumed at its checkpoint and distinguished draft and live revisions after rollback. |
 | OpenTelemetry | The OTLP tests decoded trace, metric and log payloads, checked correlation and rejected a synthetic private identifier in all three signals. A separate loopback run with the official OpenTelemetry Collector 0.166.0 accepted all three signals from the service. |
+| Grafana | Grafana 13.3.2 displayed measurements from Prometheus 3.16.0 and Collector Contrib 0.166.0 in all 18 panels. In Chrome, switching between the three dashboards preserved the service, replica and time range in all six directions. |
+
+## Reproduce the documentation screenshots
+
+The [Grafana guide](grafana.md) includes three dashboards. `python3 scripts/check-grafana.py` evaluates their queries using Prometheus. The [browser capture](../scripts/capture-grafana.py) exercises the service against the local monitoring stack, checks the dashboard panels against actual Grafana data-source responses, and writes the three images. Follow the [local quickstart](grafana.md#open-the-dashboards-locally) to repeat it.
+
+To refresh the [workspace access](tenant-access.md) and [audit](audit.md) screenshots, run `make build`, `npm ci --prefix runtime --ignore-scripts`, then `uv run scripts/smoke-workspace.py --binary ./bin/shoowcase --admin-media docs/media/admin`. The fixture uses its own SQLite database and synthetic members.

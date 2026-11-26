@@ -33,3 +33,8 @@ Run the commands below from the Shoowcase repository. For authoring a site on an
 - Keep uploaded JS as data inside the isolated VM. Native browser code is limited to the trusted bridge and worker. Treat every VM message as untrusted; avoid raw HTML, URLs, arbitrary property paths and host callbacks. Keep build inputs, compiler, upstream VM commit, licenses and distribution inventories pinned. Test a local interaction, CPU limits and absence of outbound requests. Plain content must still render without starting a worker.
 - Run the workspace browser smoke (`uv run scripts/smoke-workspace.py --binary ./bin/shoowcase`) and runtime checks in `runtime/README.md` alongside the existing suite. For schema v3, drain older writers and confirm the issuer before the first upgraded process starts. Restore a pre-upgrade snapshot if rolling back.
 - Follow [tenant access](../../docs/tenant-access.md) before switching a workspace to managed mode. Exercise group removal against active browser, MCP and key sessions, signed approvals and a previously valid private ETag. A member with no groups may still read; an unenrolled identity may no longer read even with a valid workspace claim.
+
+## Grafana dashboards
+
+- Start with the [illustrated operator guide](../../docs/grafana.md). Change the versioned dashboard JSON under `deploy/observability/dashboards/`; keep existing UIDs stable.
+- For telemetry or panel changes, run `python3 scripts/check-grafana.py`. Verify the provisioned views with the local stack and a synthetic instance using `uv run scripts/capture-grafana.py`. Review the resulting screenshots before committing them.

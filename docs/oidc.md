@@ -1,5 +1,25 @@
 # Work sign-in with OIDC
 
+```mermaid
+sequenceDiagram
+    actor User as Browser
+    participant Control as Shoowcase control host
+    participant IdP as Identity provider
+    participant Site as Private site host
+    User->>Control: Sign in
+    Control-->>User: Redirect with state, nonce and S256 challenge
+    User->>IdP: Authenticate
+    IdP-->>User: Redirect to the registered callback with a code
+    User->>Control: Follow callback
+    Control->>IdP: Redeem the code with the PKCE verifier
+    IdP-->>Control: Signed ID token and access token
+    Control-->>User: Set control session after validation and audit
+    User->>Site: Open private site
+    Site-->>User: Redirect via control host
+    Control-->>User: Return one-time handoff for this site
+    User->>Site: Redeem handoff for a host-bound session
+```
+
 ## Register the browser client
 
 Use the authorization code flow with **PKCE S256**. Register exactly `https://<control-host>/auth/callback` as a GET redirect. Sites and previews use a one-time handoff from the control host; their hostnames do not belong in the provider's redirect allowlist.
