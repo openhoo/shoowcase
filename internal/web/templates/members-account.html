@@ -9,7 +9,7 @@
 <label class="field">New password<input type="password" name="new_password" autocomplete="new-password" minlength="12" required></label><small>Use at least 12 characters.</small><div><button>Change password</button></div></form></section>{{else}}<p>Your work identity provider manages your password.</p>{{end}}
 {{else}}
 <header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Create your account</h1><p>Choose how your name appears to your workspace admin.</p></header>
-<form class="panel stack" method="post" action="/account"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="enroll">
+<form class="panel stack" method="post" action="/account"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="enroll">{{if eq .Next "quickstart"}}<input type="hidden" name="next" value="quickstart">{{end}}
 {{if .Err}}<p class="notice" id="account-error" role="alert">{{.Err}}</p>{{end}}
 <div class="field"><label for="display-name">Display name <span class="muted">(optional)</span></label><input id="display-name" name="display_name" value="{{.NameValue}}" maxlength="80" autocomplete="nickname" aria-describedby="name-help{{if .Err}} account-error{{end}}"{{if .Err}} aria-invalid="true"{{end}}><small id="name-help">Leave this blank to use your sign-in ID.</small></div>
 <dl><dt>Sign-in ID</dt><dd><code>{{.Subject}}</code></dd><dt>Role</dt><dd>{{role .Role}}</dd></dl>

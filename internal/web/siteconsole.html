@@ -41,7 +41,7 @@
   </tr>{{end}}</tbody></table>
   {{else}}<div class="directory-empty"><span class="folio-mark" aria-hidden="true"><i></i></span>
     {{if .Directory.Total}}<h3>No matching sites</h3><p>Try another name or remove a filter.</p>
-    {{else}}<h3>No sites yet</h3><p>{{if .CanEdit}}Create your first site to add files and preview a draft.{{else}}Sites created by your team will appear here.{{end}}</p>{{end}}
+    {{else}}<h3>No sites yet</h3><p>{{if .CanEdit}}Create your first site to add files and preview a draft.{{else}}Sites created by your team will appear here.{{end}}</p><p><a href="/quickstart">Connect your agent with Quickstart →</a></p>{{end}}
   </div>{{end}}
 </section>
 {{end}}

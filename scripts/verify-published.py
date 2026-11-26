@@ -16,8 +16,12 @@ REPO = "openhoo/shoowcase"
 API = "https://api.github.com/repos/" + REPO
 REGISTRY = "https://ghcr.io/v2/" + REPO
 ROOT = Path(__file__).resolve().parents[1]
-TARGETS = (("linux", "amd64"), ("linux", "arm64"), ("darwin", "arm64"), ("windows", "amd64"))
 NOTICES = ("LICENSE", "NOTICE", "THIRD-PARTY-LICENSES.txt")
+
+
+def targets(tag):
+    original = (("linux", "amd64"), ("linux", "arm64"), ("darwin", "arm64"), ("windows", "amd64"))
+    return original + ((("darwin", "amd64"), ("windows", "arm64")) if tuple(map(int, tag[1:].split("."))) >= (0, 5, 0) else ())
 
 
 def require(ok, reason):
@@ -79,7 +83,7 @@ def inventory(tag, has_chart):
     names = {"SHA256SUMS", "image.txt", *NOTICES, f"shoowcase-{tag}-skills.zip"}
     if has_chart:
         names.update({"chart.txt", f"shoowcase-{tag[1:]}.tgz"})
-    for osname, arch in TARGETS:
+    for osname, arch in targets(tag):
         base = f"shoowcase-{tag}-{osname}-{arch}"
         for suffix in (".buildinfo.json", ".cdx.json", ".spdx.json", ".zip" if osname == "windows" else ".tar.gz"):
             names.add(base + suffix)
@@ -153,7 +157,7 @@ def verify_binaries(dest, tag, commit):
     expected_libs = {(n, packages["node_modules/" + n]["version"]) for n in inventory["npm"]}
     expected_libs.add(("Bellard QuickJS", inventory["quickjsCommit"]))
     executables = {}
-    for osname, arch in TARGETS:
+    for osname, arch in targets(tag):
         base = f"shoowcase-{tag}-{osname}-{arch}"
         exe = "shoowcase.exe" if osname == "windows" else "shoowcase"
         if osname == "windows":
@@ -247,7 +251,7 @@ def main():
     verify_skills(dest, args.tag, args.commit)
     exes, notices = verify_binaries(dest, args.tag, args.commit)
     image = verify_image(dest, args.tag, args.commit, exes, notices)
-    print(f"PASS: {rel['html_url']}: immutable tag → {args.commit}, {len(rel['assets'])} anonymous assets, both skills, four Go binaries, SPDX/CycloneDX, notices, and both anonymous OCI platforms for {image}", flush=True)
+    print(f"PASS: {rel['html_url']}: immutable tag → {args.commit}, {len(rel['assets'])} anonymous assets, both skills, {len(exes)} Go binaries, SPDX/CycloneDX, notices, and both anonymous OCI platforms for {image}", flush=True)
     command("gh", "release", "verify", args.tag, "--repo", REPO)
     artifacts = [str(dest / "SHA256SUMS"), str(dest / f"shoowcase-{args.tag}-darwin-arm64.tar.gz"), str(dest / f"shoowcase-{args.tag}-skills.zip"), "oci://" + image]
     if has_chart:

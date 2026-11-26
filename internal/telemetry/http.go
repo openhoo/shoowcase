@@ -36,7 +36,7 @@ func (rt *Runtime) route(r *http.Request) (route, surface string) {
 		return "/{path...}", surface
 	}
 	switch p {
-	case "/", "/keys", "/admin", "/account", "/mcp", "/approve", "/upload", "/sites",
+	case "/", "/quickstart", "/quickstart/redeem", "/quickstart/install.sh", "/quickstart/install.ps1", "/keys", "/admin", "/account", "/mcp", "/approve", "/upload", "/sites",
 		"/api/audit", "/metrics", "/healthz", "/readyz", "/ui.css", "/console.js",
 		"/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp":
 		return p, surface

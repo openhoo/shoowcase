@@ -323,7 +323,11 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		fmt.Fprintf(w, "shoowcase_requests_total %d\nshoowcase_site_responses_total %d\nshoowcase_site_bytes_total %d\nshoowcase_denials_total %d\n", a.requests.Load(), a.visits.Load(), a.bytes.Load(), a.denied.Load())
-	case "/", "/sites", "/keys", "/account", "/admin":
+	case "/quickstart/redeem":
+		a.quickRedeem(w, r)
+	case "/quickstart/install.sh", "/quickstart/install.ps1":
+		serveInstaller(w, r)
+	case "/", "/sites", "/keys", "/account", "/admin", "/quickstart":
 		a.console(w, r)
 	case "/console.js":
 		a.controlScript(w, r)
