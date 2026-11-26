@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/openhoo/shoowcase/internal/sites"
@@ -36,8 +35,11 @@ func (a *App) prepare(ctx context.Context, who sites.Actor, args json.RawMessage
 		return nil, problem("forbidden", "An editor role is required to upload files.")
 	}
 	var spec uploadSpec
-	if json.Unmarshal(args, &spec) != nil || !hashFormat.MatchString(spec.SHA) || spec.Size < 1 || spec.Size > maxUpload || spec.Request == "" || len(spec.Request) > 128 || spec.Path == "" || len(spec.Path) > 200 || strings.HasPrefix(spec.Path, "/") || strings.ContainsAny(spec.Path, "\\\x00") || strings.Contains(spec.Path, "..") {
+	if json.Unmarshal(args, &spec) != nil || !hashFormat.MatchString(spec.SHA) || spec.Size < 1 || spec.Request == "" || len(spec.Request) > 128 {
 		return nil, problem("invalid_argument", "Supply a relative path, SHA-256 hex, request_id, and size between 1 byte and 2 MiB.")
+	}
+	if _, err := sites.UploadTarget(spec.Path, spec.Size); err != nil {
+		return nil, err
 	}
 	g, _ := json.Marshal(map[string]any{"site_id": spec.Site})
 	site, e := a.store.Execute(ctx, who, "get_site", g)
@@ -53,7 +55,11 @@ func (a *App) prepare(ctx context.Context, who sites.Actor, args json.RawMessage
 	return map[string]any{"upload_url": link, "browser_upload_url": link, "method": "PUT", "expires_at": expiry.UTC().Format(time.RFC3339), "size": spec.Size, "site_id": spec.Site}, nil
 }
 
-var uploadPage = template.Must(template.New("upload").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Upload file · Shoowcase</title><main><h1>Upload a file to the draft</h1><p>Site: {{.Site}}. Destination: {{.Path}}. The bytes must match the requested size and digest.</p><form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{.CSRF}}"><label>Select file <input name="file" type="file" required></label><button>Upload to draft</button></form></main></html>`))
+var uploadPage = template.Must(template.New("upload").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/ui.css"><title>Upload file · Shoowcase</title><main>
+<h1>Upload a file to the draft</h1><p>Choose the original file your agent requested. Uploading it will not change the published site.</p>
+<dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Destination</dt><dd><code>{{.Path}}</code></dd><dt>Expected size</dt><dd>{{.Size}} bytes</dd></dl>
+<details><summary>Verify the file checksum</summary><p>Expected SHA-256: <code>{{.SHA}}</code></p></details>
+<form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{.CSRF}}"><label>Select file <input name="file" type="file" required></label><button>Upload to draft</button></form></main></html>`))
 
 func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.ticket(r, "upload")
@@ -81,7 +87,7 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if r.Method == "GET" {
-			render(w, uploadPage, map[string]string{"Site": spec.Site, "Path": spec.Path, "CSRF": i.CSRF})
+			render(w, uploadPage, map[string]any{"Site": spec.Site, "Path": spec.Path, "Size": spec.Size, "SHA": spec.SHA, "CSRF": i.CSRF})
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, spec.Size+24*1024)
@@ -118,13 +124,21 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 	h := sha256.Sum256(b)
 	want, _ := hex.DecodeString(spec.SHA)
 	if e != nil || int64(len(b)) != spec.Size || !bytes.Equal(h[:], want) {
-		http.Error(w, "Size or SHA-256 mismatch; draft unchanged", 400)
+		http.Error(w, "File size or SHA-256 does not match. The draft is unchanged. Choose the original file, or ask your agent for a new upload link for the changed file.", 400)
 		return
 	}
 	change, _ := json.Marshal(map[string]any{"site_id": spec.Site, "expected_revision": spec.Revision, "request_id": spec.Request, "files": []map[string]string{{"path": spec.Path, "base64": base64.StdEncoding.EncodeToString(b)}}})
-	result, e := a.store.Execute(r.Context(), who, "upload_files", change)
+	ctx := r.Context()
+	if !a.config.Public {
+		ctx = sites.WithPrivateDelivery(ctx)
+	}
+	result, e := a.store.Execute(ctx, who, "upload_files", change)
 	if e != nil {
 		writeError(w, e)
+		return
+	}
+	if r.Method == "POST" {
+		a.browserResult(w, r, result, "Upload complete", "Open the private preview to see the file in this revision. Uploading a file does not publish it.")
 		return
 	}
 	writeJSON(w, a.decorate(result))

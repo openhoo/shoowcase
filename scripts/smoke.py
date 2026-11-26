@@ -88,6 +88,7 @@ class MCP:
         hello = self.rpc("initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
                                         "clientInfo": {"name": client, "version": "1.0"}})
         check(hello["protocolVersion"] == "2025-11-25", "unexpected MCP protocol version")
+        self.version = hello["serverInfo"]["version"]
         self.headers["MCP-Protocol-Version"] = hello["protocolVersion"]
         self.rpc("notifications/initialized", {}, notify=True)
 
@@ -138,12 +139,13 @@ def image_fixture():
             + chunk(b"IDAT", zlib.compress(scanlines)) + chunk(b"IEND", b""))
 
 
-def exercise(port, token):
+def exercise(port, token, version):
     control = f"http://localhost:{port}"
     anonymous, person = Browser(port), Browser(port)
     unauth = anonymous.request("POST", control + "/mcp", b"{}").expect(401, "anonymous MCP")
     check("resource_metadata=" in unauth.headers.get("www-authenticate", ""), "missing bearer challenge")
     agent = MCP(port, token, "agent-a")
+    check(agent.version == version, "MCP advertises a different version than the binary")
     catalog = {t["name"] for t in agent.rpc("tools/list", {})["tools"]}
     check({"create_site", "get_site", "upload_files", "prepare_upload", "list_sites", "publish_site",
            "set_site_access", "rollback_site"}.issubset(catalog), "incomplete tools/list")
@@ -163,7 +165,8 @@ def exercise(port, token):
     check(peer.call("upload_files", write)["revision"] == out1["revision"], "retry created a second revision")
     peer.call("upload_files", {**write, "files": [draft2], "request_id": rid()}, "conflict")
     check(peer.call("get_site", {**key, "path": "index.html"})["file"]["text"] == draft1["text"], "fresh client did not recover first author's draft")
-    check(key["site_id"] in {s["site_id"] for s in peer.call("list_sites", {"limit": 1})["sites"]}, "site not discoverable")
+    row = peer.call("list_sites", {"limit": 1})["sites"][0]
+    check(row["site_id"] == key["site_id"] and row["site_url"] == stable and row["preview_url"] == out1["preview_url"], "site not discoverable with matching URLs")
     # Anonymous direct requests cannot fetch a private draft's HTML or its asset.
     anonymous.request("GET", out1["preview_url"]).expect(303, "anonymous draft preview")
     check(person.navigate(out1["preview_url"]).expect(200, "signed-in preview").body == draft1["text"].encode(), "preview content mismatch")
@@ -190,19 +193,36 @@ def exercise(port, token):
     check(page2["releases"][0]["release_id"] == release1["release_id"], "release history cursor skipped the older release")
     rolled = peer.call("rollback_site", {**key, "release_id": release1["release_id"], "expected_release_id": release2["release_id"], "request_id": rid()})
     check(rolled["site_url"] == stable and rolled["live_revision"] == revision1 and person.navigate(stable).body == draft1["text"].encode(), "rollback changed URL or served wrong release")
-    pending = peer.call("set_site_access", {**key, "visibility": "public", "revision": revision1, "request_id": rid()}, "approval_required")
+    public_args = {**key, "visibility": "public", "revision": revision1, "request_id": rid()}
+    pending = peer.call("set_site_access", public_args, "approval_required")
     approval = pending["approval_url"]
     page = person.navigate(approval).expect(200, "public approval page")
     parser = Approval()
     parser.feed(page.body.decode())
     check(parser.csrf and revision1.encode() in page.body, "approval page lacks bound revision or CSRF input")
-    form = {"Origin": control, "Content-Type": "application/x-www-form-urlencoded"}
+    form = {"Origin": control, "Content-Type": "application/x-www-form-urlencoded", "Accept": "text/html"}
     person.request("POST", approval, urlencode({"csrf": "invalid"}), form).expect(403, "invalid approval CSRF")
     anonymous.request("GET", asset).expect(303, "unapproved release")
-    person.request("POST", approval, urlencode({"csrf": parser.csrf}), form).expect(200, "approved public release")
+    # Reasserting workspace access after review makes an already-open approval obsolete.
+    peer.call("set_site_access", {**key, "visibility": "workspace", "revision": revision1, "request_id": rid()})
+    person.request("POST", approval, urlencode({"csrf": parser.csrf}), form).expect(409, "superseded approval")
+    anonymous.request("HEAD", asset).expect(303, "stale approval did not change the audience")
+    fresh = peer.call("set_site_access", public_args, "approval_required")["approval_url"]
+    page = person.navigate(fresh).expect(200, "renewed approval")
+    renewed = Approval()
+    renewed.feed(page.body.decode())
+    check(renewed.csrf, "renewed approval missing CSRF")
+    receipt = person.request("POST", fresh, urlencode({"csrf": renewed.csrf}), form).expect(200, "approved public release")
+    check(receipt.headers.get("content-type", "").startswith("text/html") and stable.encode() in receipt.body
+          and full["preview_url"].encode() in receipt.body and second["preview_url"].encode() not in receipt.body,
+          "approval receipt should link to the reviewed live revision, even if the draft differs")
     public = anonymous.request("GET", asset).expect(200, "anonymous public asset")
     check(public.body == image and public.headers["etag"].strip('"') == digest, "served public bytes/ETag differ")
+    head = anonymous.request("HEAD", asset).expect(200, "asset metadata")
+    check(not head.body and head.headers["etag"] == public.headers["etag"]
+          and int(head.headers["content-length"]) == len(image), "HEAD metadata differs from GET")
     old = {"If-None-Match": public.headers["etag"]}
+    anonymous.request("HEAD", asset, headers=old).expect(304, "authorized conditional HEAD")
     anonymous.request("GET", asset, headers=old).expect(304, "fresh public cache")
     anonymous.request("GET", full["preview_url"]).expect(303, "published site's private preview")
     peer.call("set_site_access", {**key, "visibility": "offline", "revision": revision1, "request_id": rid()})
@@ -211,6 +231,8 @@ def exercise(port, token):
     check(withdrawn.status in {303, 404} and "etag" not in withdrawn.headers and withdrawn.body != image,
           "withdrawn asset still available to anonymous visitor with old ETag")
     person.request("GET", stable, headers=old).expect(404, "offline signed-in site")
+    blocked = person.request("HEAD", asset, headers=old).expect(404, "withdrawn conditional HEAD")
+    check("etag" not in blocked.headers, "withdrawn asset disclosed metadata")
     check(peer.call("get_site", key)["visibility"] == "offline", "offline change missing on readback")
 
 
@@ -241,7 +263,7 @@ def main():
                     time.sleep(.05)
                 else:
                     raise RuntimeError("isolated Shoowcase process failed to reach /healthz")
-                exercise(port, token)
+                exercise(port, token, subprocess.check_output([binary, "version"], text=True).strip())
             finally:
                 app.terminate()
                 try:

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="344" viewBox="0 0 1200 344" role="img" aria-labelledby="title desc">
+<title id="title">Shoowcase — websites from the agent you already use</title>
+<desc id="desc">A dark navy wordmark beside three illustrated browser windows, stacked like print proofs. The front window shows a mountain landscape at sunrise.</desc>
+<defs>
+  <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#668793" opacity=".4"/></pattern>
+  <clipPath id="art"><rect x="824" y="126" width="226" height="99" rx="5"/></clipPath>
+</defs>
+<rect width="1200" height="344" rx="16" fill="#102731"/>
+<path d="M689 0h511v344H643z" fill="url(#grid)"/>
+<path d="M769 -16 667 368M790 -16 688 368" stroke="#36545c" fill="none"/>
+<g fill="#c5eee0" font-family="Arial,Helvetica,sans-serif">
+  <g transform="translate(64 50)" fill="none" stroke="#91d9c4" stroke-width="3.5" stroke-linejoin="round">
+    <path d="m0 11 16-9 16 9-16 9z"/><path d="m0 18 16 9 16-9m-32 8 16 9 16-9"/>
+  </g>
+  <text x="111" y="74" font-size="15" letter-spacing="2.7" font-weight="700">OPENHOO  /  PUBLISHING TOOLS</text>
+  <text x="59" y="190" font-size="100" letter-spacing="-6" fill="#fff8e9" font-family="Georgia,'Times New Roman',serif">Shoowcase</text>
+  <text x="66" y="243" font-size="28" fill="#e4eeeb">Websites from the agent you already use.</text>
+  <path d="M67 291h42" stroke="#ff9a77" stroke-width="3"/>
+  <text x="122" y="297" font-size="14" letter-spacing="2.4" font-weight="700">MCP  /  STATIC HOSTING</text>
+</g>
+<g stroke="#102731" stroke-width="3" stroke-linejoin="round">
+  <rect x="876" y="36" width="250" height="180" rx="8" fill="#fa977a"/><path d="M876 61h250" fill="none"/>
+  <rect x="848" y="60" width="250" height="184" rx="8" fill="#96d7c3"/><path d="M848 87h250" fill="none"/>
+  <rect x="807" y="86" width="262" height="187" rx="8" fill="#fff8e9"/><path d="M808 113h259"/>
+  <g fill="#18333c" stroke="none"><circle cx="824" cy="100" r="2.5"/><circle cx="834" cy="100" r="2.5"/><circle cx="844" cy="100" r="2.5"/></g>
+  <g clip-path="url(#art)" stroke="none"><path d="M824 126h226v99H824z" fill="#f1e3bd"/><circle cx="974" cy="157" r="20" fill="#ee7a59"/><path d="m805 220 84-74 51 44 39-26 90 50v24H805z" fill="#85b6a4"/><path d="m805 235 89-52 51 27 50-28 75 40v20H805z" fill="#275f5a"/></g>
+  <path d="M826 242h91m-91 12h154" stroke="#42635f" stroke-width="4" stroke-linecap="round"/>
+</g>
+<g fill="#afc9c6" font-family="monospace" font-size="13" letter-spacing="2"><text x="806" y="306">FIG. 01</text><text x="891" y="306">/ SITE PROOFS</text></g>
+</svg>

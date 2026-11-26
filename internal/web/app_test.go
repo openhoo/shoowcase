@@ -111,8 +111,15 @@ func seedSiteFor(t *testing.T, s *sites.Store, user sites.Actor) string {
 	r = call("upload_files", map[string]any{"site_id": "field", "request_id": "upload", "expected_revision": r["revision"], "files": []map[string]string{{"path": "index.html", "text": "<p>Release body</p>"}, {"path": "screen.css", "text": "p{color:green}"}}})
 	rev := r["revision"].(string)
 	call("publish_site", map[string]any{"site_id": "field", "revision": rev, "request_id": "publish"})
-	ctx = sites.WithApproval(ctx)
-	call("set_site_access", map[string]any{"site_id": "field", "revision": rev, "visibility": "public", "request_id": "visibility"})
+	access := map[string]any{"site_id": "field", "revision": rev, "visibility": "public", "request_id": "visibility"}
+	b, _ := json.Marshal(access)
+	_, err := s.Execute(ctx, user, "set_site_access", b)
+	gen, ok := sites.ApprovalGeneration(err)
+	if !ok {
+		t.Fatal(err)
+	}
+	ctx = sites.WithApproval(ctx, gen)
+	call("set_site_access", access)
 	return rev
 }
 
@@ -278,6 +285,14 @@ func TestLongActionContinuesWithoutSendingTicketToLogin(t *testing.T) {
 		// Legitimate long identity claims can push the signed URL beyond the
 		// OIDC cookie return-path budget. The link contains no extraneous parameters.
 		raw, _ := json.Marshal(a)
+		if kind == "approval" {
+			_, err := s.Execute(t.Context(), user, tkn.Tool, raw)
+			var ok bool
+			tkn.Generation, ok = sites.ApprovalGeneration(err)
+			if !ok {
+				t.Fatal(err)
+			}
+		}
 		tkn.Args = raw
 		token := app.sign(tkn)
 		link := testControl + route + "?t=" + url.QueryEscape(token)
@@ -305,5 +320,29 @@ func TestLongActionContinuesWithoutSendingTicketToLogin(t *testing.T) {
 	}
 	if w := hitRoute(t, app, "GET", testSite+"/", nil, nil); w.Code != http.StatusSeeOther {
 		t.Fatal("reviewing approval unexpectedly published content")
+	}
+}
+
+func TestLegacyApprovalMustBeRenewed(t *testing.T) {
+	a, _ := handlerFixture(t, filepath.Join(t.TempDir(), "legacy.sqlite"), "team-a", true)
+	// A correctly signed v0.1.0 ticket has no publication generation.
+	legacy := a.sign(ticket{Kind: "approval", Who: sites.Actor{Subject: "tester", Workspace: "team-a", Role: "publisher"}, Tool: "set_site_access", Args: json.RawMessage(`{"site_id":"field","visibility":"public","revision":"old","request_id":"share"}`), Expires: time.Now().Add(time.Minute).Unix()})
+	w := hitRoute(t, a, "GET", testControl+"/approve?t="+url.QueryEscape(legacy), nil, nil)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "new link") || w.Header().Get("Location") != "" {
+		t.Fatal("obsolete approval accepted or initiated a sign-in", w.Code)
+	}
+}
+
+func TestPreviewDatabaseFailureIsTemporary(t *testing.T) {
+	a, s := handlerFixture(t, filepath.Join(t.TempDir(), "preview.sqlite"), "team-a", true)
+	rev := seedPublicSite(t, s)
+	preview := a.siteURL("pv-" + rev)
+	_, session := browserSessions(t, a, strings.TrimSuffix(preview, "/"))
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w := hitRoute(t, a, "GET", preview, session, nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("preview storage unavailable: got %d", w.Code)
 	}
 }

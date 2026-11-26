@@ -43,8 +43,13 @@ jobs:
         run: make vet test
       - name: Scan reachable Go vulnerabilities
         run: make vuln
-      - name: Real browser HTTP and MCP smoke
+      - name: Binary HTTP and MCP smoke
         run: make smoke
+      - name: Publish from two Python MCP clients and review in Chrome
+        run: |
+          python3.12 -m venv "$RUNNER_TEMP/shoowcase-browser"
+          "$RUNNER_TEMP/shoowcase-browser/bin/python" -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r scripts/browser-requirements.txt
+          "$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-browser.py --binary ./bin/shoowcase --browser-channel chrome
       - name: Restore production-format backup into a separate database
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}

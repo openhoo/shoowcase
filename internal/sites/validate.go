@@ -52,17 +52,14 @@ type asset struct {
 	data        []byte
 }
 
-func prepare(f fileInput) (asset, error) {
-	var a asset
-	if !validPath(f.Path) {
-		return a, bad("Use a relative file path of 1–200 ASCII characters; hidden or empty components are not allowed.")
+// UploadTarget validates what is knowable before an upload: its logical path,
+// supported media type, and declared size. The caller must still validate bytes.
+func UploadTarget(p string, size int64) (string, error) {
+	if !validPath(p) {
+		return "", bad("Use a relative file path of 1–200 ASCII characters without hidden components; the top-level auth path is reserved.")
 	}
-	if (f.Text == nil) == (f.Base64 == nil) {
-		return a, bad("Each file needs exactly one of text or base64.")
-	}
-	ext := strings.ToLower(path.Ext(f.Path))
 	var ct string
-	switch ext {
+	switch strings.ToLower(path.Ext(p)) {
 	case ".html":
 		ct = "text/html; charset=utf-8"
 	case ".css":
@@ -74,7 +71,21 @@ func prepare(f fileInput) (asset, error) {
 	case ".png":
 		ct = "image/png"
 	default:
-		return a, bad("Supported file types: HTML, CSS, PNG, JPEG, GIF.")
+		return "", bad("Supported file types: HTML, CSS, PNG, JPEG, GIF.")
+	}
+	if size < 0 || size > MaxFileBytes {
+		return "", bad("File exceeds 2 MiB or has an invalid size.")
+	}
+	if strings.HasPrefix(ct, "text/") && size > MaxTextBytes {
+		return "", bad("HTML and CSS must be no larger than 256 KiB.")
+	}
+	return ct, nil
+}
+
+func prepare(f fileInput) (asset, error) {
+	var a asset
+	if (f.Text == nil) == (f.Base64 == nil) {
+		return a, bad("Each file needs exactly one of text or base64.")
 	}
 	var data []byte
 	if f.Text != nil {
@@ -92,15 +103,16 @@ func prepare(f fileInput) (asset, error) {
 			return a, bad("File has invalid standard base64.")
 		}
 	}
-	if len(data) > MaxFileBytes {
-		return a, bad("File exceeds 2 MiB.")
+	ct, e := UploadTarget(f.Path, int64(len(data)))
+	if e != nil {
+		return a, e
 	}
 	if strings.HasPrefix(ct, "text/") {
-		if len(data) > MaxTextBytes || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+		if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 			return a, bad("HTML and CSS must be UTF-8 text no larger than 256 KiB.")
 		}
 		var e error
-		if ext == ".html" {
+		if strings.HasPrefix(ct, "text/html") {
 			e = checkHTML(data)
 		} else {
 			e = checkCSS(string(data))

@@ -1,17 +1,26 @@
 ---
 name: shoowcase-operate
-description: Build, test, or operate a Shoowcase instance, including the MCP transport, tenant isolation, publication state, and deployment configuration.
+description: Build, review, upgrade, or operate the Shoowcase service. Covers its MCP contract, publication and access controls, database migrations, and release verification.
 ---
 
 # Build and operate Shoowcase
 
-Work in the Shoowcase repository. For site content changes on a running instance use the publishing skill instead. Start with the repository README, `docs/operations.md` for production identity, TLS and configuration, and `docs/design.md` for release scope. Use a temporary database for experiments; an operator's existing sites are not test fixtures.
+Run the commands below from the Shoowcase repository. For authoring a site on an existing instance, use the `shoowcase-publish` skill. Use disposable databases and synthetic site content for tests.
 
-## Changes and evidence
+## Preserve these contracts
 
-- **Transport:** `internal/mcpserver` defines discoverable schemas and delegates calls using the authenticated HTTP request context. Keep it stateless: no process-local editor session, no user-selected workspace, and no access to arbitrary server paths or URLs. Exercise changes using a real Streamable HTTP client; the tests in this package cover discovery and the older initialize handshake.
-- **Persistence and authorization:** `internal/sites` owns role checks, immutable revisions, quotas, mutation replay and the live release. Test a stale write and a request from another workspace. Scope request replay to the same actor and workspace. Failed publish or rollback operations must leave the live release intact. Check both supported database engines when changing SQL or transaction boundaries; report which ones actually ran.
-- **Browser and hosting:** `internal/auth` owns identity, and `internal/web` routes control requests, approval, previews, and site content. Protect the control origin separately from generated HTML. Verify that anonymous visitors cannot read workspace or draft content, including through a previously issued URL. Public changes need browser approval bound to the exact actor and operation; a link by itself is not approval.
-- **Before calling a deployment ready:** exercise the configured identity provider and roles, wildcard DNS/TLS for site and preview hosts, publish/read/rollback, and a backup restored into a separate database. For the runnable PostgreSQL rehearsal and what it proves, see the repository’s `docs/restore-drill.md`. Include a private-site check after restore. A database connection, local smoke test or deployment manifest alone cannot establish those properties.
+- **Agent API:** Keep the schemas in `internal/mcpserver` aligned with `internal/sites` and `internal/web`. Derive the workspace and actor from the authenticated request. A fresh MCP client must be able to discover the site, read the draft and continue an edit. Retrying the same mutation as the same actor must not write twice; a stale revision must not overwrite a newer draft.
+- **Publication:** Draft edits, live releases and audience changes are separate. Rollback keeps the stable URL and leaves the draft alone. A public change requires the requesting publisher's browser approval for the exact operation, revision and publication state. After a conflict, read the current site and request a fresh approval. Test with two publishers.
+- **Delivery:** Keep control and content on separate registrable domains. Authorize each HTML and asset request before returning bytes, headers or a cached response. Test anonymous and unrelated-workspace access to previews and private releases; include `HEAD` and a previously valid ETag after withdrawal. Keep signed URLs, credentials, site contents and database connection strings out of logs.
 
-Run `go test ./...` in the repo and use `go test -race ./...` when changing concurrent operations, transport, or release handling. Use `make smoke` for the binary’s agent-to-browser publish flow. Set `SHOOWCASE_TEST_POSTGRES_DSN` to a disposable database when a change needs PostgreSQL coverage; the default run may skip that backend. Give the operator the tested command and distinguish local, staging and live evidence. Keep bearer credentials, signed approval/upload URLs, uploaded bytes and database connection strings out of diagnostics.
+## Upgrade and restore
+
+1. Follow `docs/operations.md`. Rehearse on a restored copy: create a site with the previous release, retain the release IDs and a mutation request, then start the candidate on the same data. Verify file bytes, private access, history, replay and rollback. Use the separate PostgreSQL restore drill in `docs/restore-drill.md` to test the backup itself.
+2. For the upgrade from v0.1.0, drain old replicas and stop old writers before starting the candidate. Old binaries do not advance the publication generation that invalidates outstanding approvals. Startup applies the migration transactionally; if it reports a newer schema, stop and check the binary version. Keep a restorable pre-upgrade backup.
+3. Keep public sharing disabled during recovery. Apply `SHOOWCASE_PUBLIC=false` to every replica and drain the previous configuration. `visibility` is the effective audience; `configured_visibility` is retained. Review all sites still configured as public before enabling public delivery again.
+
+## Collect release evidence
+
+- Run `go mod verify` and `make vet test vuln smoke`. Set `SHOOWCASE_TEST_POSTGRES_DSN` to a **disposable** PostgreSQL database for the race suite; otherwise it skips that backend.
+- With Chrome installed, run `uv run scripts/smoke-browser.py --binary ./bin/shoowcase` after `make smoke`. This separate test uses two Python MCP SDK clients and a real browser to exercise the file picker, preview, public approval and rollback.
+- Record the exact commit, backends, commands and results. Verify the downloaded binary archive's checksum and provenance or the OCI digest and provenance using `deploy/README.md`. Keep local fixture results distinct from deployment evidence: qualify the actual agent, IdP roles, wildcard DNS/TLS, replica failover and restore before declaring that deployment ready.

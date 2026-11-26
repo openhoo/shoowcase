@@ -194,7 +194,7 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 		if e = json.Unmarshal([]byte(saved), &res); e != nil {
 			return nil, e
 		}
-		return res, nil
+		return effectiveAudience(ctx, res), nil
 	}
 	if !errors.Is(e, sql.ErrNoRows) {
 		return nil, e
@@ -242,7 +242,7 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 	if e = tx.Commit(); e != nil {
 		return nil, e
 	}
-	return res, nil
+	return effectiveAudience(ctx, res), nil
 }
 func create(ctx context.Context, tx *sql.Tx, a Actor, p mutation) (record, error) {
 	var n int
@@ -348,12 +348,18 @@ func upload(ctx context.Context, tx *sql.Tx, a Actor, r *record, p mutation, add
 	return e
 }
 func releaseChange(ctx context.Context, tx *sql.Tx, r *record, p mutation, tool string) error {
+	generation, hasApproval := ctx.Value(approvalKey{}).(int64)
+	// Check before branching on current visibility: an action which originally
+	// needed approval might no longer do so after another publisher changes it.
+	if hasApproval && (generation < 1 || generation != r.generation) {
+		return conflict("Publication or access changed since review. Read the current site and request a new approval.")
+	}
 	requireApproval := func() error {
 		if privateOnly(ctx) {
 			return fail("forbidden", "Public publishing is disabled on this instance.")
 		}
-		if !approved(ctx) {
-			return fail("approval_required", "Confirm the exact public change in your browser.")
+		if !hasApproval {
+			return &Error{Code: "approval_required", Message: "Confirm the exact public change in your browser.", approvalGeneration: r.generation}
 		}
 		return nil
 	}
@@ -387,6 +393,8 @@ func releaseChange(ctx context.Context, tx *sql.Tx, r *record, p mutation, tool 
 			return e
 		}
 	case "set_site_access":
+		// Even reasserting workspace/offline access is an explicit decision.
+		// Increment the generation below so pending public approvals expire.
 		current := r.live
 		if current == "" {
 			current = r.draft
@@ -425,7 +433,7 @@ func releaseChange(ctx context.Context, tx *sql.Tx, r *record, p mutation, tool 
 		r.release = p.Release
 		r.live = target
 	}
-	_, e := tx.ExecContext(ctx, "UPDATE sc_sites SET live=$1,release_id=$2,visibility=$3 WHERE id=$4", r.live, r.release, r.visibility, r.site)
+	_, e := tx.ExecContext(ctx, "UPDATE sc_sites SET live=$1,release_id=$2,visibility=$3,publication_generation=publication_generation+1 WHERE id=$4", r.live, r.release, r.visibility, r.site)
 	return e
 }
 func (s *Store) lookup(ctx context.Context, a Actor, tool string, q lookup) (map[string]any, error) {
@@ -459,7 +467,7 @@ func (s *Store) lookup(ctx context.Context, a Actor, tool string, q lookup) (map
 				next = last
 				break
 			}
-			list = append(list, r.out())
+			list = append(list, effectiveAudience(ctx, r.out()))
 			last = r.site
 		}
 		return map[string]any{"sites": list, "next_cursor": next}, rows.Err()
@@ -471,7 +479,7 @@ func (s *Store) lookup(ctx context.Context, a Actor, tool string, q lookup) (map
 	if e != nil {
 		return nil, e
 	}
-	out := r.out()
+	out := effectiveAudience(ctx, r.out())
 	if q.View != "" && q.View != "releases" && q.View != "files" {
 		return nil, bad("view must be files or releases.")
 	}

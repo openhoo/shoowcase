@@ -198,10 +198,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	if e != nil {
 		return nil, e
 	}
-	s := &Service{cfg: cfg, control: u, sitesHost: zone, sitesPort: port, aead: a, now: time.Now, markers: make(map[string]time.Time), client: cfg.HTTPClient}
-	if s.client == nil {
-		s.client = &http.Client{Timeout: 12 * time.Second}
-	}
+	s := &Service{cfg: cfg, control: u, sitesHost: zone, sitesPort: port, aead: a, now: time.Now, markers: make(map[string]time.Time), client: oidcHTTPClient(cfg.HTTPClient)}
 	if !cfg.Dev && cfg.Consume == nil {
 		return nil, errors.New("production requires a shared one-time token store")
 	}
@@ -236,6 +233,21 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	s.oauth = oauth2.Config{ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: u.String() + "/auth/callback", Endpoint: p.Endpoint(), Scopes: []string{oidc.ScopeOpenID, "profile"}}
 	return s, nil
 }
+
+// Discovery identifies the actual HTTPS endpoints. Follow browser redirects on
+// the user's browser only; a backend redirect is not another trusted endpoint.
+func oidcHTTPClient(configured *http.Client) *http.Client {
+	var client http.Client
+	if configured != nil {
+		client = *configured // keep its TLS transport without changing the caller's client
+	}
+	if client.Timeout == 0 {
+		client.Timeout = 12 * time.Second
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &client
+}
+
 func (s *Service) oidcCtx(ctx context.Context) context.Context {
 	return oidc.ClientContext(ctx, s.client)
 }

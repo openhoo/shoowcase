@@ -127,7 +127,7 @@ func TestLoopbackIngressPreservesOnlyConfiguredControlHost(t *testing.T) {
 	const expected = "studio.example.test:8443"
 	handler := NewForHost(func(context.Context, string, json.RawMessage) (map[string]any, error) {
 		return map[string]any{"sites": []any{}}, nil
-	}, expected)
+	}, expected, "test")
 	s := httptest.NewServer(handler)
 	defer s.Close()
 	ctx := t.Context()

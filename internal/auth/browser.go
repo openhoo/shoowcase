@@ -19,6 +19,33 @@ const MaxReturnPath = 1024
 
 const authTTL = 5 * time.Minute
 
+// Fresh random names let overlapping navigations finish independently. Refuse
+// new flows if the requesting browser already has too many pending; cookies
+// disappear on success or expiry. Also budget cookie bytes for reverse proxies.
+const maxPendingFlows = 6
+const maxFlowHeaderBytes = 6 << 10
+
+func flowKind(kind, id string) string { return "flow-" + hash(id)[:22] + "-" + kind }
+
+func (s *Service) beginFlow(w http.ResponseWriter, r *http.Request, kind, id, value string) bool {
+	name := flowKind(kind, id)
+	size := len(s.name(name)) + len(value) + 2
+	count := 0
+	for _, c := range r.Cookies() {
+		if strings.HasPrefix(c.Name, s.name("flow-")) {
+			count++
+			size += len(c.Name) + len(c.Value) + 2
+		}
+	}
+	if count >= maxPendingFlows || size > maxFlowHeaderBytes {
+		w.Header().Set("Retry-After", "300")
+		http.Error(w, "Too many unfinished sign-ins. Finish another sign-in or try again in five minutes.", http.StatusTooManyRequests)
+		return false
+	}
+	s.cookie(w, name, value, int(authTTL.Seconds()))
+	return true
+}
+
 // Readers and publishers re-check workspace claims at least every 15 minutes.
 // Browser cookies never outlive the ID token used to mint them.
 const sessionTTL = 15 * time.Minute
@@ -186,7 +213,9 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		deny(w, 500)
 		return
 	}
-	s.cookie(w, "binding", binding, int(authTTL.Seconds()))
+	if !s.beginFlow(w, r, "binding", d.Binding, binding) {
+		return
+	}
 	topRedirect(w, r, s.control.String()+"/auth/login?ticket="+url.QueryEscape(t))
 }
 func (s *Service) authorize(w http.ResponseWriter, r *http.Request, d destination) {
@@ -213,7 +242,9 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, d destinatio
 		deny(w, 400)
 		return
 	}
-	s.cookie(w, "oidc", c, int(authTTL.Seconds()))
+	if !s.beginFlow(w, r, "oidc", tx.State, c) {
+		return
+	}
 	topRedirect(w, r, s.oauth.AuthCodeURL(tx.State, oauth2.S256ChallengeOption(tx.Verifier), oidc.Nonce(tx.Nonce)))
 }
 func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
@@ -222,9 +253,15 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tx login
-	c, e := r.Cookie(s.name("oidc"))
 	q := r.URL.Query()
-	if e != nil || !s.open("transaction", c.Value, &tx) || !s.destOK(tx.Dest) || !equal(q.Get("state"), tx.State) || q.Get("code") == "" || len(q.Get("code")) > 4096 || q.Has("error") {
+	state := q.Get("state")
+	if len(state) != 43 { // 32 random bytes in unpadded base64url
+		deny(w, 400)
+		return
+	}
+	name := flowKind("oidc", state)
+	c, e := r.Cookie(s.name(name))
+	if e != nil || !s.open("transaction", c.Value, &tx) || !s.destOK(tx.Dest) || !equal(state, tx.State) {
 		deny(w, 400)
 		return
 	}
@@ -234,7 +271,11 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		deny(w, 400)
 		return
 	}
-	s.cookie(w, "oidc", "", -1)
+	s.cookie(w, name, "", -1)
+	if q.Get("code") == "" || len(q.Get("code")) > 4096 || q.Has("error") {
+		deny(w, 400)
+		return
+	}
 	ctx := s.oidcCtx(r.Context())
 	tok, e := s.oauth.Exchange(ctx, q.Get("code"), oauth2.VerifierOption(tx.Verifier))
 	if e != nil {
@@ -286,12 +327,17 @@ func (s *Service) returnTo(w http.ResponseWriter, r *http.Request, d destination
 }
 func (s *Service) finish(w http.ResponseWriter, r *http.Request) {
 	var h handoff
-	c, e := r.Cookie(s.name("binding"))
-	if !s.isSite(r.Host) || e != nil || !s.open("handoff", r.URL.Query().Get("ticket"), &h) || !s.destOK(h.Dest) || !strings.EqualFold(r.Host, h.Dest.Host) || !equal(h.Dest.Binding, hash(c.Value)) || !s.consume(r.Context(), "handoff", h.Once, h.Exp) {
+	if !s.isSite(r.Host) || !s.open("handoff", r.URL.Query().Get("ticket"), &h) || !s.destOK(h.Dest) || !strings.EqualFold(r.Host, h.Dest.Host) {
 		deny(w, 400)
 		return
 	}
-	s.cookie(w, "binding", "", -1)
+	name := flowKind("binding", h.Dest.Binding)
+	c, e := r.Cookie(s.name(name))
+	if e != nil || !equal(h.Dest.Binding, hash(c.Value)) || !s.consume(r.Context(), "handoff", h.Once, h.Exp) {
+		deny(w, 400)
+		return
+	}
+	s.cookie(w, name, "", -1)
 	if !s.mint(w, h.Dest.Host, h.Who, h.SessionExp) {
 		deny(w, 401)
 		return

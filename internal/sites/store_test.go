@@ -35,6 +35,15 @@ func mustOp(t testing.TB, s *Store, ctx context.Context, a Actor, tool string, p
 	}
 	return o
 }
+func approvalFor(t testing.TB, s *Store, ctx context.Context, a Actor, tool string, p args) context.Context {
+	t.Helper()
+	_, err := execOp(t, s, ctx, a, tool, p)
+	gen, ok := ApprovalGeneration(err)
+	if !ok {
+		t.Fatalf("expected approval challenge for %s, got %v", tool, err)
+	}
+	return WithApproval(ctx, gen)
+}
 func wantErr(t testing.TB, err error, code string) {
 	t.Helper()
 	var de *Error
@@ -132,11 +141,11 @@ func TestPublicationLifecycle(t *testing.T) {
 			if _, e := s.Fetch(ctx, "example", "", "shared.css", Actor{}); e == nil {
 				t.Fatal("approval failure leaked content")
 			}
-			_, e = execOp(t, s, WithApproval(ctx), reader, "set_site_access", pub)
+			_, e = execOp(t, s, approvalFor(t, s, ctx, author, "set_site_access", pub), reader, "set_site_access", pub)
 			wantErr(t, e, "forbidden")
-			_, e = execOp(t, s, WithPrivateDelivery(WithApproval(ctx)), author, "set_site_access", pub)
+			_, e = execOp(t, s, WithPrivateDelivery(approvalFor(t, s, ctx, author, "set_site_access", pub)), author, "set_site_access", pub)
 			wantErr(t, e, "forbidden")
-			mustOp(t, s, WithApproval(ctx), author, "set_site_access", pub)
+			mustOp(t, s, approvalFor(t, s, ctx, author, "set_site_access", pub), author, "set_site_access", pub)
 			pubFile, e := s2.Fetch(ctx, "example", "", "/", Actor{})
 			if e != nil || pubFile.Revision != rev1 {
 				t.Fatal(pubFile, e)
@@ -159,7 +168,7 @@ func TestPublicationLifecycle(t *testing.T) {
 			if e != nil || f.Revision != rev1 {
 				t.Fatal("failed public publish changed live", f, e)
 			}
-			rel2 := mustOp(t, s, WithApproval(ctx), author, "publish_site", p2)
+			rel2 := mustOp(t, s, approvalFor(t, s, ctx, author, "publish_site", p2), author, "publish_site", p2)
 			hist := c(reader, "get_site", args{"site_id": "example", "view": "releases", "limit": 1})
 			if hist["next_cursor"] == "" {
 				t.Fatal("missing history cursor")
@@ -175,7 +184,7 @@ func TestPublicationLifecycle(t *testing.T) {
 			wantErr(t, e, "not_found")
 			rb := args{"site_id": "example", "release_id": rel["release_id"], "expected_release_id": rel2["release_id"], "request_id": "rollback"}
 			check(author, "rollback_site", rb, "approval_required")
-			mustOp(t, s, WithApproval(ctx), author, "rollback_site", rb)
+			mustOp(t, s, approvalFor(t, s, ctx, author, "rollback_site", rb), author, "rollback_site", rb)
 			check(author, "set_site_access", args{"site_id": "example", "revision": rev2, "visibility": "workspace", "request_id": "stale-private"}, "conflict")
 			c(author, "set_site_access", args{"site_id": "example", "revision": rev1, "visibility": "offline", "request_id": "offline"})
 			_, e = s.FetchConditional(ctx, "example", "", "/", reader, pubFile.Digest)
@@ -273,11 +282,14 @@ func BenchmarkDelivery(b *testing.B) {
 			if e != nil {
 				b.Fatal(e)
 			}
-			for _, tc := range []struct{ name, digest string }{{"read_32KiB", ""}, {"conditional", f.Digest}} {
+			for _, tc := range []struct {
+				name, digest string
+				fetch        func(context.Context, string, string, string, Actor, string) (File, error)
+			}{{"read_32KiB", "", s.FetchConditional}, {"conditional", f.Digest, s.FetchConditional}, {"head", "", s.FetchMetadata}} {
 				b.Run(tc.name, func(b *testing.B) {
 					b.ReportAllocs()
 					for b.Loop() {
-						if _, e := s.FetchConditional(ctx, "bench", "", "", reader, tc.digest); e != nil {
+						if _, e := tc.fetch(ctx, "bench", "", "", reader, tc.digest); e != nil {
 							b.Fatal(e)
 						}
 					}

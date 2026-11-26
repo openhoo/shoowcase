@@ -1,60 +1,99 @@
+![Shoowcase — websites from the agent you already use](docs/media/shoowcase-banner.svg)
+
 # Shoowcase
 
-[![CI](https://github.com/openhoo/shoowcase/actions/workflows/ci.yml/badge.svg)](https://github.com/openhoo/shoowcase/actions/workflows/ci.yml)
+**Give your AI agent one MCP connection. Ask it to make a website.** Shoowcase saves the files, gives you a private preview and hosts the version you publish. A teammate opens an ordinary link. A week later, a different agent can find the same site and update it without the original chat.
 
-Give your agent one MCP connection and ask: **“Make an onboarding site for my team.”** It can upload ordinary HTML, CSS and images, return a private preview, and publish at a stable address. Open a fresh chat a week later: the new agent can find the site, read its files, change one page and roll back a release.
+[![CI](https://github.com/openhoo/shoowcase/actions/workflows/ci.yml/badge.svg)](https://github.com/openhoo/shoowcase/actions/workflows/ci.yml) · [Download a release](https://github.com/openhoo/shoowcase/releases) · [Run it for your team](docs/operations.md) · [Apache-2.0](LICENSE)
 
-A single Go binary serves every site. The host needs no per-site process, build container, JavaScript runtime, Git provider, or model account. You author the site in your connected agent; the browser displays previews, live sites and approval forms. Shoowcase is self-hosted. An organization's deployed instance supplies the MCP URL.
+Shoowcase is a **self-hosted static website platform** for onboarding guides, project updates, handbooks and other small team sites. Your existing agent writes the pages. One Go service hosts them all, with no model call, build job or separate process per site. The software is public; the sites you create start private to your workspace.
 
-## Connect an agent
+## From chat to a website
 
-In a client that supports remote MCP over Streamable HTTP, add the instance's **control URL followed by `/mcp`**, then sign in with your work account. For example, a deployment at `https://publish.example.com` offers `https://publish.example.com/mcp`. OAuth client registration and the correct API audience must already be configured at your organization's identity provider; see [operations](docs/operations.md). The server advertises its tools. No skill is required to discover or call them.
+<picture>
+  <source media="(max-width: 650px)" srcset="docs/media/chat-to-site-mobile.svg">
+  <img src="docs/media/chat-to-site.svg" alt="A chat in an AI agent connects over MCP to Shoowcase, which creates the site, saves a draft and publishes it at a stable address for a teammate’s browser." width="820">
+</picture>
 
-Try these in order:
+1. **Ask in chat.** “Make a team onboarding site with our first-day checklist. Give me a private preview.” Through the Model Context Protocol (MCP), the agent creates the site and uploads its HTML, CSS and images.
+2. **Review and publish.** Open the preview. Ask for edits or say, “Publish this revision for my workspace.” Coworkers can now sign in at the stable site address; they don’t need an agent.
+3. **Return in a fresh chat.** “Find the onboarding site. Change the start time to 10:00 and show me the draft.” The agent reads the files from Shoowcase. The live site stays as it was until you publish again.
 
-1. “Create and publish a simple onboarding site for my workspace. Return the URL and tell me who can open it.”
-2. In a new chat: “Find the onboarding site, read its current homepage, and change the start time to 10:00, and publish that revision. Keep the URL and audience.”
-3. “Show the release history. Restore the previous release.”
-4. “Make the site public.” If public sharing is enabled, the publisher gets a review link. Authorization happens in the browser for the exact release; nothing goes public from receiving a link.
+## Get started
 
-## Run locally
+### My team already runs Shoowcase
 
-Build from source with Go 1.26 or later:
+Add the **control URL ending in `/mcp`** to your agent as a remote **Streamable HTTP** MCP server. For example: `https://publish.example.com/mcp`. Use the URL your administrator gives you and sign in with your work account. The client must be registered or otherwise supported by your identity provider. The eight publishing tools are discoverable; installing a skill is optional.
+
+Try: **“Create a site called Team Fieldnotes. Make a welcome page and a checklist, publish them for my workspace, and give me the URL.”** To try it with ready-made files, use the [onboarding example](examples/onboarding/).
+
+### I want to try it on my computer
+
+[Download an archive](https://github.com/openhoo/shoowcase/releases) for macOS (Apple silicon), Linux (amd64/arm64) or Windows (amd64), [verify it](deploy/README.md), extract it, and run `./shoowcase -dev` (Windows PowerShell: `.\shoowcase.exe -dev`). Or build from source with Git, Make and Go 1.26 or later:
 
 ```sh
+git clone https://github.com/openhoo/shoowcase.git
+cd shoowcase
 make build
 ./bin/shoowcase -dev
 ```
 
-For a packaged build, use a matching archive from [Releases](https://github.com/openhoo/shoowcase/releases), verify the archive against its release's `SHA256SUMS`, extract it and start `shoowcase -dev`.
+Leave the server running. In a second terminal, `curl -fsS http://localhost:7878/readyz` should print `ready`.
 
-Connect to `http://localhost:7878/mcp` with an Authorization bearer token from `.shoowcase/agent-token`. Use your client's secret store for the token. Local site and preview addresses are under `*.localhost:7878`. Development uses SQLite in `.shoowcase/`, signs local visitors in as one test user and refuses non-loopback requests. Never expose this mode through a tunnel or proxy. For local public-sharing tests, set `SHOOWCASE_PUBLIC=true` before startup.
-
-## What agents can do
-
-| Tool | Behavior |
+| Local client setting | Value |
 | --- | --- |
-| `create_site`, `list_sites` | Create an unpublished workspace site or find existing sites across conversations. |
-| `get_site` | Read a manifest, one file at a selected revision, or paginated release history. |
-| `upload_files` | Replace named files or explicitly remove paths. Unmentioned files stay in the draft. |
-| `prepare_upload` | Create a five-minute URL to upload exact bytes by size and SHA-256, or choose the file in a browser. |
-| `publish_site` | Publish the current, named draft revision at the site's stable URL. |
-| `set_site_access` | Set the audience to workspace, public or offline. Never changes from an ordinary file edit. |
-| `rollback_site` | Point the live URL to a selected release while preserving current access policy and draft. |
+| Transport | Streamable HTTP |
+| Server URL | `http://localhost:7878/mcp` |
+| Authentication | Bearer token. Load the value from `.shoowcase/agent-token` into your client's secret store. Keep it out of chat and source control. |
 
-Mutation requests use stable request IDs. A stale editor gets a conflict, and retrying the same completed request does not duplicate its effect. Public means anyone with the URL can open it; the host asks search engines not to index sites. HTML, CSS, PNG, JPEG and GIF are supported; scripts, forms, external embeds and server-side code are outside the supported content profile. [A starter site](examples/onboarding/) is included.
+Development mode uses SQLite in `.shoowcase/`, signs local browsers in as one test user, and serves sites under `*.localhost:7878`. The agent’s MCP client must run on the same computer. A cloud agent needs a reachable [production HTTPS deployment](docs/operations.md); keep the development server on loopback.
 
-## Agent skills
+## Draft, release and audience
 
-- **[Publish and maintain sites](skills/shoowcase-publish/SKILL.md)** — for agents using an instance. Includes revision checks, fresh-chat handoff and public-release review.
-- **[Build and operate Shoowcase](skills/shoowcase-operate/SKILL.md)** — for agents changing the project or running the service. [AGENTS.md](AGENTS.md) routes repository tasks.
+| Concept | What it controls |
+| --- | --- |
+| **Draft** | Uploading files creates a new immutable revision. Each revision has its own workspace-only preview. Unmentioned files stay in place. |
+| **Release** | Publishing points the stable address at an exact revision. Rolling back restores a previous release while preserving the draft, address and audience. |
+| **Audience** | **Workspace** requires a work sign-in. **Public** lets anyone with the address read the site. **Offline** withdraws the live site and preserves its history. |
 
-Install by copying the appropriate skill directory from a reviewed release into your agent's skills directory. For Codex that can be `~/.codex/skills/`. Skills document the workflow; the server enforces access.
+Public sharing is disabled by default. If an operator enables it, making a site public, publishing a new public release or rolling a public site back requires a publisher to review the exact change in their browser. Merely opening the review link does not grant access. Making a site private blocks new anonymous reads. Taking it offline also blocks signed-in reads at the live address. Neither action can recall a downloaded copy.
 
-## Production and verification
+## What the agent can do
 
-Use PostgreSQL, an HTTPS identity provider, and TLS ingress for the control host and the wildcard site domain. The two origins must be on separate registrable domains. Site bytes, manifests, audit records and replay state are stored in PostgreSQL. Back up deployment configuration and secrets separately; those are also needed to recover the installation. This release uses PostgreSQL for content-addressed files; it does not require an object-store account.
+| MCP tool | Use it to… |
+| --- | --- |
+| `create_site` | Reserve an address and start an unpublished workspace site. |
+| `list_sites` | Find sites the workspace can access, including ones made in another chat. |
+| `get_site` | Inspect the draft, a selected revision, a single file or paginated release history. |
+| `upload_files` | Add, replace or explicitly delete draft files against an expected revision. |
+| `prepare_upload` | Get a five-minute link for one file of a specified size and SHA-256 digest. Upload exact bytes or let a person choose the file in a browser. |
+| `publish_site` | Make the named current draft revision live at the stable address. |
+| `set_site_access` | Change the audience of the live site. |
+| `rollback_site` | Restore a prior release while checking that the expected release is still live. |
 
-See the [release scope and roadmap](docs/design.md), [deployment and recovery guide](docs/operations.md), [security model](SECURITY.md), [performance and test evidence](docs/verification.md), and [OCI deployment](deploy/compose.yaml). No production SLA is implied by a passing build.
+Agents reuse the same request ID and arguments when retrying a mutation. A stale revision returns a conflict so an agent can read the current draft before changing anyone else’s work. A completed mutation returns its original receipt; `get_site` reports current state.
 
-Licensed under [Apache-2.0](LICENSE), including the agent skills.
+**Content:** HTML, CSS, PNG, JPEG and GIF. A revision holds up to **100 files / 8 MiB**; each file is at most **2 MiB** and HTML/CSS files are limited to **256 KiB**. The host accepts passive content: no uploaded scripts, forms, external embeds or server code. For a site that needs those features, this release is not a fit.
+
+## Run it for an organization
+
+The **control host** handles MCP, sign-in, uploads and human approvals. **Site and preview hosts** live on a separate registrable domain with wildcard DNS and TLS. **PostgreSQL** stores file bytes, manifests, releases, audit events and retry records. Replicas share the database and signing key. Workspaces and roles come from your identity provider.
+
+| Role | Permissions |
+| --- | --- |
+| Viewer | Read workspace sites and private previews. |
+| Editor | Also create sites and edit drafts. |
+| Publisher | Also publish, roll back, change the audience and approve public releases. |
+| Admin | Also read instance metrics. |
+
+Start with [deployment and identity setup](docs/operations.md) and the [container configuration](deploy/compose.yaml). Before accepting company traffic, test your real identity provider and agent client, cross-workspace access, withdrawal and a [restore into a separate database](docs/restore-drill.md). The [verification report](docs/verification.md) and [HTTP measurements](docs/http-benchmark.md) show what was tested and under what conditions.
+
+## Skills and project guide
+
+| For | Start here |
+| --- | --- |
+| An agent publishing sites | [Publishing skill](skills/shoowcase-publish/SKILL.md) — author, preview, publish, recover a site in a fresh chat and handle conflicts. |
+| An agent changing or operating Shoowcase | [Engineering and operations skill](skills/shoowcase-operate/SKILL.md) — code ownership, isolation checks, storage changes and release evidence. |
+| A maintainer or evaluator | [Product scope and roadmap](docs/design.md) · [Security model and reporting](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Repository instructions](AGENTS.md) |
+
+To install a skill, download the **skills ZIP** from [Releases](https://github.com/openhoo/shoowcase/releases), [verify the archive](deploy/README.md), then copy the desired skill directory into your agent’s skills directory. Both skills are also in the tagged source tree. The server enforces permissions whether or not a skill is installed. The code, artwork and both skills are licensed under [Apache-2.0](LICENSE).
