@@ -12,7 +12,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "internal/web/quickstartassets"
-TAG = "v0.5.0"
+TAG = "v0.6.0"
 CODE = "synthetic-setup-code-for-installer-fixture"
 
 # Run the real installer entrypoint without touching GitHub, the user's client,
@@ -23,7 +23,7 @@ import ("fmt"; "os"; "path/filepath"; "slices"; "strings")
 func main(){
   args:=os.Args[1:]
   if strings.EqualFold(strings.TrimSuffix(filepath.Base(os.Args[0]),".exe"),"curl") {
-    base:="https://github.com/openhoo/shoowcase/releases/download/v0.5.0/"
+    base:="https://github.com/openhoo/shoowcase/releases/download/v0.6.0/"
     if len(args)<5 || args[0]!="-q" || !slices.Contains(args,"--proto-redir") {os.Exit(20)}
     for _,f:= range []string{"--proto","--proto-redir"}{i:=slices.Index(args,f); if i<0||i+1>=len(args)||args[i+1]!="=https"{os.Exit(21)}}
     name:=strings.TrimPrefix(args[len(args)-1],base)
@@ -32,7 +32,7 @@ func main(){
     b,e:=os.ReadFile(filepath.Join(os.Getenv("FIXTURE_ROOT"),name));if e!=nil{os.Exit(24)}
     if os.WriteFile(args[i+1],b,0600)!=nil{os.Exit(25)};return
   }
-  if slices.Equal(args,[]string{"version"}){fmt.Println("v0.5.0");return}
+  if slices.Equal(args,[]string{"version"}){fmt.Println("v0.6.0");return}
   if !slices.Equal(args,[]string{"connect","codex","--url","https://control.example/mcp","--setup-code",os.Getenv("FIXTURE_CODE")}){os.Exit(30)}
   p,e:=os.Executable();if e!=nil||os.WriteFile(os.Getenv("FIXTURE_RECEIPT"),[]byte(p),0600)!=nil {os.Exit(31)}
 }'''
