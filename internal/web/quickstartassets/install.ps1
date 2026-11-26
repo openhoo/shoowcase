@@ -26,7 +26,7 @@ try {
     $Sums = Join-Path $Stage 'SHA256SUMS'
     $Zip = Join-Path $Stage 'release.zip'
     # curl.exe ships with current Windows. Ignore curlrc and reject HTTP downgrades.
-    $Curl = (Get-Command curl.exe -CommandType Application -ErrorAction Stop).Source
+    $Curl = (Get-Command curl.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     & $Curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 -o $Sums "$Base/SHA256SUMS"
     if ($LASTEXITCODE -ne 0) { throw 'Could not download Shoowcase release checksums.' }
     & $Curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 -o $Zip "$Base/$Asset"
