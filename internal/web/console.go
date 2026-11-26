@@ -118,6 +118,9 @@ func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Ide
 		dest := "/sites"
 		if !enrolled {
 			dest = "/account"
+			if r.URL.Path == "/quickstart" {
+				dest = "/account?next=quickstart"
+			}
 		}
 		http.Redirect(w, r, dest, http.StatusSeeOther)
 		return

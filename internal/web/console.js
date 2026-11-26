@@ -21,18 +21,19 @@ for (const button of document.querySelectorAll("button[data-copy-target]")) {
 
 // A history cache may retain the live document. Do not restore a credential
 // when the user navigates back after leaving the one-time receipt.
-const receipt = document.querySelector("input[data-secret-receipt]");
+const receipt = document.querySelector("[data-secret-receipt]");
 if (receipt) {
   window.addEventListener(
     "pagehide",
     () => {
       receipt.value = "";
       receipt.removeAttribute("value");
+      receipt.textContent = "";
     },
     { once: true },
   );
   window.addEventListener("pageshow", (event) => {
-    if (event.persisted) location.replace("/keys");
+    if (event.persisted) location.replace(location.pathname === "/quickstart" ? "/quickstart" : "/keys");
   });
 }
 

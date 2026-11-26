@@ -62,7 +62,7 @@ with zipfile.ZipFile(target) as check:
     if check.namelist() != sorted(members) or any(check.read(n) != members[n].read_bytes() for n in members):
         raise SystemExit("skills archive differs from its approved paths or source bytes")
 PY
-for target in linux/amd64 linux/arm64 darwin/arm64 windows/amd64; do
+for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
   os="${target%/*}"; arch="${target#*/}"
   name="shoowcase-${version}-${os}-${arch}"
   bin=shoowcase; if [[ $os == windows ]]; then bin=shoowcase.exe; fi

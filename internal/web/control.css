@@ -1071,3 +1071,12 @@ input:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.quick-clients { min-width: 0; margin: 0; padding: 0; border: 0; }
+.quick-clients legend { margin-bottom: .6rem; padding: 0; font-weight: 700; }
+.quick-choices { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,11rem),1fr)); gap: .6rem; }
+.quick-choice { display: flex; align-items: center; gap: .65rem; min-height: 3.2rem; padding: .7rem .9rem; border: 1px solid var(--line); border-radius: .45rem; background: #fff; cursor: pointer; }
+.quick-choice:has(:checked) { border-color: var(--green); background: #edf6ee; box-shadow: inset 0 0 0 1px var(--green); }
+.quick-choice input[type=radio] { width: 1.1rem; min-height: 0; height: 1.1rem; margin: 0; accent-color: var(--green); }
+.quick-choice:focus-within { outline: 3px solid #a74926; outline-offset: 2px; }
+.app textarea.quick-command { width: 100%; min-height: 6rem; padding: .85rem 1rem; border: 1px solid var(--line); background: #15383b; color: #fffef4; resize: vertical; overflow-wrap: anywhere; font: .92rem/1.6 ui-monospace,monospace; }

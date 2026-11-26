@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openhoo/shoowcase/internal/agentsetup"
 	"github.com/openhoo/shoowcase/internal/auth"
 	"github.com/openhoo/shoowcase/internal/sites"
 	"github.com/openhoo/shoowcase/internal/telemetry"
@@ -48,6 +49,14 @@ func sessionActor(i auth.Identity) sites.Actor {
 }
 
 func run() error {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "connect":
+			return agentsetup.Connect(context.Background(), os.Args[2:], os.Stdout)
+		case "mcp-stdio":
+			return agentsetup.Stdio(context.Background(), os.Args[2:], os.Stdin, os.Stdout)
+		}
+	}
 	if len(os.Args) > 1 && os.Args[1] == "version" {
 		fmt.Println(version)
 		return nil
@@ -63,7 +72,7 @@ func run() error {
 	dev := flag.Bool("dev", false, "single-user development mode on loopback only")
 	flag.Parse()
 	if flag.NArg() != 0 {
-		return errors.New("usage: shoowcase [-dev] | version | keygen")
+		return errors.New("usage: shoowcase [-dev] | version | keygen | connect <client> --url URL --setup-code CODE")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

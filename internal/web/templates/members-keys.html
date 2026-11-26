@@ -12,7 +12,7 @@
 {{end}}
 
 {{define "keys"}}
-<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Agent keys</h1><p>Give an agent access to your sites. Use a separate key for each connection.</p></header>
+<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Agent keys</h1><p>Give an agent access to your sites. Use a separate key for each connection.</p><p><a href="/quickstart">Set up an agent with Quickstart →</a></p></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 <section class="panel stack" aria-labelledby="new-key"><h2 id="new-key">Create a key</h2>
 <form method="post" action="/keys" class="stack"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="create"><input type="hidden" name="creation_token" value="{{.Creation}}">

@@ -24,15 +24,15 @@ Shoowcase is a **self-hosted website platform** for onboarding guides, project u
 ### My team already runs Shoowcase
 
 1. Open your team’s Shoowcase address and sign in through your organization. If your administrator gave you a local username and password, enter those instead. When prompted, choose a display name. Your work identity determines which workspace you join. If you see **Workspace access required**, give your workspace administrator the sign-in ID shown there, then reload after they add you.
-2. Open **Agent keys → Create a key**. Choose **Editor** for creating and updating drafts, or **Publisher** if the agent should also publish releases. A new key defaults to read-only access and expires after the period you choose.
-3. In your agent’s settings, add the **Streamable HTTP** MCP server URL shown on the receipt. Store the key as a bearer token in the client’s credential settings. Copy it before leaving the page; never paste it into your chat or site. If your client uses your organization’s configured OAuth sign-in, you can connect without a personal key.
-4. Ask your agent to list your sites. It can discover the publishing tools from the server. The optional [publishing skill](skills/shoowcase-publish/SKILL.md) teaches it when to use each one.
+2. Open **Quickstart**, select **GitHub Copilot CLI**, **Cursor**, **Codex** or **Claude Code**, and choose what the agent can do. Choose **Create, edit and publish** for an agent that should publish releases. Only access levels available to your account are offered.
+3. Select **Create key and get command**. Run the command in your terminal or Windows PowerShell on the machine where your agent is installed. The installer verifies the Shoowcase download, connects your agent and saves the key for your user. The command contains a private setup code usable once within ten minutes. Keep it out of chats and tickets.
+4. Start a new agent session, enable the Shoowcase connection if asked and try the suggested prompt. Manage the connection under **Agent keys**, where you can revoke it. For another MCP client, create a key there and use the **Streamable HTTP** endpoint with bearer authentication. The optional [publishing skill](skills/shoowcase-publish/SKILL.md) explains the publishing workflow.
 
 Try: **“Create a site called Team Fieldnotes. Make a welcome page and a checklist, publish them for my workspace, and give me the URL.”** To try it with ready-made files, use the [onboarding example](examples/onboarding/).
 
 ### I want to try it on my computer
 
-[Download an archive](https://github.com/openhoo/shoowcase/releases) for macOS (Apple silicon), Linux (amd64/arm64) or Windows (amd64), [verify it](deploy/README.md), extract it, and run `./shoowcase -dev` (Windows PowerShell: `.\shoowcase.exe -dev`). Or build from source with Git, Make and Go 1.26 or later:
+[Download an archive](https://github.com/openhoo/shoowcase/releases) for macOS, Linux or Windows (each available for Intel/AMD 64-bit and ARM64), [verify it](deploy/README.md), extract it, and run `./shoowcase -dev` (Windows PowerShell: `.\shoowcase.exe -dev`). Or build from source with Git, Make and Go 1.26 or later:
 
 ```sh
 git clone https://github.com/openhoo/shoowcase.git

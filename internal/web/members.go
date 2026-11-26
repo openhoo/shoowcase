@@ -150,6 +150,8 @@ func (a *App) membersConsole(w http.ResponseWriter, r *http.Request, c consoleCo
 	}
 	p := memberPage{LocalAdmin: a.auth.LocalWorkspace() != "" && a.auth.LocalWorkspace() == c.Identity.Workspace, LocalUser: c.Identity.LocalGeneration > 0, CSRF: c.Identity.CSRF, Workspace: c.WorkspaceLabel, Subject: c.Actor.Subject, Name: c.Name, Role: c.Actor.Role, Enrolled: c.Enrolled, Endpoint: a.config.ControlURL + "/mcp"}
 	switch r.URL.Path {
+	case "/quickstart":
+		a.quickStart(w, r, c, p)
 	case "/account":
 		a.memberAccount(w, r, c, p)
 	case "/keys":
@@ -188,6 +190,9 @@ func validMemberLabel(s string, max int) bool {
 }
 
 func (a *App) memberAccount(w http.ResponseWriter, r *http.Request, c consoleContext, p memberPage) {
+	if r.URL.Query().Get("next") == "quickstart" || r.PostForm.Get("next") == "quickstart" {
+		p.Next = "quickstart"
+	}
 	status := 200
 	if r.Method == http.MethodPost {
 		if r.PostForm.Get("action") == "change-password" {
@@ -239,7 +244,11 @@ func (a *App) memberAccount(w http.ResponseWriter, r *http.Request, c consoleCon
 			memberError(w, c, err)
 			return
 		} else {
-			http.Redirect(w, r, "/sites", http.StatusSeeOther)
+			dest := "/sites"
+			if p.Next == "quickstart" {
+				dest = "/quickstart"
+			}
+			http.Redirect(w, r, dest, http.StatusSeeOther)
 			return
 		}
 	}
