@@ -23,7 +23,7 @@ mkdir "$out"
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || echo 0)}"
 export SOURCE_DATE_EPOCH
 go mod verify
-cp LICENSE NOTICE "$out/"
+cp LICENSE NOTICE runtime/THIRD-PARTY-LICENSES.txt "$out/"
 # The skills are text and small enough to store uncompressed. Fixed metadata and
 # an explicit inventory make this ZIP independent of platform and file mtimes.
 python3 - "$out/shoowcase-${version}-skills.zip" <<'PY'
@@ -78,15 +78,15 @@ if binary.suffix == ".exe":
     entry.external_attr = (0o100755 << 16); entry.create_system = 3; entry.compress_type = zipfile.ZIP_DEFLATED
     with zipfile.ZipFile(str(target) + ".zip", "w") as out:
         out.writestr(entry, payload)
-        for name in ("LICENSE", "NOTICE"):
-            note = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0)); note.external_attr = (0o100644 << 16); note.create_system = 3
+        for name in ("LICENSE", "NOTICE", "runtime/THIRD-PARTY-LICENSES.txt"):
+            note = zipfile.ZipInfo(pathlib.Path(name).name, (1980, 1, 1, 0, 0, 0)); note.external_attr = (0o100644 << 16); note.create_system = 3
             out.writestr(note, pathlib.Path(name).read_bytes())
 else:
     with open(str(target) + ".tar.gz", "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=9, mtime=0) as gz, tarfile.open(mode="w", fileobj=gz, format=tarfile.USTAR_FORMAT) as tar:
         entry = tarfile.TarInfo(binary.name); entry.mode = 0o755; entry.size = len(payload); entry.mtime = 0
         tar.addfile(entry, io.BytesIO(payload))
-        for name in ("LICENSE", "NOTICE"):
-            note = pathlib.Path(name).read_bytes(); entry = tarfile.TarInfo(name); entry.mode = 0o644; entry.size = len(note); entry.mtime = 0
+        for name in ("LICENSE", "NOTICE", "runtime/THIRD-PARTY-LICENSES.txt"):
+            note = pathlib.Path(name).read_bytes(); entry = tarfile.TarInfo(pathlib.Path(name).name); entry.mode = 0o644; entry.size = len(note); entry.mtime = 0
             tar.addfile(entry, io.BytesIO(note))
 # Take the linked dependency list from the actual binary. Release builds may
 # only reference versioned modules verified by this checkout's go.sum.
@@ -121,6 +121,17 @@ for mod in info.get("Deps", []):
     p = mod["Path"]; v = mod["Version"]
     purl = "pkg:golang/" + urllib.parse.quote(p, safe="/") + "@" + urllib.parse.quote(v, safe="")
     components.append({"type":"library","name":p,"version":v,"purl":purl,"bom-ref":purl})
+# These are shipped in the worker, not loaded by the deployment at runtime.
+# build.mjs checks the actual bundler metafile against its runtime inventory.
+locked=json.loads(pathlib.Path("runtime/package-lock.json").read_text())["packages"]
+inventory=json.loads(pathlib.Path("runtime/components.json").read_text())
+for name in inventory["npm"]:
+    libversion=locked["node_modules/"+name]["version"]
+    purl="pkg:npm/"+urllib.parse.quote(name,safe="/")+"@"+libversion
+    components.append({"type":"library","name":name,"version":libversion,"purl":purl,"bom-ref":purl})
+engine=inventory["quickjsCommit"]
+components.append({"type":"library","name":"Bellard QuickJS","version":engine,"bom-ref":"quickjs-"+engine,
+                   "externalReferences":[{"type":"vcs","url":"https://github.com/bellard/quickjs/commit/"+engine}]})
 components.append({"type":"framework","name":"Go standard library","version":info["GoVersion"],"bom-ref":"go-stdlib"})
 root = {"type":"application","name":"shoowcase","version":version,"bom-ref":"shoowcase-"+digest,"hashes":[{"alg":"SHA-256","content":digest}]}
 bom = {"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"metadata":{"component":root},"components":sorted(components, key=lambda c:c["bom-ref"])}

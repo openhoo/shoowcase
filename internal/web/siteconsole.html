@@ -1,0 +1,105 @@
+{{define "token"}}<input type="hidden" name="csrf" value="{{.C.Identity.CSRF}}">{{end}}
+{{define "write"}}{{template "token" .}}<input type="hidden" name="request_id" value="{{.Request}}"><input type="hidden" name="revision" value="{{.Rev}}">{{end}}
+{{define "error"}}{{if .Error}}<div class="notice error" role="alert"><strong>Changes not saved.</strong> {{.Error}}</div>{{end}}{{end}}
+{{define "back"}}<p><a href="{{.Base}}">← Back to site</a></p>{{end}}
+
+{{define "plus-icon"}}<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>{{end}}
+{{define "search-icon"}}<svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.6"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>{{end}}
+{{define "file-icon"}}<svg width="15" height="15" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 2.5h5l3.5 3.7v9.3H5zM10 3v4h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>{{end}}
+
+{{define "list"}}
+<header class="desk-head">
+  <div><p class="eyebrow">Publishing desk <span aria-hidden="true">/</span> {{.C.Actor.Workspace}}</p><h1>Sites</h1></div>
+  {{if .CanEdit}}<a class="button new-site-action" href="/sites/new">{{template "plus-icon"}} New site</a>{{end}}
+</header>
+<div class="desk-stats" aria-label="Workspace totals">
+  <div><span>All sites</span><strong>{{.Directory.Total}}</strong></div>
+  <div><span><i class="dot published" aria-hidden="true"></i>Live sites</span><strong>{{.Directory.Published}}</strong></div>
+  <div><span><i class="dot draft" aria-hidden="true"></i>Draft only</span><strong>{{.Directory.Drafts}}</strong></div>
+  <div><span><i class="dot changes" aria-hidden="true"></i>Unpublished changes</span><strong>{{.Directory.Changes}}</strong></div>
+</div>
+<section class="directory" aria-labelledby="directory-title">
+  <div class="directory-title"><h2 id="directory-title">Site directory</h2><span class="directory-count">{{.Directory.MatchCount}} {{if eq .Directory.MatchCount 1}}site{{else}}sites{{end}}{{if .Directory.Filtered}} of {{.Directory.Total}}{{end}}</span><button type="button" class="filter-toggle secondary" id="directory-toggle" aria-controls="directory-options" aria-expanded="true" hidden>Filter and sort</button></div>
+  <form method="get" action="/sites" class="directory-filters" role="search" aria-label="Filter the site directory">
+    <div class="field search-field"><label for="site-search">Search sites</label><div class="search-box">{{template "search-icon"}}<input type="search" name="q" id="site-search" value="{{.Directory.Query}}" maxlength="100" placeholder="Name or address"></div></div>
+    <div class="directory-options" id="directory-options"><div class="field"><label for="filter-state">Status</label><select id="filter-state" name="state">
+      <option value="">All statuses</option><option value="draft" {{if eq .Directory.State "draft"}}selected{{end}}>Draft only</option><option value="changes" {{if eq .Directory.State "changes"}}selected{{end}}>Unpublished changes</option><option value="published" {{if eq .Directory.State "published"}}selected{{end}}>Published</option><option value="offline" {{if eq .Directory.State "offline"}}selected{{end}}>Offline</option></select></div>
+    <div class="field"><label for="filter-audience">Audience</label><select id="filter-audience" name="audience">
+      <option value="">All audiences</option><option value="workspace" {{if eq .Directory.Audience "workspace"}}selected{{end}}>Workspace</option><option value="public" {{if eq .Directory.Audience "public"}}selected{{end}}>Public</option></select></div>
+    <div class="field"><label for="sort-sites">Sort by</label><select id="sort-sites" name="sort"><option value="updated" {{if eq .Directory.Sort "updated"}}selected{{end}}>Last updated</option><option value="name" {{if eq .Directory.Sort "name"}}selected{{end}}>Name A–Z</option><option value="oldest" {{if eq .Directory.Sort "oldest"}}selected{{end}}>Oldest first</option></select></div></div>
+    <button type="submit" class="secondary filter-action">Apply filters</button>
+  </form>
+  {{if .Directory.Filtered}}<p class="filter-reset"><a href="/sites">Reset filters</a></p>{{end}}
+  {{if .Directory.Sites}}
+  <table class="site-table" role="table" aria-labelledby="directory-title"><thead><tr><th scope="col">Site</th><th scope="col">Status</th><th scope="col">Audience</th><th scope="col">Files</th><th scope="col">Last updated <span class="utc">UTC</span></th></tr></thead>
+  <tbody>{{range .Directory.Sites}}<tr>
+    <th scope="row" class="site-name-cell"><div class="site-name-wrap"><span class="folio-mark state-{{.State}}" aria-hidden="true"><i></i></span><div><a href="{{.Href}}" class="site-name">{{.Name}}</a><span class="site-address">{{.Address}}</span></div></div></th>
+    <td class="state-cell"><span class="status-chip state-{{.State}}"><i class="dot {{.State}}" aria-hidden="true"></i>{{.StateLabel}}</span></td>
+    <td class="audience-cell"><span class="mobile-label" aria-hidden="true">Audience</span>{{.AudienceLabel}}</td>
+    <td class="files-cell"><span class="mobile-label" aria-hidden="true">Files</span><span class="file-count">{{template "file-icon"}}{{.FileCount}}</span></td>
+    <td class="updated-cell"><span class="mobile-label" aria-hidden="true">Updated (UTC)</span><time datetime="{{.Updated.UTC.Format "2006-01-02T15:04:05Z"}}">{{.UpdatedLabel}}</time></td>
+  </tr>{{end}}</tbody></table>
+  {{else}}<div class="directory-empty"><span class="folio-mark" aria-hidden="true"><i></i></span>
+    {{if .Directory.Total}}<h3>No matching sites</h3><p>Try another name or remove a filter.</p>
+    {{else}}<h3>No sites yet</h3><p>{{if .CanEdit}}Create your first site to add files and preview a draft.{{else}}Sites created by your team will appear here.{{end}}</p>{{end}}
+  </div>{{end}}
+</section>
+{{end}}
+
+{{define "new-site"}}<p><a href="/sites">← All sites</a></p><header class="hero"><p class="eyebrow">Publishing desk</p><h1>New site</h1><p>Start with a name. You can add a ZIP, upload files or write your first page next.</p></header>{{template "error" .}}
+<section class="panel stack creation-panel" aria-label="New site details">
+<form class="stack" method="post" action="/sites">{{template "write" .}}
+<div class="field"><label for="site-name">Site name</label><input id="site-name" name="name" value="{{.Name}}" required maxlength="100" placeholder="Team handbook"></div>
+<div class="field"><label for="site-slug">Site address <span class="muted">(optional)</span></label><input id="site-slug" name="slug" value="{{.Slug}}" maxlength="48" autocapitalize="none" spellcheck="false" aria-describedby="address-tip" placeholder="team-handbook"><small id="address-tip">Use lowercase letters, numbers and hyphens, or leave blank for an automatic address.</small></div><div class="toolbar"><button type="submit">Create site</button><a href="/sites">Cancel</a></div></form></section>{{end}}
+
+{{define "detail"}}
+<p><a href="/sites">← All sites</a></p>
+<header class="hero"><p class="eyebrow">Site</p><h1>{{.S.name}}</h1>
+<p>{{if not .S.release_id}}Unpublished{{else if eq .S.visibility "offline"}}Offline{{else if eq .S.live_revision .S.revision}}Published{{else}}Unpublished changes{{end}} <span aria-hidden="true">·</span> {{audience .S.visibility}}</p>
+<div class="toolbar">{{if .HasIndex}}<a class="button secondary" href="{{.S.preview_url}}">Preview draft</a>{{end}}{{if and .S.release_id (ne .S.visibility "offline")}}<a class="button secondary" href="{{.S.site_url}}">Open live site</a>{{end}}{{if and .CanPublish .HasIndex (ne .S.live_revision .S.revision)}}<form method="post" action="{{.Base}}/publish">{{template "write" .}}<button type="submit">Publish draft</button></form>{{end}}</div></header>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+<section class="panel stack" aria-labelledby="draft-title"><h2 id="draft-title">Draft files</h2>
+{{if .CanEdit}}<div class="toolbar"><a class="button" href="{{.Base}}/edit">New file</a><a class="button secondary" href="{{.Base}}/upload">Upload file</a><a class="button secondary" href="{{.Base}}/import">Import ZIP</a></div>{{end}}
+{{if .S.files}}<ul class="list">{{range .S.files}}<li class="row"><div>{{if and $.CanEdit (editable .Path)}}<a href="{{$.Base}}/edit?path={{.Path}}"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{humanBytes .Size}}</small></div>{{if $.CanEdit}}<a href="{{$.Base}}/delete?path={{.Path}}" aria-label="Remove {{.Path}}">Remove</a>{{end}}</li>{{end}}</ul>
+{{else}}<p>No files yet. {{if .CanEdit}}Create <code>index.html</code> in the editor or import a ZIP with your site files.{{end}}</p>{{end}}
+{{if and .S.files (not .HasIndex)}}<p class="notice">Add a file named <code>index.html</code> before publishing. It is the page visitors open first.</p>{{end}}
+</section>
+<section class="panel stack" aria-labelledby="audience-title"><h2 id="audience-title">Access</h2>
+{{if eq .S.visibility "public"}}<p>Anyone with the address can open this site.</p>{{else if eq .S.visibility "offline"}}<p>The live address is offline. Workspace members can still open draft previews.</p>{{else}}<p>Only signed-in workspace members can open this site.</p>{{end}}
+{{if and (eq .S.configured_visibility "public") (not .AllowPublic)}}<p class="notice">Public sharing is disabled on this server. Set this site to Workspace to keep it private if public sharing is enabled later.</p>{{end}}
+{{if .CanPublish}}<form class="stack" method="post" action="{{.Base}}/access">{{template "token" .}}<input type="hidden" name="request_id" value="{{.Request}}-access"><input type="hidden" name="revision" value="{{if .S.live_revision}}{{.S.live_revision}}{{else}}{{.Rev}}{{end}}">
+<div class="field"><label for="visibility">Site audience</label><select id="visibility" name="visibility"><option value="workspace" {{if eq .S.visibility "workspace"}}selected{{end}}>Workspace</option>{{if and .AllowPublic .S.release_id}}<option value="public" {{if eq .S.visibility "public"}}selected{{end}}>Public</option>{{end}}<option value="offline" {{if eq .S.visibility "offline"}}selected{{end}}>Offline</option></select></div><button class="secondary" type="submit">Update access</button></form>{{end}}
+</section>
+<section class="panel stack" id="releases" aria-labelledby="releases-title"><h2 id="releases-title">Releases</h2>
+{{if .History.releases}}<ul class="list">{{range .History.releases}}<li class="row"><div><strong><time datetime="{{.created_at}}">{{utcTime .created_at}}</time></strong><p class="muted">Revision <code>{{shortID .revision}}</code>{{if eq .release_id $.S.release_id}} <span class="badge">Current</span>{{end}}</p></div>
+{{if and $.CanPublish (ne .release_id $.S.release_id)}}<a href="{{$.Base}}/rollback?release={{.release_id}}" aria-label="Review restore of revision {{shortID .revision}}">Restore…</a>{{end}}</li>{{end}}</ul>
+{{if .History.next_cursor}}<a href="{{.Base}}?releases={{.History.next_cursor}}#releases">Older releases</a>{{end}}{{else}}<p>No releases yet.</p>{{end}}
+</section>
+{{end}}
+
+{{define "edit"}}{{template "back" .}}
+<header><p class="eyebrow">{{.S.name}} / Draft</p><h1>{{if .Existing}}Edit file{{else}}New file{{end}}</h1></header>
+<section class="panel stack">{{template "error" .}}
+{{if .Error}}<p>Copy any changes you want to keep before <a href="{{.Base}}">opening the current draft</a>.</p>{{end}}
+<form class="stack" method="post" action="{{.Base}}/edit">{{template "write" .}}
+<div class="field"><label for="file-path">File path</label><input id="file-path" name="path" required maxlength="200" spellcheck="false" autocapitalize="none" value="{{.Path}}" {{if .Existing}}readonly{{end}} aria-describedby="path-tip"><small id="path-tip">For example, <code>index.html</code> or <code>styles/main.css</code>.</small></div>
+{{if .Existing}}<input type="hidden" name="existing" value="yes">{{end}}
+<div class="field"><label for="source">File contents</label><textarea class="editor" id="source" name="source" rows="20" spellcheck="false" autocapitalize="none" aria-describedby="source-tip">{{.Source}}</textarea><small id="source-tip">HTML, CSS or JavaScript, up to 256 KiB. Saving changes the draft only.</small></div>
+<div class="toolbar"><button type="submit">Save file</button><a href="{{.Base}}">Cancel</a></div></form></section>{{end}}
+
+{{define "upload"}}{{template "back" .}}
+<header><p class="eyebrow">{{.S.name}} / Draft</p><h1>{{if eq .Action "import"}}Import ZIP{{else}}Upload file{{end}}</h1></header>
+<section class="panel stack">{{template "error" .}}
+<form class="stack" method="post" enctype="multipart/form-data" action="{{.Base}}/{{.Action}}">{{template "write" .}}
+{{if eq .Action "import"}}
+<div class="field"><label for="asset">ZIP archive</label><input id="asset" type="file" name="file" accept=".zip,application/zip" required aria-describedby="zip-hint"><small id="zip-hint">Up to 100 site files and 8 MiB unpacked. Include HTML, CSS, JavaScript, PNG, JPEG or GIF files. A single enclosing folder with an index.html is opened automatically.</small></div>
+<p>Files with the same paths will be replaced in the draft. Other files and the live site stay unchanged.</p>
+{{else}}
+<div class="field"><label for="asset">Choose a file</label><input id="asset" type="file" name="file" accept=".html,.css,.js,.png,.jpg,.jpeg,.gif" required aria-describedby="asset-tip"><small id="asset-tip">HTML, CSS and JavaScript: up to 256 KiB. PNG, JPEG and GIF: up to 2 MiB.</small></div>
+<div class="field"><label for="upload-path">Destination path <span class="muted">(optional)</span></label><input id="upload-path" name="path" maxlength="200" spellcheck="false" autocapitalize="none" value="{{.Path}}" aria-describedby="dest-tip" placeholder="images/team.png"><small id="dest-tip">Leave blank to use the filename. Uploading replaces any draft file at that path.</small></div>
+{{end}}<div class="toolbar"><button type="submit">{{if eq .Action "import"}}Import files{{else}}Upload to draft{{end}}</button><a href="{{.Base}}">Cancel</a></div></form></section>{{end}}
+
+{{define "delete"}}{{template "back" .}}<h1>Remove file</h1><section class="panel stack">{{template "error" .}}<p>Remove <strong><code>{{.Path}}</code></strong> from the draft? Published releases will keep their copy.</p>
+<form method="post" action="{{.Base}}/delete">{{template "write" .}}<input type="hidden" name="path" value="{{.Path}}"><div class="toolbar"><button class="danger" name="confirm" value="remove" type="submit">Remove file</button><a href="{{.Base}}">Keep file</a></div></form></section>{{end}}
+
+{{define "restore"}}{{template "back" .}}<h1>Restore release</h1><section class="panel stack"><p>The live address will show revision <code>{{.Rev}}</code>. Your current draft and audience stay unchanged.</p><p><a href="{{.S.restore_preview}}">Preview this revision</a></p><form method="post" action="{{.Base}}/rollback">{{template "token" .}}<input type="hidden" name="request_id" value="{{.Request}}"><input type="hidden" name="release" value="{{.S.restore_id}}"><input type="hidden" name="current" value="{{.S.release_id}}"><div class="toolbar"><button type="submit">Restore release</button><a href="{{.Base}}">Cancel</a></div></form></section>{{end}}

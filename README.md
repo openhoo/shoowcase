@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/openhoo/shoowcase/actions/workflows/ci.yml/badge.svg)](https://github.com/openhoo/shoowcase/actions/workflows/ci.yml) · [Download a release](https://github.com/openhoo/shoowcase/releases) · [Run it for your team](docs/operations.md) · [Apache-2.0](LICENSE)
 
-Shoowcase is a **self-hosted static website platform** for onboarding guides, project updates, handbooks and other small team sites. Your existing agent writes the pages. One Go service hosts them all, with no model call, build job or separate process per site. The software is public; the sites you create start private to your workspace.
+Shoowcase is a **self-hosted website platform** for onboarding guides, project updates, handbooks and other small team sites. Write pages with your existing agent, or create them yourself in the browser. One Go service hosts them all, with no model call, build job or separate process per site. The software is public; the sites you create start private to your workspace.
 
 ## From chat to a website
 
@@ -23,7 +23,10 @@ Shoowcase is a **self-hosted static website platform** for onboarding guides, pr
 
 ### My team already runs Shoowcase
 
-Add the **control URL ending in `/mcp`** to your agent as a remote **Streamable HTTP** MCP server. For example: `https://publish.example.com/mcp`. Use the URL your administrator gives you and sign in with your work account. The client must be registered or otherwise supported by your identity provider. The eight publishing tools are discoverable; installing a skill is optional.
+1. Open your team’s Shoowcase address and choose **Create an account**. Sign in through your organization and choose a display name. Your work identity determines which workspace you join.
+2. Open **Agent keys → Create a key**. Choose **Editor** for creating and updating drafts, or **Publisher** if the agent should also publish releases. A new key defaults to read-only access and expires after the period you choose.
+3. In your agent’s settings, add the **Streamable HTTP** MCP server URL shown on the receipt. Store the key as a bearer token in the client’s credential settings. Copy it before leaving the page; never paste it into your chat or site. If your client uses your organization’s configured OAuth sign-in, you can connect without a personal key.
+4. Ask your agent to list your sites. It can discover all eight tools from the server. The optional [publishing skill](skills/shoowcase-publish/SKILL.md) teaches it when to use each one.
 
 Try: **“Create a site called Team Fieldnotes. Make a welcome page and a checklist, publish them for my workspace, and give me the URL.”** To try it with ready-made files, use the [onboarding example](examples/onboarding/).
 
@@ -38,7 +41,7 @@ make build
 ./bin/shoowcase -dev
 ```
 
-Leave the server running. In a second terminal, `curl -fsS http://localhost:7878/readyz` should print `ready`.
+Open **http://localhost:7878** and choose **Create an account** to enter the local workspace. Leave the server running. In a second terminal, `curl -fsS http://localhost:7878/readyz` should print `ready`.
 
 | Local client setting | Value |
 | --- | --- |
@@ -47,6 +50,29 @@ Leave the server running. In a second terminal, `curl -fsS http://localhost:7878
 | Authentication | Bearer token. Load the value from `.shoowcase/agent-token` into your client's secret store. Keep it out of chat and source control. |
 
 Development mode uses SQLite in `.shoowcase/`, signs local browsers in as one test user, and serves sites under `*.localhost:7878`. The agent’s MCP client must run on the same computer. A cloud agent needs a reachable [production HTTPS deployment](docs/operations.md); keep the development server on loopback.
+
+## Publish from your browser
+
+Open **Sites** to see your workspace’s publishing desk. Search by site name or address, filter by status and audience, and sort by last update or name. Each row shows the file count, when the site changed, and whether the draft differs from the published release.
+
+Choose **New site**, give it a name, and select **Create site**. Then choose how to add your first draft:
+
+| In the workspace | What it does |
+| --- | --- |
+| **New file** | Write `index.html`, local CSS or JavaScript in the editor. Select an existing text file to edit it. |
+| **Upload file** | Add one file or replace a path in the draft, including a raster image. |
+| **Import ZIP** | Import a folder of site files as one revision. Include `index.html` at the root or in a single enclosing folder. A rejected file leaves the whole draft unchanged. Unmentioned files stay in place. |
+
+Choose **Preview draft**. When you’re ready, choose **Publish draft**. Use **Access** to manage who can open the live link and **Releases** to restore a previous version. The browser and the agent share the same draft, revision history and permissions.
+
+<picture>
+  <source media="(max-width: 520px)" srcset="docs/media/workspace-mobile.png">
+  <img src="docs/media/workspace.png" alt="Shoowcase publishing desk with search and filters, showing site names, release status, audience, file counts and recent changes." width="1120">
+</picture>
+
+### A small interactive app
+
+Try the [workshop tally](examples/counter/): import the three files and click **Add one** in the preview. A local `app.js` can respond to clicks and input, read a field and update text. It runs inside a browser worker with a separate JavaScript interpreter. It has no access to the network, cookies, browser storage, page navigation or the management console. Plain sites load no JavaScript runtime. [Supported DOM methods and limits →](runtime/README.md)
 
 ## Draft, release and audience
 
@@ -73,7 +99,7 @@ Public sharing is disabled by default. If an operator enables it, making a site 
 
 Agents reuse the same request ID and arguments when retrying a mutation. A stale revision returns a conflict so an agent can read the current draft before changing anyone else’s work. A completed mutation returns its original receipt; `get_site` reports current state.
 
-**Content:** HTML, CSS, PNG, JPEG and GIF. A revision holds up to **100 files / 8 MiB**; each file is at most **2 MiB** and HTML/CSS files are limited to **256 KiB**. The host accepts passive content: no uploaded scripts, forms, external embeds or server code. For a site that needs those features, this release is not a fit.
+**Content:** HTML, CSS, local JavaScript, PNG, JPEG and GIF. A revision holds up to **100 files / 8 MiB**; each text file is limited to **256 KiB**, each image to **2 MiB**. You can host an interactive checklist or calculator. Apps that need a backend, arbitrary browser APIs, external packages at runtime or a full browser DOM require a different host.
 
 ## Run it for an organization
 
@@ -84,7 +110,9 @@ The **control host** handles MCP, sign-in, uploads and human approvals. **Site a
 | Viewer | Read workspace sites and private previews. |
 | Editor | Also create sites and edit drafts. |
 | Publisher | Also publish, roll back, change the audience and approve public releases. |
-| Admin | Also read instance metrics. |
+| Admin | Also manage enrolled workspace members and their agent keys, review account activity and read instance metrics with an admin OAuth token. |
+
+In **Admin**, a workspace admin can lower a member’s role limit, suspend access, restore membership, or revoke a key. Suspension revokes the member’s keys; restoring the member does not reactivate them. Administrators are assigned through the identity provider.
 
 Start with [deployment and identity setup](docs/operations.md) and the [container configuration](deploy/compose.yaml). Before accepting company traffic, test your real identity provider and agent client, cross-workspace access, withdrawal and a [restore into a separate database](docs/restore-drill.md). The [verification report](docs/verification.md) and [HTTP measurements](docs/http-benchmark.md) show what was tested and under what conditions.
 
@@ -96,4 +124,4 @@ Start with [deployment and identity setup](docs/operations.md) and the [containe
 | An agent changing or operating Shoowcase | [Engineering and operations skill](skills/shoowcase-operate/SKILL.md) — code ownership, isolation checks, storage changes and release evidence. |
 | A maintainer or evaluator | [Product scope and roadmap](docs/design.md) · [Security model and reporting](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Repository instructions](AGENTS.md) |
 
-To install a skill, download the **skills ZIP** from [Releases](https://github.com/openhoo/shoowcase/releases), [verify the archive](deploy/README.md), then copy the desired skill directory into your agent’s skills directory. Both skills are also in the tagged source tree. The server enforces permissions whether or not a skill is installed. The code, artwork and both skills are licensed under [Apache-2.0](LICENSE).
+To install a skill, download the **skills ZIP** from [Releases](https://github.com/openhoo/shoowcase/releases), [verify the archive](deploy/README.md), then copy the desired skill directory into your agent’s skills directory. Both skills are also in the tagged source tree. The server enforces permissions whether or not a skill is installed. Shoowcase’s code, artwork and both skills are licensed under [Apache-2.0](LICENSE). The bundled interpreter includes [third-party MIT-licensed code](runtime/THIRD-PARTY-LICENSES.txt).

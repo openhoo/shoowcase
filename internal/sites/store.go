@@ -67,6 +67,18 @@ type Store struct {
 
 func (s *Store) Close() error                   { return s.db.Close() }
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
+// Use one snapshot for authorization and subsequent result queries: a reader
+// whose access changes during a lookup cannot observe content created after
+// that change. SQLite already pins the snapshot on its first read.
+func (s *Store) readSnapshot(ctx context.Context) (*sql.Tx, error) {
+	opts := &sql.TxOptions{ReadOnly: true}
+	if s.driver == "pgx" {
+		opts.Isolation = sql.LevelRepeatableRead
+	}
+	return s.db.BeginTx(ctx, opts)
+}
+
 func Open(ctx context.Context, driver, dsn string) (*Store, error) {
 	switch driver {
 	case "postgres", "postgresql", "pgx":
@@ -143,6 +155,7 @@ var schema = []string{
 	"CREATE TABLE IF NOT EXISTS sc_requests (workspace TEXT NOT NULL, subject TEXT NOT NULL, request_id TEXT NOT NULL, hash TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(workspace,subject,request_id))",
 	"CREATE TABLE IF NOT EXISTS sc_audit (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, site TEXT NOT NULL, subject TEXT NOT NULL, action TEXT NOT NULL, revision TEXT NOT NULL, release_id TEXT NOT NULL, live_revision TEXT NOT NULL, visibility TEXT NOT NULL, request_id TEXT NOT NULL, created_at BIGINT NOT NULL)",
 	"CREATE INDEX IF NOT EXISTS sc_audit_workspace ON sc_audit(workspace,created_at)",
+	"CREATE INDEX IF NOT EXISTS sc_audit_site_activity ON sc_audit(workspace,site,created_at)",
 	"CREATE TABLE IF NOT EXISTS sc_replay (key TEXT PRIMARY KEY, expires_at BIGINT NOT NULL)",
 	"CREATE INDEX IF NOT EXISTS sc_replay_expiry ON sc_replay(expires_at)",
 }
@@ -158,7 +171,7 @@ func migrate(ctx context.Context, tx *sql.Tx) error {
 	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version),0) FROM sc_schema_migrations").Scan(&version); err != nil {
 		return err
 	}
-	if version > 1 {
+	if version > 2 {
 		return errors.New("unsupported newer schema version")
 	}
 	if version < 1 {
@@ -166,6 +179,16 @@ func migrate(ctx context.Context, tx *sql.Tx) error {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(1)"); err != nil {
+			return err
+		}
+	}
+	if version < 2 {
+		for _, stmt := range accountSchema {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(2)"); err != nil {
 			return err
 		}
 	}
@@ -232,12 +255,29 @@ func readSite(ctx context.Context, tx *sql.Tx, a Actor, site string) (record, er
 	}
 	return r, e
 }
+
+// Embed this predicate in the selection of the resource itself. A cached
+// browser identity cannot outlive a member suspension, even on HEAD or 304.
+// Identities verified by the IdP may read without first enrolling locally.
+const memberAudience = `s.workspace=$1 AND NOT EXISTS (
+    SELECT 1 FROM sc_members m WHERE m.workspace=s.workspace AND m.subject=$2 AND m.disabled)
+    AND ($3='' OR EXISTS (SELECT 1 FROM sc_agent_keys k WHERE k.workspace=s.workspace
+      AND k.subject=$2 AND k.id=$3 AND NOT k.revoked AND k.expires_at>$4))`
+
+func deliveryIdentity(ctx context.Context, a Actor) []any {
+	if rank(a) == 0 {
+		a = Actor{}
+	}
+	keyID, _ := ctx.Value(keyCredentialID{}).(string)
+	return []any{a.Workspace, a.Subject, keyID, time.Now().Unix()}
+}
+
 func (s *Store) PreviewSlug(ctx context.Context, revision string, a Actor) (string, error) {
 	if rank(a) == 0 {
 		return "", absent()
 	}
 	var site string
-	e := s.db.QueryRowContext(ctx, "SELECT s.id FROM sc_sites s JOIN sc_revisions r ON r.site=s.id WHERE r.id=$1 AND s.workspace=$2", revision, a.Workspace).Scan(&site)
+	e := s.db.QueryRowContext(ctx, "SELECT s.id FROM sc_sites s JOIN sc_revisions r ON r.site=s.id WHERE r.id=$5 AND "+memberAudience, append(deliveryIdentity(ctx, a), revision)...).Scan(&site)
 	if errors.Is(e, sql.ErrNoRows) {
 		return "", absent()
 	}
@@ -247,15 +287,26 @@ func (s *Store) Fetch(ctx context.Context, slug, revision, path string, a Actor)
 	return s.FetchConditional(ctx, slug, revision, path, a, "")
 }
 func (s *Store) FetchConditional(ctx context.Context, slug, revision, path string, a Actor, ifDigest string) (File, error) {
-	return s.fetch(ctx, slug, revision, path, a, ifDigest, false)
+	return s.fetch(ctx, slug, revision, path, a, ifDigest, false, "")
 }
 
 // FetchMetadata checks the same authorization as GET but does not read blob
 // bytes. Size is the length of the selected file, including on conditional hits.
 func (s *Store) FetchMetadata(ctx context.Context, slug, revision, path string, a Actor, ifDigest string) (File, error) {
-	return s.fetch(ctx, slug, revision, path, a, ifDigest, true)
+	return s.fetch(ctx, slug, revision, path, a, ifDigest, true, "")
 }
-func (s *Store) fetch(ctx context.Context, slug, revision, path string, a Actor, ifDigest string, metadataOnly bool) (File, error) {
+
+// FetchCompanion loads a script using the same audience as its page. The
+// live pointer can change between requests; never follow it to a mismatched
+// revision or allow the supplied ID to turn a live read into a preview.
+func (s *Store) FetchCompanion(ctx context.Context, slug, previewRevision, pageRevision, path string, a Actor) (File, error) {
+	if !idRE.MatchString(pageRevision) || !validPath(path) || !strings.HasSuffix(strings.ToLower(path), ".js") {
+		return File{}, absent()
+	}
+	return s.fetch(ctx, slug, previewRevision, path, a, "", false, pageRevision)
+}
+
+func (s *Store) fetch(ctx context.Context, slug, revision, path string, a Actor, ifDigest string, metadataOnly bool, exactRevision string) (File, error) {
 	var f File
 	if strings.HasPrefix(path, "/") {
 		path = path[1:]
@@ -266,18 +317,20 @@ func (s *Store) fetch(ctx context.Context, slug, revision, path string, a Actor,
 	if !validPath(path) {
 		return f, absent()
 	}
-	ws := ""
-	if rank(a) > 0 {
-		ws = a.Workspace
-	}
-	// Keep authorization and selection in a single snapshot. HEAD never
-	// references the blob table. A conditional GET reads a body only on a miss.
-	const selectFile = ",f.content_type,f.digest,f.size,r.id,s.visibility,(f.digest=$1) FROM sc_sites s JOIN sc_revisions r ON r.site=s.id JOIN sc_files f ON f.revision=r.id WHERE s.id=$2 AND f.path=$3 AND (($4='' AND r.id=s.live AND ((s.visibility='public' AND $6) OR (s.visibility IN ('public','workspace') AND s.workspace=$5))) OR ($4<>'' AND r.id=$4 AND s.workspace=$5))"
-	query := "SELECT CASE WHEN f.digest=$1 THEN NULL ELSE (SELECT body FROM sc_blobs WHERE digest=f.digest) END" + selectFile
+	// HEAD never references the blob table. Conditional GET loads a body only
+	// on a miss, after authorizing the chosen revision in the same snapshot.
+	const selectFile = `,f.content_type,f.digest,f.size,r.id,s.visibility,(f.digest=$5)
+      FROM sc_sites s JOIN sc_revisions r ON r.site=s.id AND r.id=CASE WHEN $8='' THEN s.live ELSE $8 END
+      JOIN sc_files f ON f.revision=r.id
+      WHERE s.id=$6 AND f.path=$7 AND ($10='' OR r.id=$10) AND (
+        ($8='' AND s.visibility='public' AND $9) OR
+        (($8<>'' OR s.visibility IN ('public','workspace')) AND ` + memberAudience + `))`
+	query := "SELECT CASE WHEN f.digest=$5 THEN NULL ELSE (SELECT body FROM sc_blobs WHERE digest=f.digest) END" + selectFile
 	if metadataOnly {
 		query = "SELECT NULL" + selectFile
 	}
-	e := s.db.QueryRowContext(ctx, query, ifDigest, slug, path, revision, ws, !privateOnly(ctx)).Scan(&f.Data, &f.ContentType, &f.Digest, &f.Size, &f.Revision, &f.Visibility, &f.NotModified)
+	params := append(deliveryIdentity(ctx, a), ifDigest, slug, path, revision, !privateOnly(ctx), exactRevision)
+	e := s.db.QueryRowContext(ctx, query, params...).Scan(&f.Data, &f.ContentType, &f.Digest, &f.Size, &f.Revision, &f.Visibility, &f.NotModified)
 	if errors.Is(e, sql.ErrNoRows) {
 		return f, absent()
 	}
@@ -325,7 +378,7 @@ func (s *Store) ReleaseRevision(ctx context.Context, a Actor, site, release stri
 		return "", absent()
 	}
 	var rev string
-	e := s.db.QueryRowContext(ctx, "SELECT r.revision FROM sc_releases r JOIN sc_sites s ON s.id=r.site WHERE r.id=$1 AND s.id=$2 AND s.workspace=$3", release, site, a.Workspace).Scan(&rev)
+	e := s.db.QueryRowContext(ctx, "SELECT r.revision FROM sc_releases r JOIN sc_sites s ON s.id=r.site WHERE r.id=$5 AND s.id=$6 AND "+memberAudience, append(deliveryIdentity(ctx, a), release, site)...).Scan(&rev)
 	if errors.Is(e, sql.ErrNoRows) {
 		return "", absent()
 	}

@@ -1,3 +1,6 @@
 Shoowcase
 Copyright 2026 OpenHoo contributors.
 Licensed under the Apache License, Version 2.0.
+
+The optional interactive runtime bundles QuickJS and quickjs-emscripten.
+See THIRD-PARTY-LICENSES.txt (runtime/ in the source repository).

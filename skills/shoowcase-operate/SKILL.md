@@ -24,3 +24,11 @@ Run the commands below from the Shoowcase repository. For authoring a site on an
 - Run `go mod verify` and `make vet test vuln smoke`. Set `SHOOWCASE_TEST_POSTGRES_DSN` to a **disposable** PostgreSQL database for the race suite; otherwise it skips that backend.
 - With Chrome installed, run `uv run scripts/smoke-browser.py --binary ./bin/shoowcase` after `make smoke`. This separate test uses two Python MCP SDK clients and a real browser to exercise the file picker, preview, public approval and rollback.
 - Record the exact commit, backends, commands and results. Verify the downloaded binary archive's checksum and provenance or the OCI digest and provenance using `deploy/README.md`. Keep local fixture results distinct from deployment evidence: qualify the actual agent, IdP roles, wildcard DNS/TLS, replica failover and restore before declaring that deployment ready.
+
+
+## Browser workspace and runtime
+
+- Test both entry points against the same site. Make an editor change in the browser and check a stale agent write fails without losing the new revision. A failed ZIP import must add zero files. Verify accessible labels, focus, private/public state and a narrow screen in a real browser.
+- Bind every personal key and derived ticket to its workspace, owner and current effective role. Recheck key validity at the mutation boundary. Exercise existing private sessions, upload links and approval links after suspension, revocation or role demotion. Never give a personal key administrative privileges. A restored database can revive old key records; revoke restored keys or reconcile later revocations before opening ingress.
+- Keep uploaded JS as data inside the isolated VM. Native browser code is limited to the trusted bridge and worker. Treat every VM message as untrusted; avoid raw HTML, URLs, arbitrary property paths and host callbacks. Keep build inputs, compiler, upstream VM commit, licenses and distribution inventories pinned. Test a local interaction, CPU limits and absence of outbound requests. Plain content must still render without starting a worker.
+- Run the workspace browser smoke (`uv run scripts/smoke-workspace.py --binary ./bin/shoowcase`) and runtime checks in `runtime/README.md` alongside the existing suite. For schema v2, stop v0.1.x writers before upgrade; restore a pre-upgrade snapshot if rolling back.

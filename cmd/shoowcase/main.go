@@ -128,6 +128,10 @@ func run() error {
 	if public != "true" && public != "false" {
 		return errors.New("SHOOWCASE_PUBLIC must be true or false")
 	}
+	apps := env("INTERACTIVE", "true")
+	if apps != "true" && apps != "false" {
+		return errors.New("SHOOWCASE_INTERACTIVE must be true or false")
+	}
 	ready, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	s, e := sites.Open(ready, driver, dsn)
@@ -144,7 +148,7 @@ func run() error {
 		return errors.New("invalid session key")
 	}
 	signing := sha256.Sum256(append([]byte("shoowcase:ticket-key:v1\x00"), raw...))
-	app, e := web.New(web.Config{Version: version, ControlURL: strings.TrimSuffix(control, "/"), SitesDomain: zone, Key: signing[:], Public: public == "true"}, s, authn)
+	app, e := web.New(web.Config{DisableApps: apps == "false", SignupURL: os.Getenv("SHOOWCASE_SIGNUP_URL"), Version: version, ControlURL: strings.TrimSuffix(control, "/"), SitesDomain: zone, Key: signing[:], Public: public == "true"}, s, authn)
 	if e != nil {
 		return e
 	}

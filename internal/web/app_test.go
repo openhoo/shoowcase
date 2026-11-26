@@ -346,3 +346,39 @@ func TestPreviewDatabaseFailureIsTemporary(t *testing.T) {
 		t.Fatalf("preview storage unavailable: got %d", w.Code)
 	}
 }
+
+func TestDisableInteractiveDelivery(t *testing.T) {
+	app, s := handlerFixture(t, filepath.Join(t.TempDir(), "no-apps.sqlite"), "team-a", false)
+	app.config.DisableApps = true
+	own := sites.Actor{Subject: "tester", Workspace: "team-a", Role: "publisher"}
+	write := func(tool string, args map[string]any) map[string]any {
+		t.Helper()
+		b, err := json.Marshal(args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, err := s.Execute(t.Context(), own, tool, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	v := write("create_site", map[string]any{"name": "Controls", "slug": "field", "request_id": "new"})
+	v = write("upload_files", map[string]any{"site_id": "field", "expected_revision": v["revision"], "request_id": "edit", "files": []map[string]string{{"path": "index.html", "text": "<p>Controls</p><script src='app.js'></script>"}, {"path": "app.js", "text": "const clicks=0;"}}})
+	write("publish_site", map[string]any{"site_id": "field", "revision": v["revision"], "request_id": "release"})
+	_, c := browserSessions(t, app, testSite)
+	for _, path := range []string{"/auth/runtime/bridge.js", "/auth/runtime/worker.js"} {
+		w := hitRoute(t, app, "GET", testSite+path, c, nil)
+		if w.Code != 404 {
+			t.Fatalf("disabled runtime served %s: %d", path, w.Code)
+		}
+	}
+	w := hitRoute(t, app, "GET", testSite+"/", c, nil)
+	if w.Code != 200 || strings.Contains(w.Body.String(), "data-program") || !strings.Contains(w.Body.String(), "Controls") || strings.Contains(w.Header().Get("Content-Security-Policy"), "allow-scripts") {
+		t.Fatal("disabled app should use passive HTML policy")
+	}
+	w = hitRoute(t, app, "GET", testSite+"/app.js", c, nil)
+	if !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
+		t.Fatal("raw program served as executable")
+	}
+}

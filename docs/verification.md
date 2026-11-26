@@ -61,3 +61,18 @@ CI installs the hashed test dependencies separately from the service. The browse
 **Performance sample.** On the local Apple M4 Max, a candidate binary serving an authenticated 32 KiB page from SQLite handled 5,000 GETs at concurrency four with p50 **0.246 ms** and p95 **0.508 ms**. Matching conditional requests returned 304 with p50 **0.206 ms** and p95 **0.357 ms**. This loopback sample excludes ingress, network and production PostgreSQL latency; use the [benchmark script and method](http-benchmark.md) to measure your own deployment.
 
 **Published artifacts.** The [v0.1.1 release](https://github.com/openhoo/shoowcase/releases/tag/v0.1.1) was downloaded anonymously. Its macOS arm64 binary passed both smoke tests, including native Chrome upload and approval. The native archive, skills ZIP, checksum manifest and Linux image index had verified release provenance for commit `d73bd6154537b395d16244fc538d680dc5728ef0`. The public index contained both Linux architectures. A second local build matched the published checksums for all four native archives and both agent skills using the compression setting described in the [release instructions](../deploy/README.md).
+
+
+## v0.2 workspace verification
+
+The release candidate was reviewed in separate passes for identity and storage, browser authoring, and the isolated runtime. Reviewers then checked work outside their original area. The resulting regression cases include duplicate key submissions, access after revocation, simultaneous admin suspensions, stale edits, and a private script requested during a release change.
+
+| Check | Observed result |
+| --- | --- |
+| Browser publishing | A real Chromium session enrolled a user, issued a scoped MCP key, imported a ZIP, uploaded and edited files, published the workshop tally privately and then publicly, and interacted with both versions. Revocation blocked a previously issued exact-byte upload and public approval. |
+| Editorial workspace | Eight synthetic sites exercised searches by name/address, combined status and audience filters, sorting, zero results and reset. Keyboard and automated axe checks passed on the directory at 1440, 390 and 320 CSS pixels. The full workspace smoke also checks key, admin, editor and upload pages. Automated coverage does not establish accessibility conformance. |
+| Runtime | A clean rebuild produced the same embedded bridge and worker. Real Chrome exercised input, keyboard clicks, maximum and empty scripts, unavailable browser globals, aggregate budgets and termination. The networking check observed only the fixture page and the two trusted runtime assets. |
+| Storage and upgrade | The race suite ran on SQLite and PostgreSQL. An actual v0.1.1 binary seeded two releases and five audit events before migration. A separate restore retained private access, source bytes, release history and idempotent replay, and permitted rollback. The old executable rejects schema v2. |
+| Delivery sample | On loopback SQLite, a 32 KiB private page at four concurrent clients returned 1,500 full reads at 0.69 ms p95 and 1,500 conditional responses at 0.57 ms p95. This short local run excludes TLS, ingress, internet and production database latency. |
+
+To repeat the browser and machine checks, see the [operator skill](../skills/shoowcase-operate/SKILL.md), [runtime test commands](../runtime/README.md#rebuild-and-test) and [restore drill](restore-drill.md). To regenerate the README images from synthetic workspace data, run `uv run scripts/capture-workspace.py --binary ./bin/shoowcase --output docs/media` after building the binary and installing the locked runtime test dependencies.

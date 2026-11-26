@@ -38,6 +38,7 @@ const (
 )
 
 type Identity struct {
+	IssuedAt  int64 `json:",omitempty"`
 	Subject   string
 	Workspace string
 	Role      Role
@@ -419,7 +420,7 @@ func (s *Service) identity(t *oidc.IDToken) (Identity, error) {
 	if best == 0 {
 		return Identity{}, errInvalid
 	}
-	return Identity{Subject: t.Subject, Workspace: workspace, Role: role}, nil
+	return Identity{IssuedAt: t.IssuedAt.Unix(), Subject: t.Subject, Workspace: workspace, Role: role}, nil
 }
 func (s *Service) Bearer(r *http.Request) (Identity, error) {
 	if !s.isControl(r.Host) || !s.HostAllowed(r) {
@@ -471,5 +472,5 @@ func (s *Service) Bearer(r *http.Request) (Identity, error) {
 	return s.identity(t)
 }
 func (s *Service) devIdentity() Identity {
-	return Identity{Subject: s.cfg.DevSubject, Workspace: s.cfg.DevWorkspace, Role: Admin}
+	return Identity{IssuedAt: s.now().Unix(), Subject: s.cfg.DevSubject, Workspace: s.cfg.DevWorkspace, Role: Admin}
 }

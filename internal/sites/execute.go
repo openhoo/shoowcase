@@ -175,14 +175,16 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 	defer tx.Rollback()
 	// One lock per workspace serializes slug changes, quotas, optimistic checks and
 	// approvals across PostgreSQL instances. No global lock over unrelated tenants.
-	if _, e = tx.ExecContext(ctx, "INSERT INTO sc_workspace(id) VALUES($1) ON CONFLICT(id) DO NOTHING", a.Workspace); e != nil {
+	if e = lockWorkspace(ctx, tx, s.driver, a.Workspace); e != nil {
 		return nil, e
 	}
-	if s.driver == "pgx" {
-		var lock string
-		if e = tx.QueryRowContext(ctx, "SELECT id FROM sc_workspace WHERE id=$1 FOR UPDATE", a.Workspace).Scan(&lock); e != nil {
-			return nil, e
-		}
+	// Serialize key revocation and account suspension with writes, including
+	// idempotent retries and previously signed upload/approval tickets.
+	if a, e = accountPolicy(ctx, tx, a, false); e != nil {
+		return nil, e
+	}
+	if e = actorErr(a, level); e != nil {
+		return nil, e
 	}
 	var h, saved string
 	e = tx.QueryRowContext(ctx, "SELECT hash,result FROM sc_requests WHERE workspace=$1 AND subject=$2 AND request_id=$3", a.Workspace, a.Subject, p.Request).Scan(&h, &saved)
@@ -444,11 +446,17 @@ func (s *Store) lookup(ctx context.Context, a Actor, tool string, q lookup) (map
 	if limit < 1 || limit > 100 || len(q.Cursor) > 256 {
 		return nil, bad("limit must be 1–100 and cursor cannot exceed 256 characters.")
 	}
-	tx, e := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, e := s.readSnapshot(ctx)
 	if e != nil {
 		return nil, e
 	}
 	defer tx.Rollback()
+	if a, e = accountPolicy(ctx, tx, a, false); e != nil {
+		return nil, e
+	}
+	if e = actorErr(a, 1); e != nil {
+		return nil, e
+	}
 	if tool == "list_sites" {
 		rows, e := tx.QueryContext(ctx, "SELECT id,name,visibility,draft,live,release_id FROM sc_sites WHERE workspace=$1 AND id>$2 ORDER BY id LIMIT $3", a.Workspace, q.Cursor, limit+1)
 		if e != nil {

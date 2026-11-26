@@ -64,6 +64,8 @@ func UploadTarget(p string, size int64) (string, error) {
 		ct = "text/html; charset=utf-8"
 	case ".css":
 		ct = "text/css; charset=utf-8"
+	case ".js":
+		ct = "text/javascript; charset=utf-8"
 	case ".gif":
 		ct = "image/gif"
 	case ".jpg", ".jpeg":
@@ -71,13 +73,13 @@ func UploadTarget(p string, size int64) (string, error) {
 	case ".png":
 		ct = "image/png"
 	default:
-		return "", bad("Supported file types: HTML, CSS, PNG, JPEG, GIF.")
+		return "", bad("Supported file types: HTML, CSS, JavaScript, PNG, JPEG and GIF.")
 	}
 	if size < 0 || size > MaxFileBytes {
 		return "", bad("File exceeds 2 MiB or has an invalid size.")
 	}
 	if strings.HasPrefix(ct, "text/") && size > MaxTextBytes {
-		return "", bad("HTML and CSS must be no larger than 256 KiB.")
+		return "", bad("HTML, CSS and JavaScript must be no larger than 256 KiB.")
 	}
 	return ct, nil
 }
@@ -109,12 +111,12 @@ func prepare(f fileInput) (asset, error) {
 	}
 	if strings.HasPrefix(ct, "text/") {
 		if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
-			return a, bad("HTML and CSS must be UTF-8 text no larger than 256 KiB.")
+			return a, bad("HTML, CSS and JavaScript must be UTF-8 text no larger than 256 KiB.")
 		}
 		var e error
 		if strings.HasPrefix(ct, "text/html") {
-			e = checkHTML(data)
-		} else {
+			e = checkHTML(f.Path, data)
+		} else if strings.HasPrefix(ct, "text/css") {
 			e = checkCSS(string(data))
 		}
 		if e != nil {
@@ -139,7 +141,7 @@ func wordset(s string) map[string]bool {
 	return m
 }
 
-var tags = wordset("html head title meta link style body main nav header footer section article aside div span p h1 h2 h3 h4 h5 h6 ul ol li dl dt dd a img figure figcaption blockquote q hr br strong em b i u s small sub sup mark abbr code pre kbd samp var time address table caption thead tbody tfoot tr th td col colgroup details summary bdi bdo wbr picture")
+var tags = wordset("html head title meta link style body main nav header footer section article aside div span p h1 h2 h3 h4 h5 h6 ul ol li dl dt dd a img figure figcaption blockquote q hr br strong em b i u s small sub sup mark abbr code pre kbd samp var time address table caption thead tbody tfoot tr th td col colgroup details summary bdi bdo wbr picture script input button label output select option textarea fieldset legend")
 var globals = wordset("id class lang dir role title hidden tabindex style")
 var functionRE = regexp.MustCompile("([a-zA-Z_-][a-zA-Z0-9_-]*)[[:space:]]*\\(")
 var atRE = regexp.MustCompile("@([a-zA-Z-]+)")
@@ -188,13 +190,87 @@ func safeRef(s string, external bool) bool {
 	}
 	return true
 }
-func checkHTML(data []byte) error {
+
+var inputTypes = wordset("text search number range checkbox radio")
+var inputAttrs = wordset("min max step value checked disabled readonly placeholder maxlength minlength")
+
+// Resolve a single classic script file against this page. The restricted
+// alphabet avoids URL parser differences; a query, fragment or remote URL
+// cannot select a different resource at the browser or at the server.
+func scriptPath(pagePath string, n *html.Node) string {
+	if len(n.Attr) != 1 || n.Attr[0].Namespace != "" || n.Attr[0].Key != "src" || n.FirstChild != nil {
+		return ""
+	}
+	src := n.Attr[0].Val
+	if !strings.HasSuffix(strings.ToLower(src), ".js") || strings.HasPrefix(src, "//") || len(src) > 200 {
+		return ""
+	}
+	for _, part := range strings.Split(strings.TrimPrefix(src, "/"), "/") {
+		if part != "." && part != ".." && !fileRE.MatchString(part) {
+			return ""
+		}
+	}
+	pagePath = strings.TrimPrefix(pagePath, "/")
+	if pagePath == "" || strings.HasSuffix(pagePath, "/") {
+		pagePath += "index.html"
+	}
+	if !validPath(pagePath) {
+		return ""
+	}
+	dest := strings.TrimPrefix(src, "/")
+	if !strings.HasPrefix(src, "/") {
+		dest = path.Join(path.Dir(pagePath), src)
+	} else {
+		dest = path.Clean(dest)
+	}
+	if !validPath(dest) {
+		return ""
+	}
+	return dest
+}
+
+// GuestScript returns the local script referenced by a validated HTML file.
+// Most pages have no script: scan the tag prefixes without building a DOM.
+func GuestScript(pagePath string, data []byte) string {
+	rest := data
+	for {
+		i := bytes.IndexByte(rest, '<')
+		if i < 0 {
+			return ""
+		}
+		rest = rest[i+1:]
+		if len(rest) >= 6 && strings.EqualFold(string(rest[:6]), "script") {
+			break
+		}
+	}
+	doc, e := html.Parse(bytes.NewReader(data))
+	if e != nil {
+		return ""
+	}
+	script := ""
+	for n := range doc.Descendants() {
+		if n.Type != html.ElementNode || n.Data != "script" {
+			continue
+		}
+		if script != "" || n.Namespace != "" {
+			return ""
+		}
+		script = scriptPath(pagePath, n)
+		if script == "" {
+			return ""
+		}
+	}
+	return script
+}
+
+func checkHTML(pagePath string, data []byte) error {
 	doc, e := html.Parse(bytes.NewReader(data))
 	if e != nil {
 		return bad("Invalid HTML.")
 	}
 	todo := []*html.Node{doc}
 	nodes := 0
+	hasScript := false
 	for len(todo) > 0 {
 		n := todo[len(todo)-1]
 		todo = todo[:len(todo)-1]
@@ -211,6 +287,13 @@ func checkHTML(data []byte) error {
 		tag := n.Data
 		if n.Namespace != "" || !tags[tag] {
 			return bad("Unsupported HTML element: " + tag)
+		}
+		if tag == "script" {
+			if hasScript || scriptPath(pagePath, n) == "" {
+				return bad("Use at most one classic script per page: <script src=\"app.js\"></script>. Its source must be a local .js file, without inline code or extra attributes.")
+			}
+			hasScript = true
+			continue
 		}
 		attrs := map[string]string{}
 		for _, a := range n.Attr {
@@ -241,6 +324,20 @@ func checkHTML(data []byte) error {
 				allow = key == "rel" || key == "href" && safeRef(a.Val, false) || key == "media"
 			case "meta":
 				allow = key == "charset" || key == "name" || key == "content"
+			case "input":
+				allow = inputAttrs[key] || key == "type" && inputTypes[strings.ToLower(a.Val)]
+			case "button":
+				allow = key == "disabled" || key == "value" || key == "type" && strings.EqualFold(a.Val, "button")
+			case "label", "output":
+				allow = key == "for"
+			case "select":
+				allow = key == "disabled" || key == "multiple" || key == "size"
+			case "option":
+				allow = key == "disabled" || key == "selected" || key == "value" || key == "label"
+			case "textarea":
+				allow = key == "cols" || key == "rows" || key == "disabled" || key == "readonly" || key == "maxlength" || key == "placeholder"
+			case "fieldset":
+				allow = key == "disabled"
 			case "td", "th":
 				allow = key == "colspan" || key == "rowspan" || key == "scope" || key == "headers"
 			case "col", "colgroup":

@@ -12,7 +12,7 @@ import (
 )
 
 // Verify site-local hyperlink targets and the MIME class expected by each
-// image and stylesheet reference. Only HTML bytes are read. Query strings and
+// image, script and stylesheet reference. Only HTML bytes are read. Query strings and
 // fragments do not change the file selected by the delivery host.
 func checkReleaseLinks(ctx context.Context, tx *sql.Tx, revision string) error {
 	rows, e := tx.QueryContext(ctx, "SELECT f.path,f.content_type,CASE WHEN f.content_type='text/html; charset=utf-8' THEN b.body ELSE NULL END FROM sc_files f JOIN sc_blobs b ON b.digest=f.digest WHERE f.revision=$1", revision)
@@ -68,6 +68,12 @@ func checkPageLinks(ctx context.Context, path string, data []byte, types map[str
 		attr := ""
 		expected := ""
 		switch n.Data {
+		case "script":
+			target := scriptPath(path, n)
+			if target == "" || types[target] != "text/javascript; charset=utf-8" {
+				return bad("The local script in " + path + " is missing or has an incompatible type: " + target)
+			}
+			continue
 		case "a":
 			attr = "href"
 		case "link":
