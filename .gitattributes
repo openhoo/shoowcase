@@ -1,0 +1,4 @@
+# The single-file worker embeds literal WASM data in JavaScript strings. Its
+# whitespace and line endings are part of the artifact; review runtime/src/.
+internal/web/runtimeassets/worker.js binary linguist-generated=true
+internal/web/runtimeassets/bridge.js linguist-generated=true
