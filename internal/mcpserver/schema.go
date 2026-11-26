@@ -33,7 +33,7 @@ func definitions() []toolDef {
 	requestID.Pattern = "^[!-~]+$"
 	slug := stringField("Optional site hostname label; omit to generate one.", 1, 48)
 	slug.Pattern = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
-	path := stringField("Relative site asset name, such as index.html or images/team.png. No URL, hidden segment or host filesystem path.", 1, 200)
+	path := stringField("Relative site asset name, such as index.html or images/team.png. No URL, hidden segment, host filesystem path, or reserved top-level auth directory.", 1, 200)
 	path.Pattern = "^([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*$"
 	digest := stringField("Lowercase hexadecimal SHA-256 digest of the exact upload bytes.", 64, 64)
 	digest.Pattern = "^[a-f0-9]{64}$"
@@ -56,7 +56,7 @@ func definitions() []toolDef {
 		{"upload_files", "Apply inline replacements and deletions in one draft update. The live release is unchanged. Returns a new revision. Limits: 100 files and 8 MiB per revision, 2 MiB per file, 256 KiB per HTML or CSS file.", "Supply site_id, expected_revision, request_id, and files. Each entry needs a relative path and exactly one of text or base64. Use files:[] with delete_paths for a deletion.", false, object(properties{
 			"site_id": site, "expected_revision": revision, "files": array(file), "delete_paths": array(path.CloneSchemas()), "request_id": requestID,
 		}, "site_id", "expected_revision", "files", "request_id")},
-		{"prepare_upload", "Reserve a short-lived upload for one binary asset. The returned upload_url accepts the exact bytes via PUT; browser_upload_url lets the same signed-in person select them. Completing the upload creates a draft revision.", "Supply site_id, expected_revision, path, sha256 (64 lowercase hex digits), size in bytes, and request_id.", false, object(properties{
+		{"prepare_upload", "Prepare a five-minute upload for one HTML, CSS, PNG, JPEG or GIF file. Use it for binary assets; HTML and CSS are limited to 256 KiB. The returned upload_url accepts the exact bytes via PUT; browser_upload_url lets the same signed-in person select them. Completing the upload creates a draft revision.", "Supply site_id, expected_revision, path, sha256 (64 lowercase hex digits), size in bytes, and request_id.", false, object(properties{
 			"site_id": site, "expected_revision": revision, "path": path, "sha256": digest, "size": &schema{Type: "integer", Minimum: ptr(1.0), Maximum: ptr(float64(2 << 20))}, "request_id": requestID,
 		}, "site_id", "expected_revision", "path", "sha256", "size", "request_id")},
 		{"publish_site", "Publish the reviewed draft revision at the site's stable address with its existing visibility. Public changes require approval.", "Supply site_id, revision and request_id.", false, object(properties{

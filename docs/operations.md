@@ -4,7 +4,7 @@
 
 Provision a PostgreSQL database, a work identity provider, a control hostname and a separate registrable domain for uploaded content. Example: `publish.example.com` for control and `*.example-sites.net` for sites and previews. Configure wildcard DNS and wildcard TLS including preview hostnames. Send both to Shoowcase, preserving the original Host. Place TLS at the ingress and keep the Go listener and PostgreSQL off the public network. Do not serve site files from a public storage endpoint.
 
-1. Create a browser OIDC client with the **exact** redirect URI `https://publish.example.com/auth/callback`. Configure the issuer to include a nonempty workspace ID and one or more of `viewer`, `editor`, `publisher`, `admin` in signed claims. The browser client ID and the resource audience must be different.
+1. Create a browser OIDC client with the **exact** redirect URI `https://publish.example.com/auth/callback`. Configure the issuer to include a nonempty workspace ID and one or more of `viewer`, `editor`, `publisher`, `admin` in signed claims. The browser client ID and the resource audience must be different. Configure direct HTTPS URLs for discovery, signing keys and token exchange; Shoowcase does not follow redirects for these server requests. The user's browser can still follow the provider's ordinary sign-in redirects.
 2. Register/authorize the desired MCP clients with the issuer (or use an issuer with compatible client registration). The MCP resource URL is `https://publish.example.com/mcp`. Configure the issuer to return a signed JWT access token with an access-token type (`at+jwt`), matching audience and claims. Opaque access tokens and using an ID token as a bearer are unsupported. Shoowcase advertises protected-resource metadata; client registration and user assignments belong to the identity provider.
 3. Supply a random session key using `shoowcase keygen` directly into a secret manager. All replicas share this key and the PostgreSQL database. Treat database credentials and the OIDC client secret as deployment secrets. Production startup requires TLS with PostgreSQL server identity verification on every connection target. Use `sslmode=verify-full`; use a restricted service account with access to its own database/schema and the DDL rights needed for first initialization. Keep a backup and rehearse restore before upgrades.
 4. Use [the Compose definition](../deploy/compose.yaml) with a pinned image digest or run the release binary behind your ingress. Set resource limits and disable unneeded capabilities. Disable shared caching for all paths; do not configure a “cache everything” rule. Do not rewrite Origin headers to skip validation. Send no request query strings or headers to access logs.
@@ -26,6 +26,12 @@ All names below have the prefix `SHOOWCASE_`.
 | `LISTEN` | Defaults to `127.0.0.1:7878`. For containers use `:7878` behind the boundary described above. |
 | `PUBLIC` | Exactly `true` or `false`; default false. False disables anonymous site delivery, including formerly public sites. Change every replica and drain replicas with the old setting before considering the change complete. |
 | `STATE_DIR`, `DEV_TOKEN`, `DEV_SUBJECT`, `DEV_WORKSPACE` | For explicit `-dev` only. The default local state directory is `.shoowcase/`. |
+
+## Upgrading from v0.1.0
+
+Back up the database and record your current application digest and configuration. Drain v0.1.0 replicas from traffic and stop **all old writers** before starting v0.1.1. The new binary migrates existing sites on startup. An old binary cannot invalidate pending approvals when it changes a release or audience; do not mix versions during the migration. An old review link is rejected: have the publisher request a fresh link and review the revision again.
+
+With public delivery disabled, `get_site` and `list_sites` report `visibility: workspace` for a site still configured public. Check `configured_visibility` before enabling the instance switch: turning it back on can expose those existing releases. To keep a site private across configuration changes, set its site audience to workspace. Verify member access and anonymous denial before returning traffic.
 
 ## Recovery, retention and monitoring
 

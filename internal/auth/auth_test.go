@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -20,10 +21,10 @@ import (
 // signed. No production validation option is relaxed for the test.
 type testIssuer struct {
 	*httptest.Server
-	key              *rsa.PrivateKey
-	mu               sync.Mutex
-	nonce, challenge string
-	exchanges        int
+	key       *rsa.PrivateKey
+	mu        sync.Mutex
+	codes     map[string][2]string
+	exchanges int
 }
 
 func issuer(t *testing.T) *testIssuer {
@@ -32,7 +33,7 @@ func issuer(t *testing.T) *testIssuer {
 	if e != nil {
 		t.Fatal(e)
 	}
-	f := &testIssuer{key: k}
+	f := &testIssuer{key: k, codes: make(map[string][2]string)}
 	m := http.NewServeMux()
 	jsonOut := func(w http.ResponseWriter, v any) {
 		w.Header().Set("Content-Type", "application/json")
@@ -51,18 +52,21 @@ func issuer(t *testing.T) *testIssuer {
 			return
 		}
 		f.mu.Lock()
-		f.nonce = q.Get("nonce")
-		f.challenge = q.Get("code_challenge")
+		code := random()
+		f.codes[code] = [2]string{q.Get("nonce"), q.Get("code_challenge")}
 		f.mu.Unlock()
-		http.Redirect(w, r, q.Get("redirect_uri")+"?"+url.Values{"code": {"good"}, "state": {q.Get("state")}}.Encode(), 303)
+		http.Redirect(w, r, q.Get("redirect_uri")+"?"+url.Values{"code": {code}, "state": {q.Get("state")}}.Encode(), 303)
 	})
 	m.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
 		f.mu.Lock()
 		f.exchanges++
-		nonce, challenge := f.nonce, f.challenge
+		code := r.Form.Get("code")
+		grant, ok := f.codes[code]
+		delete(f.codes, code)
 		f.mu.Unlock()
-		_ = r.ParseForm()
-		if r.Method != "POST" || r.Form.Get("code") != "good" || r.Form.Get("redirect_uri") != "https://studio.example.com/auth/callback" || challenge == "" || hash(r.Form.Get("code_verifier")) != challenge {
+		nonce, challenge := grant[0], grant[1]
+		if r.Method != "POST" || !ok || r.Form.Get("redirect_uri") != "https://studio.example.com/auth/callback" || challenge == "" || hash(r.Form.Get("code_verifier")) != challenge {
 			deny(w, 400)
 			return
 		}
@@ -150,6 +154,17 @@ func getCookie(t *testing.T, r *http.Response, name string) *http.Cookie {
 	return nil
 }
 
+func flowCookie(t *testing.T, resp *http.Response, kind string) *http.Cookie {
+	t.Helper()
+	for _, c := range resp.Cookies() {
+		if strings.HasSuffix(c.Name, "-"+kind) && c.Value != "" {
+			return c
+		}
+	}
+	t.Fatal("flow cookie missing: " + kind)
+	return nil
+}
+
 func TestBrowserSiteHandoffAndCSRF(t *testing.T) {
 	f := issuer(t)
 	cfg := config(f)
@@ -157,12 +172,12 @@ func TestBrowserSiteHandoffAndCSRF(t *testing.T) {
 	site := "https://a.sites.example.net"
 	ctl := cfg.ControlURL
 	first := hit(t, s, req("GET", site+"/auth/login?next=%2Fhandbook%3Fmonth%3D1"), 303)
-	binding := getCookie(t, first, s.name("binding"))
+	binding := flowCookie(t, first, "binding")
 	if !binding.Secure || binding.Domain != "" || !binding.HttpOnly || binding.SameSite != http.SameSiteLaxMode {
 		t.Fatal("content binding not host-only secure")
 	}
 	login := hit(t, second, req("GET", first.Header.Get("Location")), 303)
-	tx := getCookie(t, login, s.name("oidc"))
+	tx := flowCookie(t, login, "oidc")
 	cl := *f.Client()
 	cl.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	auth, e := cl.Get(login.Header.Get("Location"))
@@ -292,5 +307,86 @@ func TestDevelopmentBoundary(t *testing.T) {
 	cfg.SitesDomain = "sites.example.com"
 	if _, e := New(context.Background(), cfg); e == nil {
 		t.Fatal("non-loopback domain accepted in dev")
+	}
+}
+
+// Use a browser cookie jar so that the second response actually overwrites a
+// cookie if its name and host are the same. Complete callbacks in reverse order.
+func TestTwoSignInsFromDifferentTabs(t *testing.T) {
+	f := issuer(t)
+	cfg := config(f)
+	first, second := service(t, cfg), service(t, cfg)
+	jar, _ := cookiejar.New(nil)
+	const site = "https://a.sites.example.net"
+	get := func(s *Service, addr string, want int) *http.Response {
+		u, err := url.Parse(addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := req("GET", addr, jar.Cookies(u)...)
+		v := hit(t, s, r, want)
+		jar.SetCookies(u, v.Cookies())
+		return v
+	}
+	browser := *f.Client()
+	browser.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	var callbacks []string
+	for _, page := range []string{"/handbook", "/schedule"} {
+		start := get(first, site+"/auth/login?next="+url.QueryEscape(page), 303)
+		login := get(second, start.Header.Get("Location"), 303)
+		auth, err := browser.Get(login.Header.Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		auth.Body.Close()
+		callbacks = append(callbacks, auth.Header.Get("Location"))
+	}
+	for _, i := range []int{1, 0} {
+		res := get(first, callbacks[i], 303)
+		finish := get(second, res.Header.Get("Location"), 303)
+		if finish.Header.Get("Location") != []string{"/handbook", "/schedule"}[i] {
+			t.Fatalf("wrong tab destination: %v", finish.Header.Get("Location"))
+		}
+	}
+	for _, host := range []string{site, cfg.ControlURL} {
+		u, _ := url.Parse(host)
+		cookies := jar.Cookies(u)
+		if len(cookies) != 1 || cookies[0].Name != first.name("session") {
+			t.Fatalf("unfinished cookies after both sign-ins on %s", host)
+		}
+	}
+}
+
+func TestBoundUnfinishedSignIns(t *testing.T) {
+	s := service(t, Config{Dev: true, ControlURL: "http://localhost:7878", SitesDomain: "localhost"})
+	const addr = "http://site.localhost:7878/auth/login?next=/handbook"
+	var active []*http.Cookie
+	for i := 0; i < maxPendingFlows; i++ {
+		res := hit(t, s, req("GET", addr, active...), 303)
+		active = append(active, flowCookie(t, res, "binding"))
+	}
+	res := hit(t, s, req("GET", addr, active...), 429)
+	if len(res.Cookies()) != 0 || res.Header.Get("Retry-After") == "" {
+		t.Fatal("expected retry guidance and no new cookie")
+	}
+}
+
+// The injected fixture client still trusts its private CA. Both discovery and
+// JSON endpoints use the copy; HTTP redirect responses are returned as-is.
+func TestOIDCBackendUsesDirectEndpoints(t *testing.T) {
+	var calls int
+	f := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Redirect(w, r, "/different-endpoint", http.StatusFound)
+	}))
+	defer f.Close()
+	client := oidcHTTPClient(f.Client())
+	got, err := client.Get(f.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got.Body.Close()
+	if got.StatusCode != 302 || calls != 1 || f.Client().CheckRedirect != nil {
+		t.Fatalf("redirect policy or original client changed, got %d calls, HTTP %d", calls, got.StatusCode)
 	}
 }

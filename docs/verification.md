@@ -31,3 +31,31 @@ Follow the [restore drill](restore-drill.md) to exercise the compiled binary aga
 For a 32 KiB page on an Apple M4 Max, a 200 ms store benchmark averaged 41.4 µs per SQLite full read and 27.5 µs for a matching ETag. Against local Podman PostgreSQL, the corresponding averages were 310 µs and 217 µs. These are time per **store call**; the PostgreSQL measurement includes its local container connection. A separate [HTTP benchmark](http-benchmark.md) includes HTTP handling, session validation, authorization and response transfer and records its own conditions and percentiles.
 
 The tests use fixtures. They establish neither compatibility with a particular enterprise identity provider or agent product nor an availability target. Before exposing a deployment, qualify the actual client and IdP, DNS and wildcard TLS, multi-replica failover, sustained concurrent load and backup recovery on representative data. An independent security assessment, operational sign-off and any contractual SLO belong to the deployment.
+
+## v0.1.1 review
+
+Three independent reviewers examined identity and browser sessions, storage and delivery, and the agent publishing workflow. They then cross-checked changes outside their original areas. The final pass exercised a real browser, the source example and a database written by the released v0.1.0 executable.
+
+| Finding | Verified behavior in v0.1.1 |
+| --- | --- |
+| A second browser sign-in could interrupt the first. | Two tabs can complete sign-in in reverse order on different replicas. OIDC backend requests reject redirects; browser sign-in still works. |
+| A signed public approval could remain usable after an intervening change. | Reasserting workspace access or moving the release away and back makes the old approval fail. Fresh approval still works; a completed request can be retried without another write. |
+| The raw HTTP smoke passed forms which failed in Chrome. | Two official Python MCP clients and Chrome completed a signed upload, reviewed old and new previews, approved public sharing and rolled back to the original release. The live address, audience and current draft matched expectations. |
+| A historical file read could return a preview of the latest draft. | The agent and the browser both saw the selected historical content. An approval receipt links to the reviewed revision even when the draft differs. |
+| A site configured public could be described as public after the instance disabled sharing. | Tool responses report the effective audience and the stored site setting. Anonymous reads, including conditional HEAD requests with an old ETag, are gated. |
+| HEAD used to load the entire file. | HEAD returns the same size, type and ETag as GET, checks access, and reads metadata without fetching blob bytes. |
+
+**Dependency review.** The GitHub alerts for the previously pinned Go JOSE v4.1.4 covered JSON parsing, CBC-HMAC processing and RSA key parsing. v0.1.1 uses v4.1.9. The local reachable-code scan did not flag the older pin; reviewing package advisories alongside the scan caught it. The identity and browser tests passed with the updated dependency.
+
+**Upgrade and recovery.** A v0.1.0 binary populated SQLite and PostgreSQL 16.15 separately. After upgrade, both retained the exact HTML and CSS, two releases and five audit events. Replaying an upload added no row; rollback restored the original page and left the current draft intact. A separate PostgreSQL dump-and-restore rehearsal verified the two releases, exact file bytes, five audit rows, private access and a new rollback. See the [upgrade procedure](operations.md#upgrading-from-v010).
+
+**Repeat the browser check.** With a local Chrome installation, Python 3.11+ and uv, run:
+
+```sh
+make build
+uv run scripts/smoke-browser.py --binary ./bin/shoowcase
+```
+
+CI installs the hashed test dependencies separately from the service. The browser runs on an isolated development instance with a disposable database; production identity-provider acceptance is a separate check.
+
+**Performance sample.** On the local Apple M4 Max, a candidate binary serving an authenticated 32 KiB page from SQLite handled 5,000 GETs at concurrency four with p50 **0.246 ms** and p95 **0.508 ms**. Matching conditional requests returned 304 with p50 **0.206 ms** and p95 **0.357 ms**. This loopback sample excludes ingress, network and production PostgreSQL latency; use the [benchmark script and method](http-benchmark.md) to measure your own deployment.

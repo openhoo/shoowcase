@@ -22,13 +22,17 @@ type Actor struct{ Subject, Workspace, Role string }
 type File struct {
 	Data                                      []byte
 	ContentType, Digest, Revision, Visibility string
+	Size                                      int
 	NotModified                               bool
 }
-type Error struct{ Code, Message string }
+type Error struct {
+	Code, Message      string
+	approvalGeneration int64
+}
 
 func (e *Error) Error() string     { return e.Message }
 func (e *Error) ErrorCode() string { return e.Code }
-func fail(c, m string) error       { return &Error{c, m} }
+func fail(c, m string) error       { return &Error{Code: c, Message: m} }
 func bad(m string) error           { return fail("invalid_argument", m) }
 func absent() error                { return fail("not_found", "Site, revision, release, or file not found.") }
 func conflict(m string) error      { return fail("conflict", m) }
@@ -42,10 +46,19 @@ func privateOnly(ctx context.Context) bool { b, _ := ctx.Value(privateDeliveryKe
 
 type approvalKey struct{}
 
-func WithApproval(ctx context.Context) context.Context {
-	return context.WithValue(ctx, approvalKey{}, true)
+// ApprovalGeneration returns the publication generation observed under the
+// workspace lock. A web approval must sign this value with the operation.
+func ApprovalGeneration(err error) (int64, bool) {
+	var e *Error
+	if !errors.As(err, &e) || e.Code != "approval_required" || e.approvalGeneration < 1 {
+		return 0, false
+	}
+	return e.approvalGeneration, true
 }
-func approved(ctx context.Context) bool { v, _ := ctx.Value(approvalKey{}).(bool); return v }
+
+func WithApproval(ctx context.Context, generation int64) context.Context {
+	return context.WithValue(ctx, approvalKey{}, generation)
+}
 
 type Store struct {
 	db     *sql.DB
@@ -105,6 +118,11 @@ func Open(ctx context.Context, driver, dsn string) (*Store, error) {
 			return nil, fmt.Errorf("initialize store: %w", e)
 		}
 	}
+	if e = migrate(ctx, tx); e != nil {
+		tx.Rollback()
+		db.Close()
+		return nil, fmt.Errorf("migrate store: %w", e)
+	}
 	if e = tx.Commit(); e != nil {
 		db.Close()
 		return nil, e
@@ -127,6 +145,31 @@ var schema = []string{
 	"CREATE INDEX IF NOT EXISTS sc_audit_workspace ON sc_audit(workspace,created_at)",
 	"CREATE TABLE IF NOT EXISTS sc_replay (key TEXT PRIMARY KEY, expires_at BIGINT NOT NULL)",
 	"CREATE INDEX IF NOT EXISTS sc_replay_expiry ON sc_replay(expires_at)",
+}
+
+// Every change here runs in the same transaction as schema initialization.
+// Never alter an existing migration: old installations and fresh databases
+// pass through the same numbered steps.
+func migrate(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS sc_schema_migrations (version INTEGER PRIMARY KEY)"); err != nil {
+		return err
+	}
+	var version int
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version),0) FROM sc_schema_migrations").Scan(&version); err != nil {
+		return err
+	}
+	if version > 1 {
+		return errors.New("unsupported newer schema version")
+	}
+	if version < 1 {
+		if _, err := tx.ExecContext(ctx, "ALTER TABLE sc_sites ADD COLUMN publication_generation BIGINT NOT NULL DEFAULT 1"); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(1)"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func id() string          { var buf [16]byte; _, _ = rand.Read(buf[:]); return hex.EncodeToString(buf[:]) }
@@ -157,14 +200,33 @@ func actorErr(a Actor, level int) error {
 	return nil
 }
 
-type record struct{ site, name, visibility, draft, live, release string }
+type record struct {
+	site, name, visibility, draft, live, release string
+	generation                                   int64
+}
 
 func (r record) out() map[string]any {
 	return map[string]any{"site_id": r.site, "slug": r.site, "name": r.name, "visibility": r.visibility, "revision": r.draft, "live_revision": r.live, "release_id": r.release}
 }
+
+// effectiveAudience also supports receipts persisted before configured_visibility
+// existed. Receipts retain the historical site policy but use current instance policy.
+func effectiveAudience(ctx context.Context, out map[string]any) map[string]any {
+	configured, ok := out["configured_visibility"].(string)
+	if !ok {
+		configured, _ = out["visibility"].(string)
+	}
+	out["configured_visibility"] = configured
+	if configured == "public" && privateOnly(ctx) {
+		out["visibility"] = "workspace"
+	} else {
+		out["visibility"] = configured
+	}
+	return out
+}
 func readSite(ctx context.Context, tx *sql.Tx, a Actor, site string) (record, error) {
 	var r record
-	e := tx.QueryRowContext(ctx, "SELECT id,name,visibility,draft,live,release_id FROM sc_sites WHERE id=$1 AND workspace=$2", site, a.Workspace).Scan(&r.site, &r.name, &r.visibility, &r.draft, &r.live, &r.release)
+	e := tx.QueryRowContext(ctx, "SELECT id,name,visibility,draft,live,release_id,publication_generation FROM sc_sites WHERE id=$1 AND workspace=$2", site, a.Workspace).Scan(&r.site, &r.name, &r.visibility, &r.draft, &r.live, &r.release, &r.generation)
 	if errors.Is(e, sql.ErrNoRows) {
 		return r, absent()
 	}
@@ -185,6 +247,15 @@ func (s *Store) Fetch(ctx context.Context, slug, revision, path string, a Actor)
 	return s.FetchConditional(ctx, slug, revision, path, a, "")
 }
 func (s *Store) FetchConditional(ctx context.Context, slug, revision, path string, a Actor, ifDigest string) (File, error) {
+	return s.fetch(ctx, slug, revision, path, a, ifDigest, false)
+}
+
+// FetchMetadata checks the same authorization as GET but does not read blob
+// bytes. Size is the length of the selected file, including on conditional hits.
+func (s *Store) FetchMetadata(ctx context.Context, slug, revision, path string, a Actor, ifDigest string) (File, error) {
+	return s.fetch(ctx, slug, revision, path, a, ifDigest, true)
+}
+func (s *Store) fetch(ctx context.Context, slug, revision, path string, a Actor, ifDigest string, metadataOnly bool) (File, error) {
 	var f File
 	if strings.HasPrefix(path, "/") {
 		path = path[1:]
@@ -199,13 +270,18 @@ func (s *Store) FetchConditional(ctx context.Context, slug, revision, path strin
 	if rank(a) > 0 {
 		ws = a.Workspace
 	}
-	const query = "SELECT CASE WHEN f.digest=$1 THEN NULL ELSE b.body END,f.content_type,f.digest,r.id,s.visibility FROM sc_sites s JOIN sc_revisions r ON r.site=s.id JOIN sc_files f ON f.revision=r.id JOIN sc_blobs b ON b.digest=f.digest WHERE s.id=$2 AND f.path=$3 AND (($4='' AND r.id=s.live AND ((s.visibility='public' AND $6) OR (s.visibility IN ('public','workspace') AND s.workspace=$5))) OR ($4<>'' AND r.id=$4 AND s.workspace=$5))"
-	e := s.db.QueryRowContext(ctx, query, ifDigest, slug, path, revision, ws, !privateOnly(ctx)).Scan(&f.Data, &f.ContentType, &f.Digest, &f.Revision, &f.Visibility)
+	// Keep authorization and selection in a single snapshot. HEAD never
+	// references the blob table. A conditional GET reads a body only on a miss.
+	const selectFile = ",f.content_type,f.digest,f.size,r.id,s.visibility,(f.digest=$1) FROM sc_sites s JOIN sc_revisions r ON r.site=s.id JOIN sc_files f ON f.revision=r.id WHERE s.id=$2 AND f.path=$3 AND (($4='' AND r.id=s.live AND ((s.visibility='public' AND $6) OR (s.visibility IN ('public','workspace') AND s.workspace=$5))) OR ($4<>'' AND r.id=$4 AND s.workspace=$5))"
+	query := "SELECT CASE WHEN f.digest=$1 THEN NULL ELSE (SELECT body FROM sc_blobs WHERE digest=f.digest) END" + selectFile
+	if metadataOnly {
+		query = "SELECT NULL" + selectFile
+	}
+	e := s.db.QueryRowContext(ctx, query, ifDigest, slug, path, revision, ws, !privateOnly(ctx)).Scan(&f.Data, &f.ContentType, &f.Digest, &f.Size, &f.Revision, &f.Visibility, &f.NotModified)
 	if errors.Is(e, sql.ErrNoRows) {
 		return f, absent()
 	}
 	if e == nil {
-		f.NotModified = f.Digest == ifDigest
 		if revision != "" || privateOnly(ctx) {
 			f.Visibility = "workspace"
 		}

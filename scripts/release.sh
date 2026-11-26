@@ -24,6 +24,44 @@ SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null ||
 export SOURCE_DATE_EPOCH
 go mod verify
 cp LICENSE NOTICE "$out/"
+# The skills are text and small enough to store uncompressed. Fixed metadata and
+# an explicit inventory make this ZIP independent of platform and file mtimes.
+python3 - "$out/shoowcase-${version}-skills.zip" <<'PY'
+from pathlib import Path
+import stat, subprocess, sys, zipfile
+
+target = Path(sys.argv[1])
+skills = ("shoowcase-operate", "shoowcase-publish")
+members = {"LICENSE": Path("LICENSE"), "NOTICE": Path("NOTICE")}
+for name in skills:
+    members[name + "/SKILL.md"] = Path("skills", name, "SKILL.md")
+
+# A new tracked resource needs an explicit release decision; untracked local
+# files (including editor backups and secrets) are never archive inputs.
+tracked = subprocess.check_output(["git", "ls-files", "-z", "--", "skills", "LICENSE", "NOTICE"]).split(b"\0")
+if {s for s in tracked if s} != {p.as_posix().encode() for p in members.values()}:
+    raise SystemExit("unexpected tracked skills inventory; review the skills archive allowlist")
+
+with zipfile.ZipFile(target, "x", compression=zipfile.ZIP_STORED) as out:
+    for arcname, src in sorted(members.items()):
+        if any(p.is_symlink() for p in (src, *src.parents)) or not stat.S_ISREG(src.stat().st_mode):
+            raise SystemExit("expected regular release source: " + str(src))
+        data = src.read_bytes()
+        if arcname.endswith("/SKILL.md"):
+            text = data.decode("utf-8").splitlines()
+            if not text or text[0] != "---" or "---" not in text[1:]:
+                raise SystemExit("missing skill front matter: " + arcname)
+            header = text[1:text.index("---", 1)]
+            if [line for line in header if line.startswith("name:")] != ["name: " + src.parent.name] or not any(line.startswith("description: ") and line[13:].strip() for line in header):
+                raise SystemExit("unexpected skill name or missing description: " + arcname)
+        entry = zipfile.ZipInfo(arcname, (1980, 1, 1, 0, 0, 0))
+        entry.create_system = 3
+        entry.external_attr = (0o100644 << 16)
+        out.writestr(entry, data)
+with zipfile.ZipFile(target) as check:
+    if check.namelist() != sorted(members) or any(check.read(n) != members[n].read_bytes() for n in members):
+        raise SystemExit("skills archive differs from its approved paths or source bytes")
+PY
 for target in linux/amd64 linux/arm64 darwin/arm64 windows/amd64; do
   os="${target%/*}"; arch="${target#*/}"
   name="shoowcase-${version}-${os}-${arch}"

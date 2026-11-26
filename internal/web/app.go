@@ -25,9 +25,9 @@ import (
 )
 
 type Config struct {
-	ControlURL, SitesDomain string
-	Key                     []byte
-	Public                  bool
+	ControlURL, SitesDomain, Version string
+	Key                              []byte
+	Public                           bool
 }
 type App struct {
 	config                          Config
@@ -74,7 +74,7 @@ func New(c Config, db *sites.Store, a *auth.Service) (*App, error) {
 		return nil, errors.New("invalid control origin or signing key")
 	}
 	x := &App{config: c, origin: u, store: db, auth: a, heavy: make(chan struct{}, 8)}
-	x.mcp = mcpserver.NewForHost(x.execute, u.Host)
+	x.mcp = mcpserver.NewForHost(x.execute, u.Host, c.Version)
 	return x, nil
 }
 func actor(i auth.Identity) sites.Actor {
@@ -95,9 +95,18 @@ func (a *App) decorate(r map[string]any) map[string]any {
 	if r == nil {
 		return nil
 	}
+	if rows, ok := r["sites"].([]map[string]any); ok {
+		for _, row := range rows {
+			a.decorate(row)
+		}
+	}
 	if s, ok := r["site_id"].(string); ok && s != "" {
 		r["site_url"] = a.siteURL(s)
-		if rev, ok := r["revision"].(string); ok && rev != "" {
+		rev, _ := r["selected_revision"].(string)
+		if rev == "" {
+			rev, _ = r["revision"].(string)
+		}
+		if rev != "" {
 			r["preview_url"] = a.siteURL("pv-" + rev)
 		}
 	}
@@ -138,19 +147,20 @@ func (a *App) execute(ctx context.Context, tool string, args json.RawMessage) (m
 		}
 	}
 	r, e := a.store.Execute(ctx, who, tool, args)
-	if errorCode(e) == "approval_required" && a.config.Public {
-		token := a.sign(ticket{Kind: "approval", Who: who, Tool: tool, Args: args, Expires: time.Now().Add(5 * time.Minute).Unix()})
+	if generation, ok := sites.ApprovalGeneration(e); ok && a.config.Public {
+		token := a.sign(ticket{Kind: "approval", Generation: generation, Who: who, Tool: tool, Args: args, Expires: time.Now().Add(5 * time.Minute).Unix()})
 		return map[string]any{"approval_url": a.config.ControlURL + "/approve?t=" + url.QueryEscape(token), "status": "approval_required"}, e
 	}
 	return a.decorate(r), e
 }
 
 type ticket struct {
-	Kind    string
-	Who     sites.Actor
-	Tool    string
-	Args    json.RawMessage
-	Expires int64
+	Kind       string
+	Who        sites.Actor
+	Tool       string
+	Args       json.RawMessage
+	Expires    int64
+	Generation int64 `json:",omitempty"`
 }
 
 func (a *App) sign(t ticket) string {
@@ -190,7 +200,7 @@ func headers(w http.ResponseWriter) {
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("Cache-Control", "private, no-store")
 	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-	h.Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 }
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.requests.Add(1)
@@ -204,8 +214,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	host := strings.ToLower(r.Host)
 	if host == a.origin.Host && r.URL.Path == "/healthz" {
-		if r.Method != "GET" && r.Method != "HEAD" {
-			w.WriteHeader(405)
+		if !readMethod(w, r) {
 			return
 		}
 		w.WriteHeader(200)
@@ -213,8 +222,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if host == a.origin.Host && r.URL.Path == "/readyz" {
-		if r.Method != "GET" && r.Method != "HEAD" {
-			w.WriteHeader(405)
+		if !readMethod(w, r) {
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -260,10 +268,23 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
 		a.mcp.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), whoKey{}, actor(who))))
 	case "/approve":
+		// Browsers derive the Origin of a form POST from the page referrer policy.
+		// Send only the control origin, never the signed query or path.
+		w.Header().Set("Referrer-Policy", "strict-origin")
 		a.approve(w, r)
 	case "/upload":
+		w.Header().Set("Referrer-Policy", "strict-origin")
 		a.upload(w, r)
+	case "/ui.css":
+		if !readMethod(w, r) {
+			return
+		}
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		_, _ = io.WriteString(w, controlCSS)
 	case "/metrics":
+		if !readMethod(w, r) {
+			return
+		}
 		i, e := a.auth.Bearer(r)
 		if e != nil {
 			a.auth.Challenge(w)
@@ -277,8 +298,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		fmt.Fprintf(w, "shoowcase_requests_total %d\nshoowcase_site_responses_total %d\nshoowcase_site_bytes_total %d\nshoowcase_denials_total %d\n", a.requests.Load(), a.visits.Load(), a.bytes.Load(), a.denied.Load())
 	case "/":
-		if r.Method != "GET" && r.Method != "HEAD" {
-			w.WriteHeader(405)
+		if !readMethod(w, r) {
 			return
 		}
 		render(w, homePage, map[string]string{"MCP": a.config.ControlURL + "/mcp"})
@@ -293,12 +313,12 @@ func render(w http.ResponseWriter, t *template.Template, data any) {
 	}
 }
 
-var homePage = template.Must(template.New("home").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Shoowcase</title><main><h1>Shoowcase</h1><p>Connect your agent to <code>{{.MCP}}</code> and ask it to publish a team site.</p><p>Sites are private to your workspace until an authorized publisher changes the audience.</p></main></html>`))
+var homePage = template.Must(template.New("home").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/ui.css"><title>Shoowcase</title><main><h1>Shoowcase</h1><p>Build a team website from a conversation. Add this address to your agent as a Streamable HTTP MCP server:</p><p><code>{{.MCP}}</code></p><blockquote>“Create an onboarding site for my team. Give me a private preview.”</blockquote><p>New sites are private to your workspace. Ask your agent to publish the draft when you are ready to share the link with teammates.</p></main></html>`))
 
 // Long signed actions can exceed a safe OIDC state-cookie size. Leave the
 // exact request in this tab and authenticate separately; no opaque action is
 // copied into a cookie, returned through the identity provider or cached per replica.
-var separateSignInPage = template.Must(template.New("signin").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><title>Sign in to continue · Shoowcase</title><main><h1>Sign in to continue</h1><p>Keep this page open. <a href="/auth/login" target="_blank" rel="noopener noreferrer">Sign in in a new tab</a> with the account that requested this action, then close that tab and reload this page. You can then review the original request.</p><p>If the link expires, request a new one from your agent.</p></main></html>`))
+var separateSignInPage = template.Must(template.New("signin").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/ui.css"><title>Sign in to continue · Shoowcase</title><main><h1>Sign in to continue</h1><p>Keep this page open. <a href="/auth/login" target="_blank" rel="noopener noreferrer">Sign in in a new tab</a> with the account that requested this action, then close that tab and reload this page. You can then review the original request.</p><p>If the link expires, request a new one from your agent.</p></main></html>`))
 
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	if strings.EqualFold(r.Host, a.origin.Host) && (r.URL.Path == "/approve" || r.URL.Path == "/upload") && len(r.URL.RequestURI()) > auth.MaxReturnPath {
@@ -337,7 +357,11 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 		}
 		slug, e = a.store.PreviewSlug(r.Context(), revision, user)
 		if e != nil {
-			http.NotFound(w, r)
+			if errorCode(e) == "" {
+				http.Error(w, "Preview temporarily unavailable", http.StatusServiceUnavailable)
+			} else {
+				http.NotFound(w, r)
+			}
 			return
 		}
 	}
@@ -354,7 +378,11 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 	if !a.config.Public {
 		ctx = sites.WithPrivateDelivery(ctx)
 	}
-	f, e := a.store.FetchConditional(ctx, slug, revision, path, user, digest)
+	fetch := a.store.FetchConditional
+	if r.Method == http.MethodHead {
+		fetch = a.store.FetchMetadata
+	}
+	f, e := fetch(ctx, slug, revision, path, user, digest)
 	if e != nil {
 		if !logged && (errorCode(e) == "not_found" || errorCode(e) == "unauthorized" || errorCode(e) == "authentication_required" || errorCode(e) == "forbidden") {
 			a.login(w, r)
@@ -379,14 +407,14 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(304)
 		return
 	}
-	h.Set("Content-Length", fmt.Sprint(len(f.Data)))
+	h.Set("Content-Length", fmt.Sprint(f.Size))
 	if r.Method == "GET" {
 		n, _ := w.Write(f.Data)
 		a.bytes.Add(uint64(n))
 	}
 }
 
-var approvalPage = template.Must(template.New("approval").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Review public release · Shoowcase</title><main><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Approve public release</button></form></main></html>`))
+var approvalPage = template.Must(template.New("approval").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/ui.css"><title>Review public release · Shoowcase</title><main><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Approve public release</button></form></main></html>`))
 
 func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	if !a.config.Public {
@@ -394,8 +422,8 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, ok := a.ticket(r, "approval")
-	if !ok {
-		http.Error(w, "Expired or invalid approval", 400)
+	if !ok || t.Generation < 1 {
+		http.Error(w, "Expired or invalid approval; ask your agent for a new link", 400)
 		return
 	}
 	i, ok := a.auth.Browser(r)
@@ -435,6 +463,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
+		w.Header().Set("Allow", "GET, POST")
 		w.WriteHeader(405)
 		return
 	}
@@ -443,12 +472,12 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid form", 403)
 		return
 	}
-	res, e := a.store.Execute(sites.WithApproval(r.Context()), who, t.Tool, t.Args)
+	res, e := a.store.Execute(sites.WithApproval(r.Context(), t.Generation), who, t.Tool, t.Args)
 	if e != nil {
 		writeError(w, e)
 		return
 	}
-	writeJSON(w, a.decorate(res))
+	a.browserResult(w, r, res, "Approval recorded", "This receipt identifies the release you approved. The site address always opens the current live release.")
 }
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
