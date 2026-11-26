@@ -668,3 +668,59 @@ func TestSessionDomainAndAuditFailure(t *testing.T) {
 		t.Fatalf("unexpected committed events after retry: %v", records)
 	}
 }
+
+func TestPinnedOIDCAdministrator(t *testing.T) {
+	for _, tc := range []struct {
+		subject string
+		want    int
+	}{{"owner-id", 303}, {"another-user", 403}, {"local:owner-id", 403}} {
+		t.Run(tc.subject, func(t *testing.T) {
+			f := newIssuer(t, issuerProfile{idClaims: func(m map[string]any) {
+				delete(m, "workspace")
+				delete(m, "roles")
+				m["sub"] = tc.subject
+				m["email"] = "owner@example.com"
+			}})
+			cfg := config(f)
+			cfg.OIDCAdminSubject = "owner-id"
+			cfg.OIDCAdminWorkspace = "team"
+			s := service(t, cfg)
+			callback, flow := pendingLogin(t, f, s)
+			res := hit(t, s, req("GET", callback.String(), flow), tc.want)
+			if tc.want == 303 {
+				i, ok := s.Browser(req("GET", cfg.ControlURL+"/admin", getCookie(t, res, s.name("session"))))
+				if !ok || i.Role != Admin || i.Subject != "owner-id" || i.Workspace != "team" || i.LocalGeneration != 0 {
+					t.Fatalf("wrong pinned identity: %+v", i)
+				}
+			}
+		})
+	}
+}
+
+func TestProjectAudienceOnBrowserCallback(t *testing.T) {
+	for _, tc := range []struct {
+		name, azp string
+		audience  []string
+		status    int
+	}{
+		{"one explicitly trusted project", "studio", []string{"project-id", "studio"}, 303},
+		{"no authorized client", "", []string{"studio", "project-id"}, 401},
+		{"different authorized client", "other", []string{"studio", "project-id"}, 401},
+		{"different project", "studio", []string{"studio", "other"}, 401},
+		{"additional client", "studio", []string{"studio", "project-id", "other"}, 401},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newIssuer(t, issuerProfile{idClaims: func(m map[string]any) {
+				m["aud"] = tc.audience
+				if tc.azp != "" {
+					m["azp"] = tc.azp
+				}
+			}})
+			cfg := config(f)
+			cfg.OIDCProjectAudience = "project-id"
+			s := service(t, cfg)
+			callback, flow := pendingLogin(t, f, s)
+			hit(t, s, req("GET", callback.String(), flow), tc.status)
+		})
+	}
+}

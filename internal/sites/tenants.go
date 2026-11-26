@@ -132,7 +132,7 @@ func insertMember(ctx context.Context, tx *sql.Tx, target Actor, name string, as
 // supplies that role through AccountFor; until then we use a reader ceiling.
 func (s *Store) ProvisionMember(ctx context.Context, a Actor, subject, name string) error {
 	name = strings.TrimSpace(name)
-	if !labelOK(name) || strings.TrimSpace(subject) == "" || len(subject) > 255 || !utf8.ValidString(subject) || strings.ContainsFunc(subject, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) {
+	if !labelOK(name) || strings.HasPrefix(subject, LocalSubjectPrefix) || strings.TrimSpace(subject) == "" || len(subject) > 255 || !utf8.ValidString(subject) || strings.ContainsFunc(subject, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) {
 		return bad("Enter an exact sign-in subject and a display name of 1–80 characters.")
 	}
 	tx, err := s.adminWrite(ctx, a)

@@ -56,6 +56,9 @@ func consoleError(w http.ResponseWriter, c consoleContext, status int, title, de
 	consoleView(w, c, status, title, "", frame.Lookup("error-page"), map[string]string{"Title": title, "Detail": detail, "CSRF": c.Identity.CSRF})
 }
 func verified(ctx context.Context, i auth.Identity) context.Context {
+	if i.LocalGeneration > 0 {
+		return sites.WithLocalSession(ctx, i.LocalGeneration)
+	}
 	return sites.WithIdentityIssuedAt(ctx, i.IssuedAt)
 }
 
@@ -69,7 +72,16 @@ func (a *App) console(w http.ResponseWriter, r *http.Request) {
 	i, ok := a.auth.Browser(r)
 	if !ok {
 		if r.URL.Path == "/" && r.Method != "POST" {
-			render(w, frame.Lookup("landing"), map[string]string{"Signup": a.config.SignupURL})
+			signup := a.config.SignupURL
+			if a.auth.LocalWorkspace() != "" {
+				signup = ""
+				if a.auth.RegistrationOpen() {
+					signup = "/auth/register"
+				}
+			} else if signup == "" {
+				signup = "/auth/login?next=/account"
+			}
+			render(w, frame.Lookup("landing"), map[string]string{"Signup": signup})
 			return
 		}
 		a.login(w, r)
@@ -112,7 +124,7 @@ func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Ide
 	}
 	r = r.WithContext(context.WithValue(ctx, whoKey{}, c.Actor))
 	if r.Method == "POST" {
-		if !a.rate.allow("form:"+i.Workspace+"\x00"+i.Subject, 120) {
+		if !a.rate.Allow("form:"+i.Workspace+"\x00"+i.Subject, 120) {
 			w.Header().Set("Retry-After", "60")
 			consoleError(w, c, 429, "Too many changes", "Wait a minute and try again.")
 			return

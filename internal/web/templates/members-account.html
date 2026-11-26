@@ -3,6 +3,10 @@
 <section class="panel stack" aria-labelledby="account-details"><h2 id="account-details">Account details</h2>
 <dl><dt>Display name</dt><dd>{{.Name}}</dd><dt>Workspace</dt><dd>{{.Workspace}}</dd><dt>Role</dt><dd>{{role .Role}}</dd><dt>Sign-in ID</dt><dd><code>{{.Subject}}</code></dd></dl>
 <div class="toolbar"><a class="button" href="/sites">Open sites</a><a class="button secondary" href="/keys">Manage agent keys</a><form method="post" action="/auth/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" class="secondary">Sign out</button></form></div></section>
+{{if .LocalUser}}<section class="panel stack"><h2>Change password</h2><p>Changing your password signs you out on all devices.</p>{{if .Err}}<p role="alert" class="notice">{{.Err}}</p>{{end}}
+<form class="stack" method="post" action="/account"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="change-password">
+<label class="field">Current password<input type="password" name="current_password" autocomplete="current-password" required></label>
+<label class="field">New password<input type="password" name="new_password" autocomplete="new-password" minlength="12" required></label><small>Use at least 12 characters.</small><div><button>Change password</button></div></form></section>{{else}}<p>Your work identity provider manages your password.</p>{{end}}
 {{else}}
 <header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Create your account</h1><p>Choose how your name appears to your workspace admin.</p></header>
 <form class="panel stack" method="post" action="/account"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="enroll">

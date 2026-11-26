@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openhoo/shoowcase/internal/ratelimit"
 	"html/template"
 	"io"
 	"log/slog"
@@ -15,7 +16,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -38,34 +38,12 @@ type App struct {
 	store                           *sites.Store
 	auth                            *auth.Service
 	mcp                             http.Handler
-	rate                            limiter
+	rate                            ratelimit.Window
 	heavy                           chan struct{}
 	requests, visits, bytes, denied atomic.Uint64
 }
 type whoKey struct{}
-type limiter struct {
-	mu     sync.Mutex
-	counts map[string]int
-	window int64
-}
 
-func (l *limiter) allow(key string, max int) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	w := time.Now().Unix() / 60
-	if w != l.window || l.counts == nil {
-		l.counts = make(map[string]int)
-		l.window = w
-	}
-	if _, ok := l.counts[key]; !ok && len(l.counts) >= 65536 {
-		return false
-	}
-	if l.counts[key] >= max {
-		return false
-	}
-	l.counts[key]++
-	return true
-}
 func New(c Config, db *sites.Store, a *auth.Service) (*App, error) {
 	origin, zone, e := auth.CanonicalHosts(c.ControlURL, c.SitesDomain)
 	if e != nil {
@@ -147,7 +125,7 @@ func (a *App) execute(ctx context.Context, tool string, args json.RawMessage) (o
 			a.auditDenied(ctx, who, tool)
 		}
 	}()
-	if !a.rate.allow("agent:"+who.Workspace+"\x00"+who.Subject, 300) {
+	if !a.rate.Allow("agent:"+who.Workspace+"\x00"+who.Subject, 300) {
 		return nil, problem("rate_limited", "Wait a minute before retrying.")
 	}
 	if tool == "prepare_upload" {
@@ -225,6 +203,14 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	headers(w)
 	if a.origin.Scheme == "https" {
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+	}
+	// Only a direct request for the exact delivery apex redirects. Discard the
+	// path and query; neither credentials nor tenant paths belong on the control host.
+	if a.origin.Scheme == "https" && strings.EqualFold(r.Host, a.config.SitesDomain) {
+		if readMethod(w, r) {
+			http.Redirect(w, r, a.config.ControlURL+"/", http.StatusFound)
+		}
+		return
 	}
 	if !a.auth.HostAllowed(r) {
 		http.Error(w, "Unknown host", http.StatusMisdirectedRequest)
@@ -387,7 +373,8 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 	var user sites.Actor
 	if logged {
 		var err error
-		user, err = a.store.LimitActor(verified(r.Context(), who), actor(who))
+		r = r.WithContext(verified(r.Context(), who))
+		user, err = a.store.LimitActor(r.Context(), actor(who))
 		if err != nil {
 			writeError(w, err)
 			return

@@ -105,6 +105,9 @@ class ChartTest(unittest.TestCase):
         self.assertEqual(env["SHOOWCASE_SITES_DOMAIN"]["value"], SITES)
         self.assertEqual(env["SHOOWCASE_PUBLIC"]["value"], "false")
         self.assertEqual(env["SHOOWCASE_METRICS_WORKSPACE"]["value"], "")
+        self.assertEqual(env["SHOOWCASE_PUBLIC_REGISTRATION"]["value"], "false")
+        for key in ["LOCAL_WORKSPACE", "OIDC_ADMIN_SUBJECT", "OIDC_ADMIN_WORKSPACE", "OIDC_PROJECT_AUDIENCE"]:
+            self.assertEqual(env["SHOOWCASE_" + key]["value"], "")
         self.assertNotIn("OTEL_EXPORTER_OTLP_ENDPOINT", env)
         self.assertNotIn("OTEL_EXPORTER_OTLP_HEADERS", env)
         for var, key in {"DATABASE_URL": "database-url", "CLIENT_SECRET": "client-secret", "SESSION_KEY": "session-key"}.items():
@@ -175,6 +178,21 @@ class ChartTest(unittest.TestCase):
         self.assertEqual(env["OTEL_EXPORTER_OTLP_HEADERS"]["valueFrom"]["secretKeyRef"],
                          {"name": "collector-credentials", "key": "headers"})
 
+    def test_password_accounts_alongside_oidc(self):
+        for registration in ("true", "false"):
+            with self.subTest(registration=registration):
+                docs = render(CHART, "--set", "config.localAccounts.workspace=team",
+                              "--set", "config.localAccounts.publicRegistration=" + registration,
+                              "--set-string", "config.oidc.adminSubject=0123456,config.oidc.adminWorkspace=team,config.oidc.projectAudience=0918273")
+                app, = only(docs, "Deployment")["spec"]["template"]["spec"]["containers"]
+                env = {item["name"]: item.get("value") for item in app["env"]}
+                self.assertEqual(env["SHOOWCASE_ISSUER"], "https://login.example.org")
+                self.assertEqual(env["SHOOWCASE_LOCAL_WORKSPACE"], "team")
+                self.assertEqual(env["SHOOWCASE_PUBLIC_REGISTRATION"], registration)
+                self.assertEqual(env["SHOOWCASE_OIDC_PROJECT_AUDIENCE"], "0918273")
+                self.assertEqual(env["SHOOWCASE_OIDC_ADMIN_SUBJECT"], "0123456")
+                self.assertEqual(env["SHOOWCASE_OIDC_ADMIN_WORKSPACE"], "team")
+
     def test_autoscaling(self):
         docs = render(CHART, "--set", "autoscaling.enabled=true,autoscaling.minReplicas=3",
                       "--set", "autoscaling.maxReplicas=7,autoscaling.targetCPUUtilizationPercentage=65")
@@ -192,6 +210,10 @@ class ChartTest(unittest.TestCase):
         for args in ([], ["--set-string", "image.digest=latest"], ["--set", "replicaCount=0"],
                      ["--set", "ingress.enabled=true"], ["--set-string", "config.publicSharing=fales"],
                      ["--set", "config.oidc.audience=browser"],
+                     ["--set", "config.localAccounts.publicRegistration=true"],
+                     ["--set", "config.oidc.adminSubject=me"],
+                     ["--set", "config.oidc.adminWorkspace=team"],
+                     ["--set", "config.oidc.adminWorkspace=team,config.oidc.adminSubject=local:user"],
                      ["--set", "config.oidc.clientAuthMethod=private_key_jwt"],
                      ["--set", "telemetry.endpoint=http://collector.example.org"],
                      ["--set", "telemetry.headersSecret.name=credentials"], ["--set", "config.controlHost=" + SITES],

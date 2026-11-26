@@ -9,9 +9,18 @@ config:
     # Empty: discover the confidential method. Use "none" for a registered public client.
     clientAuthMethod: ""
     audience: ""
+    # Optional extra audience in browser ID tokens, e.g. the identity provider's project ID.
+    projectAudience: ""
     workspaceClaim: workspace
     rolesClaim: roles
     requiredScope: ""
+    # Optional exact issuer subject and its fixed administrator workspace. Set both or neither.
+    adminSubject: ""
+    adminWorkspace: ""
+  localAccounts:
+    # An empty workspace disables passwords. Setting a workspace keeps OIDC available.
+    workspace: ""
+    publicRegistration: false
   # Empty disables legacy /metrics. Otherwise only this operator workspace's IdP admins can scrape it.
   metricsWorkspace: ""
   publicSharing: false

@@ -232,10 +232,13 @@ func (s *Store) EnrollAccount(ctx context.Context, a Actor, displayName string) 
 // Only newer assertions can update stored IdP privileges. A stricter role
 // wins ties when an IdP issues two assertions within the same second.
 func needsObservation(m Account, a Actor, at int64) bool {
-	return at > 0 && (at > m.identityAt || at == m.identityAt && roleLevel(a.Role) < roleLevel(m.IdentityRole))
+	return !strings.HasPrefix(m.Subject, LocalSubjectPrefix) && at > 0 && (at > m.identityAt || at == m.identityAt && roleLevel(a.Role) < roleLevel(m.IdentityRole))
 }
 func (s *Store) AccountFor(ctx context.Context, a Actor) (Account, bool, error) {
 	if e := actorErr(a, 1); e != nil {
+		return Account{}, false, e
+	}
+	if e := checkSessionContext(ctx, s.db, a); e != nil {
 		return Account{}, false, e
 	}
 	m, ok, e := member(ctx, s.db, a)
@@ -292,6 +295,9 @@ func (s *Store) LimitActor(ctx context.Context, a Actor) (Actor, error) {
 // Reevaluate membership and, for delegated requests, key validity within
 // the same transaction as a site mutation. A key's role never updates IdP claims.
 func accountPolicy(ctx context.Context, q queryer, a Actor, require bool) (Actor, error) {
+	if err := checkSessionContext(ctx, q, a); err != nil {
+		return Actor{}, err
+	}
 	if key, ok := ctx.Value(keyCredentialID{}).(string); ok {
 		if require {
 			return Actor{}, fail("forbidden", "Sign in to manage an account.")
@@ -365,6 +371,9 @@ func (s *Store) SetMember(ctx context.Context, a Actor, subject, ceiling string,
 		return e
 	}
 	if disabled && !m.Disabled {
+		if _, e = tx.ExecContext(ctx, "UPDATE sc_local_credentials SET generation=generation+1 WHERE workspace=$1 AND subject=$2", a.Workspace, subject); e != nil {
+			return e
+		}
 		if _, e = tx.ExecContext(ctx, "UPDATE sc_agent_keys SET revoked=TRUE WHERE workspace=$1 AND subject=$2 AND revoked=FALSE", a.Workspace, subject); e != nil {
 			return e
 		}

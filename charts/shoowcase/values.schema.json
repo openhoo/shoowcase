@@ -15,6 +15,7 @@
       "not": {"pattern": "\\.localhost$"}
     },
     "key": {"type": "string", "maxLength": 253, "pattern": "^[-._a-zA-Z0-9]+$"},
+    "identity": {"type": "string", "maxLength": 255, "pattern": "^$|\\S", "not": {"pattern": "[\\x00-\\x1f\\x7f]"}},
     "annotations": {"type": "object", "additionalProperties": {"type": "string"}},
     "peer": {
       "type": "object",
@@ -88,14 +89,31 @@
           "additionalProperties": false,
           "properties": {
             "issuer": {"$ref": "#/definitions/httpsEndpoint"},
+            "projectAudience": {"$ref": "#/definitions/identity"},
             "clientAuthMethod": {"enum": ["", "client_secret_basic", "client_secret_post", "none"]},
             "clientId": {"type": "string", "pattern": "\\S"},
             "audience": {"type": "string", "pattern": "\\S"},
             "workspaceClaim": {"type": "string", "pattern": "\\S"},
             "rolesClaim": {"type": "string", "pattern": "\\S"},
-            "requiredScope": {"type": "string"}
+            "requiredScope": {"type": "string"},
+            "adminSubject": {"allOf": [{"$ref": "#/definitions/identity"}, {"not": {"pattern": "^local:"}}]},
+            "adminWorkspace": {"$ref": "#/definitions/identity"}
           },
-          "required": ["issuer", "clientId", "clientAuthMethod", "audience", "workspaceClaim", "rolesClaim", "requiredScope"]
+          "required": ["issuer", "clientId", "clientAuthMethod", "audience", "projectAudience", "workspaceClaim", "rolesClaim", "requiredScope", "adminSubject", "adminWorkspace"],
+          "if": {"properties": {"adminSubject": {"const": ""}}},
+          "then": {"properties": {"adminWorkspace": {"const": ""}}},
+          "else": {"properties": {"adminWorkspace": {"minLength": 1}}}
+        },
+        "localAccounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace": {"$ref": "#/definitions/identity"},
+            "publicRegistration": {"type": "boolean"}
+          },
+          "required": ["workspace", "publicRegistration"],
+          "if": {"properties": {"publicRegistration": {"const": true}}},
+          "then": {"properties": {"workspace": {"minLength": 1}}}
         },
         "metricsWorkspace": {"type": "string"},
         "publicSharing": {"type": "boolean"},
@@ -110,7 +128,7 @@
           ]
         }
       },
-      "required": ["controlHost", "sitesDomain", "oidc", "metricsWorkspace", "publicSharing", "interactive", "signupUrl"]
+      "required": ["controlHost", "sitesDomain", "oidc", "localAccounts", "metricsWorkspace", "publicSharing", "interactive", "signupUrl"]
     },
     "existingSecret": {
       "type": "object",

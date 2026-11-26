@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/openhoo/shoowcase/internal/ratelimit"
 	"golang.org/x/net/publicsuffix"
 	"golang.org/x/oauth2"
 )
@@ -40,14 +41,19 @@ const (
 )
 
 type Identity struct {
-	IssuedAt  int64 `json:",omitempty"`
-	Subject   string
-	Workspace string
-	Role      Role
-	CSRF      string
+	LocalGeneration int64 `json:",omitempty"`
+	IssuedAt        int64 `json:",omitempty"`
+	Subject         string
+	Workspace       string
+	Role            Role
+	CSRF            string
 }
 
 type Config struct {
+	OIDCProjectAudience                                                                 string
+	LocalWorkspace, OIDCAdminSubject, OIDCAdminWorkspace                                string
+	PublicRegistration                                                                  bool
+	LocalAccounts                                                                       LocalAccounts
 	ControlURL, SitesDomain, Issuer, ClientID, ClientSecret, ClientAuthMethod, Audience string
 	// SessionKey is a random 32-byte AES key in unpadded URL-safe Base64.
 	SessionKey, WorkspaceClaim, RolesClaim, RequiredScope string
@@ -66,6 +72,7 @@ type Config struct {
 }
 
 type Service struct {
+	passwordRate               ratelimit.Window
 	cfg                        Config
 	control                    *url.URL
 	sitesHost, sitesPort       string
@@ -166,7 +173,19 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	if cfg.RolesClaim == "" {
 		cfg.RolesClaim = "roles"
 	}
+	if cfg.LocalWorkspace != "" && (!nonEmpty(cfg.LocalWorkspace) || cfg.LocalAccounts == nil) || cfg.PublicRegistration && cfg.LocalWorkspace == "" {
+		return nil, errors.New("local accounts require a workspace and credential store; public registration requires local accounts")
+	}
+	if cfg.OIDCProjectAudience != "" && (cfg.Dev || !nonEmpty(cfg.OIDCProjectAudience) || cfg.OIDCProjectAudience == cfg.ClientID) {
+		return nil, errors.New("OIDC project audience must be distinct from the browser client ID")
+	}
+	if (cfg.OIDCAdminSubject == "") != (cfg.OIDCAdminWorkspace == "") || cfg.OIDCAdminSubject != "" && (cfg.Dev || !nonEmpty(cfg.OIDCAdminSubject) || !nonEmpty(cfg.OIDCAdminWorkspace) || reservedSubject(cfg.OIDCAdminSubject)) {
+		return nil, errors.New("configure an exact OIDC admin subject and workspace together for production")
+	}
 	if cfg.Dev {
+		if reservedSubject(cfg.DevSubject) {
+			return nil, errors.New("reserved development subject")
+		}
 		if !localName(u.Hostname()) || !localName(zone) {
 			return nil, errors.New("development origins must use loopback")
 		}
@@ -214,7 +233,14 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	s := &Service{cfg: cfg, control: u, sitesHost: zone, sitesPort: port, aead: a, now: time.Now, markers: make(map[string]time.Time), client: oidcHTTPClient(cfg.HTTPClient)}
 	// A shared encryption key by itself must not let identity assertions from a
 	// different deployment or claim mapping survive a configuration change.
-	domain, _ := json.Marshal([]string{"shoowcase/browser/v2", u.String(), zone, cfg.Issuer, cfg.ClientID, cfg.WorkspaceClaim, cfg.RolesClaim, cfg.Audience, cfg.RequiredScope, strconv.FormatBool(cfg.Dev)})
+	binding := []string{"shoowcase/browser/v2", u.String(), zone, cfg.Issuer, cfg.ClientID, cfg.WorkspaceClaim, cfg.RolesClaim, cfg.Audience, cfg.RequiredScope, strconv.FormatBool(cfg.Dev)}
+	if cfg.LocalWorkspace != "" || cfg.OIDCAdminSubject != "" {
+		binding = append(binding, cfg.LocalWorkspace, cfg.OIDCAdminSubject, cfg.OIDCAdminWorkspace)
+	}
+	if cfg.OIDCProjectAudience != "" {
+		binding = append(binding, "project-audience", cfg.OIDCProjectAudience)
+	}
+	domain, _ := json.Marshal(binding)
 	s.cookieDomain = hash(string(domain)) + ":"
 	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte("shoowcase/action-ticket/v2:"))
@@ -448,7 +474,7 @@ func (s *Service) sessionCookie(r *http.Request) (session, bool) {
 }
 func (s *Service) liveSession(r *http.Request) (session, bool) {
 	v, ok := s.sessionCookie(r)
-	if !ok || !s.familyActive(r.Context(), v.Family) {
+	if !ok || !s.familyActive(r.Context(), v.Family) || !s.identityActive(r.Context(), v.Who) {
 		return session{}, false
 	}
 	return v, true
@@ -506,8 +532,7 @@ func (s *Service) identity(t *oidc.IDToken) (Identity, error) {
 	if t.Issuer != s.cfg.Issuer || t.Claims(&m) != nil {
 		return Identity{}, errInvalid
 	}
-	workspace, ok := claimString(m, s.cfg.WorkspaceClaim)
-	if !ok || !nonEmpty(t.Subject) {
+	if !nonEmpty(t.Subject) || reservedSubject(t.Subject) {
 		return Identity{}, errInvalid
 	}
 	// Unlike expiration (verified by go-oidc), check nbf without clock leeway.
@@ -516,6 +541,13 @@ func (s *Service) identity(t *oidc.IDToken) (Identity, error) {
 		return Identity{}, errInvalid
 	}
 	if t.IssuedAt.IsZero() || t.IssuedAt.After(s.now().Add(time.Minute)) {
+		return Identity{}, errInvalid
+	}
+	if s.cfg.OIDCAdminSubject != "" && t.Subject == s.cfg.OIDCAdminSubject {
+		return Identity{IssuedAt: t.IssuedAt.Unix(), Subject: t.Subject, Workspace: s.cfg.OIDCAdminWorkspace, Role: Admin}, nil
+	}
+	workspace, ok := claimString(m, s.cfg.WorkspaceClaim)
+	if !ok {
 		return Identity{}, errInvalid
 	}
 	var roles []string

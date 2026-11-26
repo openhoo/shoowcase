@@ -59,6 +59,7 @@ type memberKeyRow struct {
 }
 
 type memberPage struct {
+	LocalAdmin, LocalUser                                 bool
 	CSRF, Workspace, Subject, Name, Role, Endpoint        string
 	Enrolled                                              bool
 	NameValue, Scope, Days, Secret, Err, Notice, Creation string
@@ -90,6 +91,10 @@ func memberEventName(action string) string {
 		return "Member added to group"
 	case "group_member_removed":
 		return "Member removed from group"
+	case "local_account_created":
+		return "Password account created"
+	case "local_password_changed":
+		return "Password changed"
 	case "member_provisioned":
 		return "Member provisioned"
 	case "workspace_quota_changed":
@@ -143,7 +148,7 @@ func (a *App) membersConsole(w http.ResponseWriter, r *http.Request, c consoleCo
 		consoleError(w, c, http.StatusMethodNotAllowed, "Method not allowed", "Open this page in your browser.")
 		return
 	}
-	p := memberPage{CSRF: c.Identity.CSRF, Workspace: c.WorkspaceLabel, Subject: c.Actor.Subject, Name: c.Name, Role: c.Actor.Role, Enrolled: c.Enrolled, Endpoint: a.config.ControlURL + "/mcp"}
+	p := memberPage{LocalAdmin: a.auth.LocalWorkspace() != "" && a.auth.LocalWorkspace() == c.Identity.Workspace, LocalUser: c.Identity.LocalGeneration > 0, CSRF: c.Identity.CSRF, Workspace: c.WorkspaceLabel, Subject: c.Actor.Subject, Name: c.Name, Role: c.Actor.Role, Enrolled: c.Enrolled, Endpoint: a.config.ControlURL + "/mcp"}
 	switch r.URL.Path {
 	case "/account":
 		a.memberAccount(w, r, c, p)
@@ -185,6 +190,36 @@ func validMemberLabel(s string, max int) bool {
 func (a *App) memberAccount(w http.ResponseWriter, r *http.Request, c consoleContext, p memberPage) {
 	status := 200
 	if r.Method == http.MethodPost {
+		if r.PostForm.Get("action") == "change-password" {
+			if !p.LocalUser {
+				consoleError(w, c, 403, "Password managed elsewhere", "Use your work identity provider to change your password.")
+				return
+			}
+			if !a.rate.Allow("password-change:"+c.Identity.Subject, 10) {
+				w.Header().Set("Retry-After", "60")
+				consoleError(w, c, 429, "Too many attempts", "Wait a minute before trying again.")
+				return
+			}
+			err := a.store.ChangeLocalPassword(r.Context(), actor(c.Identity), r.PostForm.Get("current_password"), r.PostForm.Get("new_password"))
+			if err != nil {
+				switch errorCode(err) {
+				case "unauthorized":
+					p.Err = "The current password is incorrect."
+					status = 400
+				case "invalid_argument":
+					p.Err = "Use a different password of at least 12 characters (up to 1024 bytes)."
+					status = 400
+				default:
+					memberError(w, c, err)
+					return
+				}
+			} else {
+				consoleView(w, consoleContext{}, 200, "Password changed", "", frame.Lookup("password-changed"), nil)
+				return
+			}
+			consoleView(w, c, status, "Your account", "account", memberPages.Lookup("account"), p)
+			return
+		}
 		if r.PostForm.Get("action") != "enroll" {
 			consoleError(w, c, 400, "Unknown action", "Reopen your account page and try again.")
 			return
@@ -370,6 +405,24 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 	ctx := r.Context()
 	if r.Method == http.MethodPost {
 		action := r.PostForm.Get("action")
+		if action == "create-local" {
+			if !p.LocalAdmin {
+				consoleError(w, c, 403, "Local accounts are disabled", "Contact your instance operator.")
+				return
+			}
+			_, err := a.store.CreateLocalAccount(ctx, who, r.PostForm.Get("username"), r.PostForm.Get("password"), r.PostForm.Get("role"))
+			if err != nil {
+				if e, ok := err.(*sites.Error); ok && (e.Code == "conflict" || e.Code == "invalid_argument") {
+					n, _, _ := memberFailure(e)
+					consoleError(w, c, n, "Account could not be created", e.Message)
+					return
+				}
+				memberError(w, c, err)
+				return
+			}
+			http.Redirect(w, r, "/admin?done=create-local", 303)
+			return
+		}
 		if a.quotaMutation(w, r, c, action) || a.tenantMutation(w, r, c, action) {
 			return
 		}
@@ -415,7 +468,7 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 		http.Redirect(w, r, "/admin?done="+action, 303)
 		return
 	}
-	p.Notice = map[string]string{"workspace-quota": "Workspace limits saved.", "group-quota": "Group limits saved.", "site-group": "Site assignment saved.", "provision": "Member added.", "workspace-save": "Workspace settings saved.", "group-create": "Group created.", "group-update": "Group updated.", "group-delete": "Group deleted.", "group-add-member": "Member added to group.", "group-remove-member": "Member removed from group.", "revoked": "Key revoked.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved."}[r.URL.Query().Get("done")]
+	p.Notice = map[string]string{"create-local": "Password account created. The member can sign in now.", "workspace-quota": "Workspace limits saved.", "group-quota": "Group limits saved.", "site-group": "Site assignment saved.", "provision": "Member added.", "workspace-save": "Workspace settings saved.", "group-create": "Group created.", "group-update": "Group updated.", "group-delete": "Group deleted.", "group-add-member": "Member added to group.", "group-remove-member": "Member removed from group.", "revoked": "Key revoked.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved."}[r.URL.Query().Get("done")]
 	var err error
 	p.Stats, err = a.store.WorkspaceStats(ctx, who)
 	if err != nil {

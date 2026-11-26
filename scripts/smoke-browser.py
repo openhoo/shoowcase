@@ -52,7 +52,7 @@ def rid():
 
 
 @asynccontextmanager
-async def local_server(binary, *, fixture_workspace=None, fixture_paths=False):
+async def local_server(binary, *, fixture_workspace=None, fixture_paths=False, password_registration=None):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -62,6 +62,9 @@ async def local_server(binary, *, fixture_workspace=None, fixture_paths=False):
         # The trial must never touch an existing database or inherit a production token.
         env = {k: v for k, v in os.environ.items() if not k.startswith(("SHOOWCASE_", "OTEL_"))}
         env.update(SHOOWCASE_LISTEN=f"127.0.0.1:{port}", SHOOWCASE_PUBLIC="true", SHOOWCASE_STATE_DIR=state)
+        if password_registration is not None:
+            env["SHOOWCASE_LOCAL_WORKSPACE"] = fixture_workspace or "local"
+            env["SHOOWCASE_PUBLIC_REGISTRATION"] = str(password_registration).lower()
         if fixture_workspace:
             env["SHOOWCASE_DEV_WORKSPACE"] = fixture_workspace
         with subprocess.Popen([binary, "-dev"], cwd=state, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as server:

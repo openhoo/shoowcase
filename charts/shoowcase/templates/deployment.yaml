@@ -84,10 +84,20 @@ spec:
               value: {{ .Values.config.oidc.clientId | quote }}
             - name: SHOOWCASE_CLIENT_AUTH_METHOD
               value: {{ .Values.config.oidc.clientAuthMethod | quote }}
+            - name: SHOOWCASE_OIDC_ADMIN_SUBJECT
+              value: {{ .Values.config.oidc.adminSubject | quote }}
+            - name: SHOOWCASE_OIDC_ADMIN_WORKSPACE
+              value: {{ .Values.config.oidc.adminWorkspace | quote }}
+            - name: SHOOWCASE_LOCAL_WORKSPACE
+              value: {{ .Values.config.localAccounts.workspace | quote }}
+            - name: SHOOWCASE_PUBLIC_REGISTRATION
+              value: {{ .Values.config.localAccounts.publicRegistration | quote }}
             - name: SHOOWCASE_METRICS_WORKSPACE
               value: {{ .Values.config.metricsWorkspace | quote }}
             - name: SHOOWCASE_AUDIENCE
               value: {{ .Values.config.oidc.audience | quote }}
+            - name: SHOOWCASE_OIDC_PROJECT_AUDIENCE
+              value: {{ .Values.config.oidc.projectAudience | quote }}
             - name: SHOOWCASE_WORKSPACE_CLAIM
               value: {{ .Values.config.oidc.workspaceClaim | quote }}
             - name: SHOOWCASE_ROLES_CLAIM

@@ -30,6 +30,20 @@ kubectl -n shoowcase get deployment,pods,svc,pdb -l app.kubernetes.io/instance=s
 
 For a **release containing the chart**, download `shoowcase-X.Y.Z.tgz`, `chart.txt` and `SHA256SUMS` from that release. Verify the archive with `gh attestation verify shoowcase-X.Y.Z.tgz --repo openhoo/shoowcase` and its matching checksum. Use the archive path in place of `charts/shoowcase` in the commands above. To install from OCI, verify `chart.txt` with `gh attestation verify chart.txt --repo openhoo/shoowcase`. Then run `gh attestation verify "oci://$(cat chart.txt)" --repo openhoo/shoowcase` and use `"oci://$(cat chart.txt)"` as the chart argument for `helm template` or `helm upgrade --install`. Lint the downloaded archive locally. The OCI manifest digest, chart archive checksum and application image digest identify three different objects. Published charts default to the exact image from the same release. See the [release guide](https://github.com/openhoo/shoowcase/blob/main/deploy/README.md).
 
+To offer password sign-in alongside OIDC, use a chart and matching image built with local account support. For an installation where only the administrator creates password accounts:
+
+```yaml
+config:
+  oidc:
+    adminSubject: "0123456789" # Exact sub issued to this browser client
+    adminWorkspace: team
+  localAccounts:
+    workspace: team
+    publicRegistration: false
+```
+
+Keep numeric subject or workspace IDs quoted to preserve their exact values. A real OIDC sign-in enrolls the mapped administrator. Only set `publicRegistration: true` if visitors should be able to create reader accounts. This does not change public site sharing or an identity provider’s own registration policy.
+
 Probe the control origin after deployment: `/healthz` tests the process, `/readyz` also checks PostgreSQL, and `/.well-known/oauth-protected-resource/mcp` must advertise your control URL. The legacy control-host `/metrics` returns 404 by default. Set `config.metricsWorkspace` to the exact operator workspace ID to enable it. A scraper must send the control Host and an IdP access token with effective admin rights in that workspace; personal keys and other tenant admins cannot scrape it. Test the real issuer login and MCP client, publish a **private** site and check both its HTML and assets as a teammate, a signed-out visitor and a separate workspace before opening traffic.
 
 ## Configuration and day-two operations
