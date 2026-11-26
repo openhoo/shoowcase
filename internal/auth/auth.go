@@ -7,17 +7,19 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,7 +48,7 @@ type Identity struct {
 }
 
 type Config struct {
-	ControlURL, SitesDomain, Issuer, ClientID, ClientSecret, Audience string
+	ControlURL, SitesDomain, Issuer, ClientID, ClientSecret, ClientAuthMethod, Audience string
 	// SessionKey is a random 32-byte AES key in unpadded URL-safe Base64.
 	SessionKey, WorkspaceClaim, RolesClaim, RequiredScope string
 	Dev                                                   bool
@@ -54,6 +56,12 @@ type Config struct {
 	// Consume atomically inserts the key if absent until expiry. All replicas must
 	// share a store. Production requires it; development defaults to memory.
 	Consume    func(ctx context.Context, purposeKey string, expires time.Time) (bool, error)
+	IsConsumed func(ctx context.Context, purposeKey string) (bool, error)
+	// RevokeSession atomically revokes a browser session family and records the
+	// first successful logout, whether initiated on the control or a site host.
+	RevokeSession func(context.Context, string, time.Time, Identity) error
+	// Audit persists verified control login events before returning to the browser.
+	Audit      func(context.Context, Identity, string) error
 	HTTPClient *http.Client
 }
 
@@ -68,6 +76,10 @@ type Service struct {
 	now                        func() time.Time
 	mu                         sync.Mutex
 	markers                    map[string]time.Time
+	cookieDomain               string
+	actionKey                  []byte
+	responseIssuer             bool
+	nextCallbackWarning        time.Time
 }
 
 var errInvalid = errors.New("invalid credentials")
@@ -200,7 +212,24 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 		return nil, e
 	}
 	s := &Service{cfg: cfg, control: u, sitesHost: zone, sitesPort: port, aead: a, now: time.Now, markers: make(map[string]time.Time), client: oidcHTTPClient(cfg.HTTPClient)}
-	if !cfg.Dev && cfg.Consume == nil {
+	// A shared encryption key by itself must not let identity assertions from a
+	// different deployment or claim mapping survive a configuration change.
+	domain, _ := json.Marshal([]string{"shoowcase/browser/v2", u.String(), zone, cfg.Issuer, cfg.ClientID, cfg.WorkspaceClaim, cfg.RolesClaim, cfg.Audience, cfg.RequiredScope, strconv.FormatBool(cfg.Dev)})
+	s.cookieDomain = hash(string(domain)) + ":"
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte("shoowcase/action-ticket/v2:"))
+	mac.Write(domain)
+	s.actionKey = mac.Sum(nil)
+	if cfg.IsConsumed != nil && cfg.Consume == nil {
+		return nil, errors.New("session revocation requires a shared write and read store")
+	}
+	if !cfg.Dev && cfg.Audit == nil {
+		return nil, errors.New("production requires a session audit sink")
+	}
+	if cfg.IsConsumed != nil && cfg.RevokeSession == nil {
+		return nil, errors.New("shared session revocation requires atomic logout auditing")
+	}
+	if !cfg.Dev && (cfg.Consume == nil || cfg.IsConsumed == nil || cfg.RevokeSession == nil) {
 		return nil, errors.New("production requires a shared one-time token store")
 	}
 	if cfg.Dev {
@@ -212,13 +241,59 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	}
 	p, e := oidc.NewProvider(s.oidcCtx(ctx), cfg.Issuer)
 	if e != nil {
-		return nil, fmt.Errorf("discover OIDC issuer: %w", e)
+		return nil, errors.New("OIDC discovery failed; check issuer metadata and HTTPS connectivity")
 	}
 	var d struct {
-		JWKS string `json:"jwks_uri"`
+		JWKS              string   `json:"jwks_uri"`
+		ChallengeMethods  []string `json:"code_challenge_methods_supported"`
+		ResponseIssuer    bool     `json:"authorization_response_iss_parameter_supported"`
+		ClientAuthMethods []string `json:"token_endpoint_auth_methods_supported"`
 	}
 	if e = p.Claims(&d); e != nil {
-		return nil, e
+		return nil, errors.New("invalid OIDC provider metadata")
+	}
+	if !slices.Contains(d.ChallengeMethods, "S256") {
+		return nil, errors.New("OIDC discovery must advertise S256 PKCE")
+	}
+	s.responseIssuer = d.ResponseIssuer
+	endpoints := p.Endpoint()
+	// Select one declared authentication method. The oauth2 default probes a
+	// second method after an error; a code must only be redeemed once.
+	authMethods := d.ClientAuthMethods
+	if authMethods == nil {
+		authMethods = []string{"client_secret_basic"} // OIDC Discovery §3
+	}
+	method := cfg.ClientAuthMethod
+	if method == "" {
+		switch {
+		case cfg.ClientSecret == "":
+			method = "none"
+		case slices.Contains(authMethods, "client_secret_basic"):
+			method = "client_secret_basic"
+		default:
+			method = "client_secret_post"
+		}
+	}
+	if !slices.Contains(authMethods, method) {
+		return nil, errors.New("OIDC discovery does not advertise the selected token endpoint authentication method")
+	}
+	switch method {
+	case "none":
+		if cfg.ClientSecret != "" {
+			return nil, errors.New("OIDC public client must not be configured with a secret")
+		}
+		endpoints.AuthStyle = oauth2.AuthStyleInParams
+	case "client_secret_basic", "client_secret_post":
+		if cfg.ClientSecret == "" {
+			return nil, errors.New("OIDC confidential client requires a secret")
+		}
+		if method == "client_secret_basic" {
+			endpoints.AuthStyle = oauth2.AuthStyleInHeader
+		} else {
+			endpoints.AuthStyle = oauth2.AuthStyleInParams
+		}
+	default:
+		return nil, errors.New("unsupported OIDC token endpoint authentication method")
 	}
 	for _, endpoint := range []string{p.Endpoint().AuthURL, p.Endpoint().TokenURL, d.JWKS} {
 		x, e := simpleURL(endpoint)
@@ -231,7 +306,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	}
 	s.idVerifier = verifier(cfg.ClientID)
 	s.accessVerifier = verifier(cfg.Audience)
-	s.oauth = oauth2.Config{ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: u.String() + "/auth/callback", Endpoint: p.Endpoint(), Scopes: []string{oidc.ScopeOpenID, "profile"}}
+	s.oauth = oauth2.Config{ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: u.String() + "/auth/callback", Endpoint: endpoints, Scopes: []string{oidc.ScopeOpenID, "profile"}}
 	return s, nil
 }
 
@@ -248,6 +323,19 @@ func oidcHTTPClient(configured *http.Client) *http.Client {
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &client
 }
+
+// IdentityRealm is the namespace for all workspace and subject identifiers in
+// this database. No valid production issuer can equal the development realm.
+func (s *Service) IdentityRealm() string {
+	if s.cfg.Dev {
+		return "urn:shoowcase:development"
+	}
+	return s.cfg.Issuer
+}
+
+// ActionKey signs control-plane capabilities such as exact-byte uploads.
+// Separate from the cookie AES key and scoped to the identity configuration.
+func (s *Service) ActionKey() []byte { return slices.Clone(s.actionKey) }
 
 func (s *Service) oidcCtx(ctx context.Context) context.Context {
 	return oidc.ClientContext(ctx, s.client)
@@ -293,7 +381,7 @@ func (s *Service) seal(kind string, v any) (string, error) {
 	if _, e = io.ReadFull(rand.Reader, n); e != nil {
 		return "", e
 	}
-	return enc.EncodeToString(s.aead.Seal(n, n, p, []byte(kind))), nil
+	return enc.EncodeToString(s.aead.Seal(n, n, p, []byte(s.cookieDomain+kind))), nil
 }
 func (s *Service) open(kind, token string, v any) bool {
 	if len(token) == 0 || len(token) > 8192 {
@@ -304,7 +392,7 @@ func (s *Service) open(kind, token string, v any) bool {
 	if e != nil || len(b) < n+s.aead.Overhead() {
 		return false
 	}
-	data, e := s.aead.Open(nil, b[:n], b[n:], []byte(kind))
+	data, e := s.aead.Open(nil, b[:n], b[n:], []byte(s.cookieDomain+kind))
 	return e == nil && json.Unmarshal(data, v) == nil
 }
 func random() string {
@@ -330,43 +418,71 @@ func (s *Service) cookie(w http.ResponseWriter, kind, value string, age int) {
 }
 
 type session struct {
-	Host string
-	Exp  int64
-	Who  Identity
+	Host, Family string
+	Exp          int64
+	Who          Identity
 }
 
-func (s *Service) mint(w http.ResponseWriter, host string, who Identity, exp int64) bool {
-	if exp <= s.now().Unix() {
+func (s *Service) mint(w http.ResponseWriter, host, family string, who Identity, exp int64) bool {
+	if exp <= s.now().Unix() || family == "" {
 		return false
 	}
 	who.CSRF = random()
-	b, e := s.seal("session", session{strings.ToLower(host), exp, who})
+	b, e := s.seal("session", session{strings.ToLower(host), family, exp, who})
 	if e != nil || len(b) > 3750 {
 		return false
 	}
 	s.cookie(w, "session", b, int(exp-s.now().Unix()))
 	return true
 }
-func (s *Service) Browser(r *http.Request) (Identity, bool) {
+func (s *Service) sessionCookie(r *http.Request) (session, bool) {
 	if !s.HostAllowed(r) {
-		return Identity{}, false
+		return session{}, false
 	}
 	c, e := r.Cookie(s.name("session"))
 	var v session
-	if e != nil || !s.open("session", c.Value, &v) || !strings.EqualFold(v.Host, r.Host) || v.Exp <= s.now().Unix() {
-		return Identity{}, false
+	if e != nil || !s.open("session", c.Value, &v) || v.Family == "" || !strings.EqualFold(v.Host, r.Host) || v.Exp <= s.now().Unix() {
+		return session{}, false
 	}
-	return v.Who, true
+	return v, true
+}
+func (s *Service) liveSession(r *http.Request) (session, bool) {
+	v, ok := s.sessionCookie(r)
+	if !ok || !s.familyActive(r.Context(), v.Family) {
+		return session{}, false
+	}
+	return v, true
+}
+func (s *Service) Browser(r *http.Request) (Identity, bool) {
+	v, ok := s.liveSession(r)
+	return v.Who, ok
+}
+
+func (s *Service) validForm(r *http.Request, who Identity, token string) bool {
+	return r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" && equal(who.CSRF, token) && (r.Header.Get("Origin") == "" || r.Header.Get("Origin") == s.control.Scheme+"://"+strings.ToLower(r.Host)) && r.Header.Get("Sec-Fetch-Site") != "cross-site"
 }
 
 // ValidCSRF checks a token shown in a browser form against the authenticated
 // session. Recheck the user's publisher role at the operation itself.
 func (s *Service) ValidCSRF(r *http.Request, token string) bool {
-	if r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" {
-		return false
-	}
 	who, ok := s.Browser(r)
-	return ok && equal(who.CSRF, token) && (r.Header.Get("Origin") == "" || r.Header.Get("Origin") == s.control.Scheme+"://"+strings.ToLower(r.Host)) && r.Header.Get("Sec-Fetch-Site") != "cross-site"
+	return ok && s.validForm(r, who, token)
+}
+
+// Only a fixed vocabulary, no user input, tokens or remote addresses. Limit
+// the number of log records a public callback can produce per instance.
+func (s *Service) rejectCallback(w http.ResponseWriter, status int, reason string) {
+	s.mu.Lock()
+	now := s.now()
+	log := !now.Before(s.nextCallbackWarning)
+	if log {
+		s.nextCallbackWarning = now.Add(time.Minute)
+	}
+	s.mu.Unlock()
+	if log {
+		slog.Warn("OIDC callback rejected", "event", "auth.callback.rejected", "reason", reason)
+	}
+	deny(w, status)
 }
 
 func claimString(m map[string]json.RawMessage, k string) (string, bool) {
@@ -387,7 +503,7 @@ func nonEmpty(s string) bool {
 }
 func (s *Service) identity(t *oidc.IDToken) (Identity, error) {
 	var m map[string]json.RawMessage
-	if e := t.Claims(&m); e != nil {
+	if t.Issuer != s.cfg.Issuer || t.Claims(&m) != nil {
 		return Identity{}, errInvalid
 	}
 	workspace, ok := claimString(m, s.cfg.WorkspaceClaim)

@@ -148,7 +148,9 @@ def exercise(port, token, version):
     check(agent.version == version, "MCP advertises a different version than the binary")
     catalog = {t["name"] for t in agent.rpc("tools/list", {})["tools"]}
     check({"create_site", "get_site", "upload_files", "prepare_upload", "list_sites", "publish_site",
-           "set_site_access", "rollback_site"}.issubset(catalog), "incomplete tools/list")
+           "set_site_access", "rollback_site", "list_site_groups"}.issubset(catalog), "incomplete tools/list")
+    choices = agent.call("list_site_groups", {})
+    check(choices["groups"] == [] and choices["allow_unassigned"], "empty workspace budget choices")
     rid = lambda: str(uuid.uuid4())
     site = agent.call("create_site", {"name": "Project Fieldnotes", "slug": "fieldnotes", "request_id": rid()})
     key = {"site_id": site["site_id"]}
@@ -247,7 +249,7 @@ def main():
     token = secrets.token_urlsafe(32)
     with tempfile.TemporaryDirectory(prefix="shoowcase-smoke-") as state:
         # Never inherit a production database URL, token, workspace or issuer.
-        env = {k: v for k, v in os.environ.items() if not k.startswith("SHOOWCASE_")}
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("SHOOWCASE_", "OTEL_"))}
         env.update(SHOOWCASE_LISTEN=f"127.0.0.1:{port}", SHOOWCASE_DEV_TOKEN=token,
                    SHOOWCASE_PUBLIC="true", SHOOWCASE_STATE_DIR=state)
         with subprocess.Popen([binary, "-dev"], cwd=state, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as app:

@@ -19,11 +19,15 @@ import (
 var memberFiles embed.FS
 
 var memberPages = template.Must(template.New("member-pages").Funcs(template.FuncMap{
-	"role":      memberRole,
-	"shortDate": func(t time.Time) string { return t.UTC().Format("Jan 2, 2006") },
-	"longDate":  func(t time.Time) string { return t.UTC().Format("Jan 2, 2006 at 15:04 UTC") },
-	"isoDate":   func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
-	"eventName": memberEventName,
+	"role":            memberRole,
+	"shortDate":       func(t time.Time) string { return t.UTC().Format("Jan 2, 2006") },
+	"longDate":        func(t time.Time) string { return t.UTC().Format("Jan 2, 2006 at 15:04 UTC") },
+	"isoDate":         func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
+	"eventName":       memberEventName,
+	"maxQuotaSites":   func() int { return sites.MaxSitesPerWorkspace },
+	"maxQuotaStorage": func() string { return formatQuotaBytes(sites.MaxWorkspaceManifestBytes) },
+	"quotaBytes":      formatQuotaBytes,
+	"limitState":      quotaLimitState,
 }).ParseFS(memberFiles, "templates/members*.html"))
 
 func memberRole(r string) string {
@@ -61,7 +65,12 @@ type memberPage struct {
 	Scopes                                                []string
 	Keys                                                  []memberKeyRow
 	Members                                               []memberRow
-	Events                                                []sites.AccountEvent
+	Events                                                []sites.AuditEvent
+	Settings                                              sites.WorkspaceSettings
+	Groups                                                []sites.Group
+	Group                                                 *sites.Group
+	GroupMembers                                          []string
+	Quota                                                 quotaPage
 	Stats                                                 sites.WorkspaceSummary
 	Next, View                                            string
 	Admin                                                 bool
@@ -69,6 +78,44 @@ type memberPage struct {
 
 func memberEventName(action string) string {
 	switch action {
+	case "access.denied":
+		return "Access denied"
+	case "group_created":
+		return "Group created"
+	case "group_updated":
+		return "Group updated"
+	case "group_deleted":
+		return "Group deleted"
+	case "group_member_added":
+		return "Member added to group"
+	case "group_member_removed":
+		return "Member removed from group"
+	case "member_provisioned":
+		return "Member provisioned"
+	case "workspace_quota_changed":
+		return "Workspace limits changed"
+	case "group_quota_changed":
+		return "Group limits changed"
+	case "site_group_changed":
+		return "Site group changed"
+	case "workspace_access_changed":
+		return "Workspace access mode changed"
+	case "workspace_renamed":
+		return "Workspace renamed"
+	case "create_site":
+		return "Site created"
+	case "upload_files":
+		return "Draft files changed"
+	case "publish_site":
+		return "Site published"
+	case "set_site_access":
+		return "Site audience changed"
+	case "rollback_site":
+		return "Release restored"
+	case "auth.login":
+		return "Browser sign-in"
+	case "auth.logout":
+		return "Browser sign-out"
 	case "account_created":
 		return "Account created"
 	case "key_created":
@@ -96,7 +143,7 @@ func (a *App) membersConsole(w http.ResponseWriter, r *http.Request, c consoleCo
 		consoleError(w, c, http.StatusMethodNotAllowed, "Method not allowed", "Open this page in your browser.")
 		return
 	}
-	p := memberPage{CSRF: c.Identity.CSRF, Workspace: c.Actor.Workspace, Subject: c.Actor.Subject, Name: c.Name, Role: c.Actor.Role, Enrolled: c.Enrolled, Endpoint: a.config.ControlURL + "/mcp"}
+	p := memberPage{CSRF: c.Identity.CSRF, Workspace: c.WorkspaceLabel, Subject: c.Actor.Subject, Name: c.Name, Role: c.Actor.Role, Enrolled: c.Enrolled, Endpoint: a.config.ControlURL + "/mcp"}
 	switch r.URL.Path {
 	case "/account":
 		a.memberAccount(w, r, c, p)
@@ -314,7 +361,8 @@ func (a *App) memberRevoke(w http.ResponseWriter, r *http.Request, c consoleCont
 
 func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleContext, p memberPage) {
 	if c.Actor.Role != "admin" {
-		consoleError(w, c, 403, "Access denied", "Only workspace admins can manage members and their keys.")
+		a.auditDenied(r.Context(), c.Actor, "admin")
+		consoleError(w, c, 403, "Access denied", "Only workspace admins can open workspace administration.")
 		return
 	}
 	p.Admin = true
@@ -322,6 +370,9 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 	ctx := r.Context()
 	if r.Method == http.MethodPost {
 		action := r.PostForm.Get("action")
+		if a.quotaMutation(w, r, c, action) || a.tenantMutation(w, r, c, action) {
+			return
+		}
 		if action == "revoke" {
 			if !a.memberRevoke(w, r, c) {
 				return
@@ -364,7 +415,7 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 		http.Redirect(w, r, "/admin?done="+action, 303)
 		return
 	}
-	p.Notice = map[string]string{"revoked": "Key revoked.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved."}[r.URL.Query().Get("done")]
+	p.Notice = map[string]string{"workspace-quota": "Workspace limits saved.", "group-quota": "Group limits saved.", "site-group": "Site assignment saved.", "provision": "Member added.", "workspace-save": "Workspace settings saved.", "group-create": "Group created.", "group-update": "Group updated.", "group-delete": "Group deleted.", "group-add-member": "Member added to group.", "group-remove-member": "Member removed from group.", "revoked": "Key revoked.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved."}[r.URL.Query().Get("done")]
 	var err error
 	p.Stats, err = a.store.WorkspaceStats(ctx, who)
 	if err != nil {
@@ -393,8 +444,31 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 		}
 		p.Keys = memberKeyRows(keys)
 		p.Next = memberNext("/admin", "keys", next)
+	case "quotas":
+		if !a.quotaView(w, r, c, &p) {
+			return
+		}
+	case "settings":
+		p.Settings, err = a.store.WorkspaceSettings(ctx, who)
+		if err != nil {
+			memberError(w, c, err)
+			return
+		}
+	case "groups":
+		if !a.groupView(w, r, c, &p) {
+			return
+		}
 	case "activity":
-		p.Events, err = a.store.AccountActivity(ctx, who)
+		cursor, ok := auditCursor(r.URL.Query(), "after")
+		if !ok {
+			consoleError(w, c, 400, "Invalid page", "Open Activity to see the most recent changes.")
+			return
+		}
+		var more bool
+		p.Events, more, err = a.store.AuditPage(ctx, who, cursor, false, 25)
+		if more {
+			p.Next = memberNext("/admin", "activity", strconv.FormatInt(p.Events[len(p.Events)-1].Sequence, 10))
+		}
 		if err != nil {
 			memberError(w, c, err)
 			return

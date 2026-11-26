@@ -1,0 +1,62 @@
+# Disposable local dashboard viewer. Start with scripts/observability.py.
+# All published ports bind to IPv4 loopback. Each writable tmpfs is private to
+# its container; sticky directories let the unprivileged image user create files.
+x-sandbox: &sandbox
+  labels: {org.openhoo.shoowcase.observability: "local"}
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  networks: [monitoring]
+  restart: "no"
+
+services:
+  collector:
+    <<: *sandbox
+    image: docker.io/otel/opentelemetry-collector-contrib:0.166.0@sha256:3e18fe04181de50bdd72e23ad4a4d6214b54351e63d496f1c58127cc4541ad7f
+    command: [--config=/etc/otelcol-contrib/shoowcase.yaml]
+    volumes:
+      - ./collector.yaml:/etc/otelcol-contrib/shoowcase.yaml:ro
+    ports: ["127.0.0.1:${SHOOWCASE_OTLP_PORT:-24318}:4318"]
+    mem_limit: 256m
+  prometheus:
+    <<: *sandbox
+    image: docker.io/prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=2h, --storage.tsdb.retention.size=96MB]
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    tmpfs:
+      - /prometheus:mode=1777,size=128m
+    ports: ["127.0.0.1:${SHOOWCASE_PROMETHEUS_PORT:-19090}:9090"]
+    mem_limit: 384m
+  grafana:
+    <<: *sandbox
+    image: docker.io/grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_LOG_LEVEL: warn
+      GF_LOG_MODE: console
+    secrets: [grafana_admin]
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/etc/shoowcase/dashboards:ro
+    tmpfs:
+      - /var/lib/grafana:mode=1777,size=112m
+      - /tmp:mode=1777,size=32m
+      - /var/log/grafana:mode=1777,size=8m
+    ports: ["127.0.0.1:${SHOOWCASE_GRAFANA_PORT:-13000}:3000"]
+    mem_limit: 512m
+
+networks:
+  monitoring: {}
+
+secrets:
+  grafana_admin:
+    file: ${SHOOWCASE_GRAFANA_PASSWORD_FILE:?start through scripts/observability.py}

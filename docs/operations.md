@@ -19,7 +19,7 @@ All names below have the prefix `SHOOWCASE_`.
 | `CONTROL_URL` | Canonical HTTPS control origin, no path or trailing slash. |
 | `SITES_DOMAIN` | Bare DNS suffix on a distinct registrable domain. Uses the control URL's scheme and port. |
 | `DATABASE_URL` | PostgreSQL connection string. Use transport verification, e.g. `sslmode=verify-full`, with the appropriate trusted CA. |
-| `ISSUER`, `CLIENT_ID`, `CLIENT_SECRET` | HTTPS OIDC issuer, browser client and secret. |
+| `ISSUER`, `CLIENT_ID`, `CLIENT_SECRET`, `CLIENT_AUTH_METHOD` | HTTPS issuer, registered browser client and token endpoint authentication. See [OIDC and PKCE](oidc.md) for discovery requirements and confidential or public client setup. |
 | `AUDIENCE` | API token audience; defaults to control URL plus `/mcp`. |
 | `SESSION_KEY` | 32 random bytes encoded with URL-safe base64, no padding. Rotate across replicas together. |
 | `WORKSPACE_CLAIM`, `ROLES_CLAIM`, `REQUIRED_SCOPE` | Defaults: `workspace`, `roles`, optional scope. For deployments with multiple APIs, set a dedicated publishing scope as well as the audience. |
@@ -27,20 +27,22 @@ All names below have the prefix `SHOOWCASE_`.
 | `INTERACTIVE` | Exactly `true` or `false`; default true. Set false on all replicas to serve HTML with scripts disabled and withdraw the runtime URLs. Stored source and releases are preserved. Already-open pages should be closed. |
 | `SIGNUP_URL` | Optional fixed HTTPS registration page at your identity provider. Without this, Create an account uses the usual work sign-in, followed by workspace enrollment. Configure the provider to return people to the control URL. |
 | `PUBLIC` | Exactly `true` or `false`; default false. False disables anonymous site delivery, including formerly public sites. Change every replica and drain replicas with the old setting before considering the change complete. |
+| `METRICS_WORKSPACE` | Optional exact operator workspace ID for the control host’s legacy `/metrics` endpoint. Unset disables it in production; local `-dev` defaults to its development workspace. |
 | `STATE_DIR`, `DEV_TOKEN`, `DEV_SUBJECT`, `DEV_WORKSPACE` | For explicit `-dev` only. The default local state directory is `.shoowcase/`. |
 
 ## Accounts and offboarding
 
-The first sign-in offers enrollment; people cannot choose their workspace or grant themselves roles. Existing v0.1 OAuth clients and workspace readers can continue without a console account. In **Admin**, a workspace admin can review members and active keys, reduce a member’s role, suspend another member, including another administrator, or revoke a key. The provider manages administrator roles. Each enrolled person can have up to ten active keys; none grant admin access. The UI shows the newest 25 activity entries; export events to your own protected audit destination if you need longer retention.
+Workspaces use their signed identity-provider claim as the tenant ID. In the default **identity** mode, existing OAuth clients and private-site readers can use their sign-in role before enrollment. **Managed** mode requires a local member record and grants a reader baseline, then applies group roles up to the IdP role and the member's individual limit. Only a verified administrator can self-enroll in managed mode. In **Workspace admin**, provision an exact IdP subject, manage groups, change the workspace's access mode and review the audit log. See [Tenant access](tenant-access.md) for the permission table and rollout steps. Personal keys require enrollment; each person may have ten active keys and no key grants admin access.
 
 An existing personal key does not contact the identity provider on every request. A newer verified identity assertion updates the recorded provider role, but removing someone at the provider alone does not notify Shoowcase. For immediate offboarding, **suspend the member or revoke their keys in Shoowcase and remove access at the provider**. Another active workspace administrator can suspend an administrator immediately. No one can suspend themselves. Only the identity provider can change an administrator’s role; suspension and restoration are recorded in workspace activity. Limit OAuth token lifetimes and rotate the session signing key for emergency invalidation of existing sessions and signed links.
 
-## Upgrade to the browser workspace (v0.2)
+## Upgrade to schema 4
 
-1. Rehearse against a backup, then close ingress, stop all v0.1.x writers, and take a consistent database backup. Record the previous binary or image digest and deployment configuration.
-2. Start the v0.2 binary. Startup migrates to schema v2, preserving sites, drafts, releases and audiences and creating the account and key tables. Do not mix binaries across this migration.
-3. Verify the existing private live URL and a preview, enroll a member, issue a viewer key, read a site through MCP, revoke the key, and check the same key is refused. Verify public visibility settings before reopening ingress.
-4. To downgrade, stop all new writers and restore the pre-upgrade backup before starting the old binary. Downgrading the binary alone cannot reopen schema v2; writes after the snapshot need separate reconciliation.
+1. Rehearse against a backup, then close ingress, drain all older writers and take a consistent database backup. Record the previous binary or image digest, issuer and deployment configuration.
+2. Start with the same identity provider that issued existing workspace and subject IDs. Databases older than schema 3 pin their issuer on first startup and start in identity mode. Existing schema 3 tenants keep their settings, group grants and audit history.
+3. Schema 4 sums all retained revisions per site. Allow time for this migration on larger databases. Check **Workspace admin → Quotas**: existing sites are unassigned, and workspace usage is subject to the previous limits. Assign sites to projects before enabling group limits.
+4. Verify a private release, a preview and an existing member's effective rights. Issue a reader key, access a site via MCP, revoke it and confirm the same key is refused. Check audit history and public visibility before reopening ingress.
+5. To downgrade, stop all new writers and restore the pre-upgrade backup before starting the old binary. Older binaries refuse schema 4. Reconcile subsequent writes, revocations, group assignments and quota changes.
 
 ## Upgrading from v0.1.0
 
@@ -50,13 +52,15 @@ With public delivery disabled, `get_site` and `list_sites` report `visibility: w
 
 ## Recovery, retention and monitoring
 
+Use the [Grafana dashboards](grafana.md) to investigate HTTP traffic, MCP tool outcomes and database connection waits across service replicas.
+
 Back up PostgreSQL as a single unit. It contains content, active release pointers, history, audit events and auth replay records. Protect backups as private site content. Use managed point-in-time recovery if your organization has an RPO. Choose an RPO/RTO, measure both on your deployment and record the results. An isolated, executable [restore drill](restore-drill.md) verifies a restored release with the application. Never run validation against a production restore destination.
 
 After a disaster restore, keep the ingress private while reviewing publication and access changes since the snapshot. Set `PUBLIC=false` and rotate the session key before restoring traffic. Verify a private site denies a signed-out visitor and ensure no revoked public site is automatically re-exposed. Reconcile restored memberships with the identity provider. A snapshot can also revive revoked personal keys. While ingress is closed, reconcile every subsequent revocation, or revoke all restored keys (`UPDATE sc_agent_keys SET revoked=TRUE`) and have members issue fresh ones. Rotating the session key alone does not invalidate personal keys. Back up deployment configuration and externally managed secrets separately.
 
-Control-host `/healthz` checks liveness and `/readyz` checks database connectivity. Both may be probed without a token using the configured Host. `/metrics` requires an admin API token. Monitor database storage/latency, request/error rates and memory at the proxy and process. Record site deliveries and transferred bytes without collecting URLs, tokens or document content. Read the workspace audit feed directly from `sc_audit` with a separate read-only reporting role; limit each report to the intended workspace. The release includes no outbound telemetry.
+Control-host `/healthz` checks liveness and `/readyz` checks database connectivity. Both may be probed without a token using the configured Host. The legacy `/metrics` route returns process-wide counters. In production it is disabled (404) unless `SHOOWCASE_METRICS_WORKSPACE` names the operator workspace. Supply an IdP API token with effective admin rights in that exact workspace. Other tenant admins and personal keys cannot read these counters. OTLP export is configured independently. Monitor database storage/latency, request/error rates and memory at the proxy and process. Record site deliveries and transferred bytes without collecting URLs, tokens or document content. Use the authenticated [workspace audit export](audit.md) for access reviews and external retention. Set an OTLP/HTTP endpoint to enable [OpenTelemetry traces, metrics and logs](telemetry.md); outbound telemetry is disabled by default.
 
-Each site can hold 100 files or 8 MiB per revision. A file is at most 2 MiB; HTML, CSS and JavaScript are capped at 256 KiB. Workspaces have 100 sites, 500 revisions per site, 2 GiB of cumulative manifest sizes, and 50,000 mutations. Identical file bytes are deduplicated while quota charging counts retained revision sizes. At a limit, inspect usage and archive records under your retention policy; this release does not automatically prune history. Do not remove individual SQL rows to free space. Taking a site offline affects delivery without destroying history.
+Each site can hold 100 files or 8 MiB per revision. A file is at most 2 MiB; HTML, CSS and JavaScript are capped at 256 KiB. Each site supports 500 revisions; the workspace supports 50,000 mutations. Administrators can set [site and storage quotas](tenant-access.md#set-project-budgets) within the service ceilings of 100 sites and 2 GiB per workspace. Quotas count all retained revisions, including unchanged files, even when the database deduplicates identical content. Taking a site offline does not free storage. History is not automatically pruned; do not remove individual SQL rows to free space.
 
 ## Supported operating envelope
 

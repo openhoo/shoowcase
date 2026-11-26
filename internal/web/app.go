@@ -25,10 +25,10 @@ import (
 )
 
 type Config struct {
-	DisableApps                                 bool
-	ControlURL, SitesDomain, Version, SignupURL string
-	Key                                         []byte
-	Public                                      bool
+	DisableApps                                                   bool
+	ControlURL, SitesDomain, Version, SignupURL, MetricsWorkspace string
+	Key                                                           []byte
+	Public                                                        bool
 }
 type App struct {
 	archiveGate                     chan struct{}
@@ -134,7 +134,7 @@ func errorCode(e error) string {
 	}
 	return ""
 }
-func (a *App) execute(ctx context.Context, tool string, args json.RawMessage) (map[string]any, error) {
+func (a *App) execute(ctx context.Context, tool string, args json.RawMessage) (out map[string]any, err error) {
 	if !a.config.Public {
 		ctx = sites.WithPrivateDelivery(ctx)
 	}
@@ -142,6 +142,11 @@ func (a *App) execute(ctx context.Context, tool string, args json.RawMessage) (m
 	if who.Subject == "" {
 		return nil, problem("unauthorized", "Sign in to Shoowcase.")
 	}
+	defer func() {
+		if err != nil && errorCode(err) == "forbidden" {
+			a.auditDenied(ctx, who, tool)
+		}
+	}()
 	if !a.rate.allow("agent:"+who.Workspace+"\x00"+who.Subject, 300) {
 		return nil, problem("rate_limited", "Wait a minute before retrying.")
 	}
@@ -301,7 +306,13 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		_, _ = io.WriteString(w, controlCSS)
+	case "/api/audit":
+		a.exportAudit(w, r)
 	case "/metrics":
+		if a.config.MetricsWorkspace == "" {
+			http.NotFound(w, r)
+			return
+		}
 		if !readMethod(w, r) {
 			return
 		}
@@ -309,6 +320,10 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			a.auth.Challenge(w)
 			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		if i.Workspace != a.config.MetricsWorkspace {
+			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 		principal, err := a.store.LimitActor(verified(r.Context(), i), actor(i))

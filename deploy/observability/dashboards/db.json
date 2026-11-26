@@ -1,0 +1,475 @@
+{
+  "uid": "shoowcase-db",
+  "title": "Shoowcase / Database pools",
+  "description": "Connection occupancy and contention in the application database pool. A nonpositive connection limit denotes an unbounded pool.",
+  "tags": [
+    "shoowcase",
+    "opentelemetry",
+    "db"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "browser",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "graphTooltip": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Shoowcase dashboards",
+      "tags": [
+        "shoowcase"
+      ],
+      "asDropdown": true,
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "shoowcase-prometheus"
+        },
+        "definition": "label_values(db_client_connection_count{otel_scope_name=\"github.com/openhoo/shoowcase\"}, job)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(db_client_connection_count{otel_scope_name=\"github.com/openhoo/shoowcase\"}, job)",
+          "refId": "StandardVariableQuery"
+        },
+        "current": {
+          "text": "shoowcase",
+          "value": "shoowcase"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "options": [],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "skipUrlSync": false
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "shoowcase-prometheus"
+        },
+        "definition": "label_values(db_client_connection_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\"}, instance)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(db_client_connection_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\"}, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "options": [],
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "skipUrlSync": false,
+        "allValue": ".*"
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Connections in use",
+      "description": "Total checked-out connections in the selected replicas at the latest scrape.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(db_client_connection_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\",db_client_connection_state=\"used\"})",
+          "legendFormat": "__auto",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No samples",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Configured capacity",
+      "description": "Sum of positive connection limits. Unbounded pools are excluded; the value is empty if no selected pool has a finite limit.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(max by (job, instance, db_client_connection_pool_name) (db_client_connection_max{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}) > 0)",
+          "legendFormat": "__auto",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No finite limit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "teal"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Busiest pool utilization",
+      "description": "Highest utilization among individual pools with a finite limit. Each instance and pool is compared to its own capacity.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "100 * max(sum by (job, instance, db_client_connection_pool_name) (db_client_connection_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\",db_client_connection_state=\"used\"}) / (max by (job, instance, db_client_connection_pool_name) (db_client_connection_max{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}) > 0))",
+          "legendFormat": "__auto",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "noValue": "No finite limit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "decimals": 1,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Connections by state",
+      "description": "Used and idle connections, summed across selected instances.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (db_client_connection_state) (db_client_connection_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"})",
+          "legendFormat": "{{db_client_connection_state}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No samples",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 9,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Pool waits by instance",
+      "description": "Rate of connection acquisitions that had to wait for an available connection.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (job, instance) (rate(shoowcase_db_pool_waits_total{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "noValue": "No samples",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 9,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Mean wait by instance",
+      "description": "Time spent waiting per acquisition that had to wait. A gap means the replica recorded no waits during the rate window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (job, instance) (rate(shoowcase_db_pool_wait_duration_seconds_total{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])) / (sum by (job, instance) (rate(shoowcase_db_pool_waits_total{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])) > 0)",
+          "legendFormat": "{{instance}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "noValue": "No samples",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 9,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,473 @@
+{
+  "uid": "shoowcase-mcp",
+  "title": "Shoowcase / MCP tools",
+  "description": "Registered tool calls by name and outcome. HTTP requests that fail before dispatching a tool appear on the HTTP dashboard.",
+  "tags": [
+    "shoowcase",
+    "opentelemetry",
+    "mcp"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "browser",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "graphTooltip": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Shoowcase dashboards",
+      "tags": [
+        "shoowcase"
+      ],
+      "asDropdown": true,
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "shoowcase-prometheus"
+        },
+        "definition": "label_values(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\"}, job)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\"}, job)",
+          "refId": "StandardVariableQuery"
+        },
+        "current": {
+          "text": "shoowcase",
+          "value": "shoowcase"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "options": [],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "skipUrlSync": false
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "shoowcase-prometheus"
+        },
+        "definition": "label_values(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\"}, instance)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\"}, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "options": [],
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "skipUrlSync": false,
+        "allValue": ".*"
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Tool call rate",
+      "description": "Registered tool invocations completed per second across selected instances.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]))",
+          "legendFormat": "__auto",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "noValue": "No samples",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Successful calls",
+      "description": "Percentage of calls that completed with outcome ok. No calls leave this value empty.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "100 * ((sum(rate(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\",shoowcase_outcome=\"ok\"}[$__rate_interval])) or (0 * sum(rate(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])))) / (sum(rate(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])) > 0))",
+          "legendFormat": "__auto",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "noValue": "No calls",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "decimals": 2,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Tool latency · p95",
+      "description": "95th percentile of tool duration across all tools, outcomes and selected instances.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(shoowcase_mcp_tool_duration_seconds_bucket{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]))) and on () (sum(rate(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])) > 0)",
+          "legendFormat": "__auto",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "noValue": "No calls",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Call rate by tool",
+      "description": "Compare the rate of completed invocations for each registered tool.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (gen_ai_tool_name) (rate(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]))",
+          "legendFormat": "{{gen_ai_tool_name}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "noValue": "No samples",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 9,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Call rate by outcome",
+      "description": "Successful calls and bounded error outcomes such as invalid_argument, not_found or forbidden.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (shoowcase_outcome) (rate(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]))",
+          "legendFormat": "{{shoowcase_outcome}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "noValue": "No samples",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 9,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Tool latency by name · p95",
+      "description": "95th percentile per registered tool, combined across selected instances. A gap means that tool received no calls in the rate window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "shoowcase-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "shoowcase-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(shoowcase_mcp_tool_duration_seconds_bucket{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]))) and on (gen_ai_tool_name) (sum by (gen_ai_tool_name) (rate(shoowcase_mcp_tool_duration_seconds_count{otel_scope_name=\"github.com/openhoo/shoowcase\",job=~\"${service:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])) > 0)",
+          "legendFormat": "{{gen_ai_tool_name}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "noValue": "No samples",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 9,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ]
+}

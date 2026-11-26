@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: Shoowcase
+    orgId: 1
+    folder: Shoowcase
+    folderUid: shoowcase
+    type: file
+    allowUiUpdates: false
+    updateIntervalSeconds: 15
+    options:
+      path: /etc/shoowcase/dashboards

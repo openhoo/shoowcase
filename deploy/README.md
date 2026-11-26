@@ -1,5 +1,7 @@
 # Operating and releasing Shoowcase
 
+For the optional local Grafana stack or dashboard provisioning on an existing installation, see the [illustrated operator guide](../docs/grafana.md).
+
 ## Run the production image
 
 Deploy the OCI digest from the release's `image.txt` after checking its `SHA256SUMS` and GitHub provenance (`gh attestation verify SHA256SUMS --repo openhoo/shoowcase`). The image contains the Go service, a CA trust bundle, and the Apache LICENSE and NOTICE. It runs as UID/GID 65532 and needs no writable root filesystem, mounted volume, Docker socket, Linux capabilities or privileged mode. Site data and one-time sign-in records live in PostgreSQL. Use the release controls below to choose which source and publisher you trust; a checksum alone authenticates neither.
