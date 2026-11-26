@@ -4,6 +4,14 @@ param([string]$Client, [string]$McpUrl, [string]$SetupCode)
 $ErrorActionPreference = 'Stop'
 $Version = 'v0.5.0'
 $Stage = $null
+function Get-ShoowcaseHash([string]$Path) {
+    $Stream = [IO.File]::OpenRead($Path)
+    try {
+        $Hasher = [Security.Cryptography.SHA256]::Create()
+        try { return [BitConverter]::ToString($Hasher.ComputeHash($Stream)).Replace('-','') }
+        finally { $Hasher.Dispose() }
+    } finally { $Stream.Dispose() }
+}
 try {
     if (!$Client -or !$McpUrl -or !$SetupCode -or $args.Count -ne 0) { throw 'Copy the full setup command from Shoowcase.' }
     if ($env:OS -ne 'Windows_NT' -or $env:LOCALAPPDATA -notmatch '^[A-Za-z]:[\\/]') { throw 'Run this command with a local Windows user profile.' }
@@ -33,7 +41,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Could not download the Shoowcase release.' }
     $Pattern = '^([0-9a-f]{64})  ' + [regex]::Escape($Asset) + '$'
     $Lines = @([IO.File]::ReadAllLines($Sums) | Where-Object { $_ -cmatch $Pattern })
-    if ($Lines.Count -ne 1 -or (Get-FileHash -Algorithm SHA256 -LiteralPath $Zip).Hash -ine $Lines[0].Substring(0,64)) {
+    if ($Lines.Count -ne 1 -or (Get-ShoowcaseHash $Zip) -ine $Lines[0].Substring(0,64)) {
         throw 'The downloaded Shoowcase archive failed its SHA-256 check.'
     }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -52,7 +60,7 @@ try {
         try { [IO.File]::Move($Exe, $Installed) } catch [IO.IOException] { if (![IO.File]::Exists($Installed)) { throw } }
     }
     if (([IO.File]::GetAttributes($Installed) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Unexpected linked Shoowcase executable.' }
-    if ([IO.File]::Exists($Exe) -and (Get-FileHash -LiteralPath $Installed).Hash -ne (Get-FileHash -LiteralPath $Exe).Hash) {
+    if ([IO.File]::Exists($Exe) -and (Get-ShoowcaseHash $Installed) -ne (Get-ShoowcaseHash $Exe)) {
         try { [IO.File]::Replace($Exe, $Installed, (Join-Path $Stage 'previous.exe')) } catch {
             throw 'Close any running Shoowcase client and try the setup command again.'
         }
