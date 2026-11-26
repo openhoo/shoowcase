@@ -45,6 +45,8 @@ Three independent reviewers examined identity and browser sessions, storage and 
 | A site configured public could be described as public after the instance disabled sharing. | Tool responses report the effective audience and the stored site setting. Anonymous reads, including conditional HEAD requests with an old ETag, are gated. |
 | HEAD used to load the entire file. | HEAD returns the same size, type and ETag as GET, checks access, and reads metadata without fetching blob bytes. |
 
+**Dependency review.** The GitHub alerts for the previously pinned Go JOSE v4.1.4 covered JSON parsing, CBC-HMAC processing and RSA key parsing. v0.1.1 uses v4.1.9. The local reachable-code scan did not flag the older pin; reviewing package advisories alongside the scan caught it. The identity and browser tests passed with the updated dependency.
+
 **Upgrade and recovery.** A v0.1.0 binary populated SQLite and PostgreSQL 16.15 separately. After upgrade, both retained the exact HTML and CSS, two releases and five audit events. Replaying an upload added no row; rollback restored the original page and left the current draft intact. A separate PostgreSQL dump-and-restore rehearsal verified the two releases, exact file bytes, five audit rows, private access and a new rollback. See the [upgrade procedure](operations.md#upgrading-from-v010).
 
 **Repeat the browser check.** With a local Chrome installation, Python 3.11+ and uv, run:
