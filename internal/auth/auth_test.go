@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -27,7 +29,16 @@ type testIssuer struct {
 	exchanges int
 }
 
+type issuerProfile struct {
+	metadata   func(map[string]any)
+	idClaims   func(map[string]any)
+	clientAuth func(*http.Request) bool
+}
+
 func issuer(t *testing.T) *testIssuer {
+	return newIssuer(t, issuerProfile{})
+}
+func newIssuer(t *testing.T, profile issuerProfile) *testIssuer {
 	t.Helper()
 	k, e := rsa.GenerateKey(rand.Reader, 2048)
 	if e != nil {
@@ -40,7 +51,11 @@ func issuer(t *testing.T) *testIssuer {
 		_ = json.NewEncoder(w).Encode(v)
 	}
 	m.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
-		jsonOut(w, map[string]any{"issuer": f.URL, "authorization_endpoint": f.URL + "/authorize", "token_endpoint": f.URL + "/token", "jwks_uri": f.URL + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"}})
+		metadata := map[string]any{"issuer": f.URL, "authorization_endpoint": f.URL + "/authorize", "token_endpoint": f.URL + "/token", "jwks_uri": f.URL + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"}, "code_challenge_methods_supported": []string{"S256"}, "authorization_response_iss_parameter_supported": true}
+		if profile.metadata != nil {
+			profile.metadata(metadata)
+		}
+		jsonOut(w, metadata)
 	})
 	m.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &k.PublicKey, KeyID: "1", Algorithm: "RS256", Use: "sig"}}})
@@ -55,10 +70,14 @@ func issuer(t *testing.T) *testIssuer {
 		code := random()
 		f.codes[code] = [2]string{q.Get("nonce"), q.Get("code_challenge")}
 		f.mu.Unlock()
-		http.Redirect(w, r, q.Get("redirect_uri")+"?"+url.Values{"code": {code}, "state": {q.Get("state")}}.Encode(), 303)
+		http.Redirect(w, r, q.Get("redirect_uri")+"?"+url.Values{"code": {code}, "state": {q.Get("state")}, "iss": {f.URL}}.Encode(), 303)
 	})
 	m.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
+		if profile.clientAuth != nil && !profile.clientAuth(r) {
+			deny(w, 401)
+			return
+		}
 		f.mu.Lock()
 		f.exchanges++
 		code := r.Form.Get("code")
@@ -72,6 +91,11 @@ func issuer(t *testing.T) *testIssuer {
 		}
 		v := f.claims("studio")
 		v["nonce"] = nonce
+		hash := sha256.Sum256([]byte("unused"))
+		v["at_hash"] = enc.EncodeToString(hash[:16])
+		if profile.idClaims != nil {
+			profile.idClaims(v)
+		}
 		tok, e := f.token("JWT", v)
 		if e != nil {
 			deny(w, 500)
@@ -105,7 +129,7 @@ func (f *testIssuer) token(typ string, c map[string]any) (string, error) {
 func config(f *testIssuer) Config {
 	var mu sync.Mutex
 	seen := map[string]struct{}{}
-	return Config{ControlURL: "https://studio.example.com", SitesDomain: "sites.example.net", Issuer: f.URL, ClientID: "studio", ClientSecret: "test-secret", Audience: "https://studio.example.com/mcp", SessionKey: random(), RequiredScope: "sites", HTTPClient: f.Client(), Consume: func(_ context.Context, id string, _ time.Time) (bool, error) {
+	return Config{ControlURL: "https://studio.example.com", SitesDomain: "sites.example.net", Issuer: f.URL, ClientID: "studio", ClientSecret: "test-secret", Audience: "https://studio.example.com/mcp", SessionKey: random(), RequiredScope: "sites", HTTPClient: f.Client(), Audit: func(context.Context, Identity, string) error { return nil }, Consume: func(_ context.Context, id string, _ time.Time) (bool, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		if _, ok := seen[id]; ok {
@@ -113,6 +137,16 @@ func config(f *testIssuer) Config {
 		}
 		seen[id] = struct{}{}
 		return true, nil
+	}, RevokeSession: func(_ context.Context, key string, _ time.Time, who Identity) error {
+		mu.Lock()
+		defer mu.Unlock()
+		seen[key] = struct{}{}
+		return nil
+	}, IsConsumed: func(_ context.Context, id string) (bool, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		_, ok := seen[id]
+		return ok, nil
 	}}
 }
 func service(t *testing.T, c Config) *Service {
@@ -168,6 +202,15 @@ func flowCookie(t *testing.T, resp *http.Response, kind string) *http.Cookie {
 func TestBrowserSiteHandoffAndCSRF(t *testing.T) {
 	f := issuer(t)
 	cfg := config(f)
+	revoke := cfg.RevokeSession
+	var revocations int
+	cfg.RevokeSession = func(ctx context.Context, key string, until time.Time, who Identity) error {
+		if who.Subject != "ada" || who.Workspace != "operations" || who.CSRF != "" {
+			t.Fatal("unverified logout actor")
+		}
+		revocations++
+		return revoke(ctx, key, until, who)
+	}
 	s, second := service(t, cfg), service(t, cfg)
 	site := "https://a.sites.example.net"
 	ctl := cfg.ControlURL
@@ -230,13 +273,29 @@ func TestBrowserSiteHandoffAndCSRF(t *testing.T) {
 	if s.ValidCSRF(post, who.CSRF) {
 		t.Fatal("cross-site origin accepted")
 	}
-	signOut := httptest.NewRequest("POST", ctl+"/auth/logout", strings.NewReader(url.Values{"csrf": {who.CSRF}}.Encode()))
+	// Capture a still-pending handoff. Revoking its parent session must also
+	// prevent finishing this sign-in on another content host.
+	start := hit(t, s, req("GET", "https://b.sites.example.net/auth/login"), 303)
+	pendingBinding := flowCookie(t, start, "binding")
+	pending := hit(t, second, req("GET", start.Header.Get("Location"), controlCookie), 303)
+	siteWho, ok := second.Browser(req("GET", site+"/", siteCookie))
+	if !ok {
+		t.Fatal("expected content session before logout")
+	}
+	signOut := httptest.NewRequest("POST", site+"/auth/logout", strings.NewReader(url.Values{"csrf": {siteWho.CSRF}}.Encode()))
 	signOut.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	signOut.AddCookie(controlCookie)
+	signOut.AddCookie(siteCookie)
 	o := hit(t, s, signOut, 303)
-	if getCookie(t, o, s.name("session")).MaxAge >= 0 {
+	if revocations != 1 || getCookie(t, o, s.name("session")).MaxAge >= 0 {
 		t.Fatal("session not cleared")
 	}
+	if _, ok := second.Browser(req("GET", site+"/", siteCookie)); ok {
+		t.Fatal("content session remained valid after logout on another replica")
+	}
+	if _, ok := second.Browser(req("GET", ctl+"/", controlCookie)); ok {
+		t.Fatal("old control session still usable after logout")
+	}
+	hit(t, second, req("GET", pending.Header.Get("Location"), pendingBinding), 400)
 	bogus := *siteCookie
 	bogus.Value = "AA" + bogus.Value
 	if _, ok := s.Browser(req("GET", site+"/", &bogus)); ok {
@@ -388,5 +447,224 @@ func TestOIDCBackendUsesDirectEndpoints(t *testing.T) {
 	got.Body.Close()
 	if got.StatusCode != 302 || calls != 1 || f.Client().CheckRedirect != nil {
 		t.Fatalf("redirect policy or original client changed, got %d calls, HTTP %d", calls, got.StatusCode)
+	}
+}
+
+func pendingLogin(t *testing.T, f *testIssuer, s *Service) (callback *url.URL, flow *http.Cookie) {
+	t.Helper()
+	login := hit(t, s, req("GET", s.cfg.ControlURL+"/auth/login"), 303)
+	browser := *f.Client()
+	browser.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := browser.Get(login.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	callback, err = resp.Location()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return callback, flowCookie(t, login, "oidc")
+}
+
+func TestCallbackResponseBinding(t *testing.T) {
+	f := issuer(t)
+	s := service(t, config(f))
+	callback, flow := pendingLogin(t, f, s)
+	for _, alter := range []func(url.Values){
+		func(q url.Values) { q.Del("iss") },
+		func(q url.Values) { q.Set("iss", "https://other.example") },
+		func(q url.Values) { q.Add("iss", f.URL) },
+		func(q url.Values) { q.Add("state", q.Get("state")) },
+		func(q url.Values) { q.Add("code", q.Get("code")) },
+	} {
+		u := *callback
+		q := u.Query()
+		alter(q)
+		u.RawQuery = q.Encode()
+		hit(t, s, req("GET", u.String(), flow), 400)
+	}
+	f.mu.Lock()
+	calls := f.exchanges
+	f.mu.Unlock()
+	if calls != 0 {
+		t.Fatalf("unexpected exchanges: %d", calls)
+	}
+	hit(t, s, req("GET", callback.String(), flow), 303)
+}
+
+func TestDiscoveryAndIDTokenPolicy(t *testing.T) {
+	for name, mutate := range map[string]func(map[string]any){
+		"no PKCE declaration":      func(m map[string]any) { delete(m, "code_challenge_methods_supported") },
+		"plain only":               func(m map[string]any) { m["code_challenge_methods_supported"] = []string{"plain"} },
+		"incompatible client auth": func(m map[string]any) { m["token_endpoint_auth_methods_supported"] = []string{"private_key_jwt"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newIssuer(t, issuerProfile{metadata: mutate})
+			if _, err := New(context.Background(), config(f)); err == nil {
+				t.Fatal("accepted incompatible discovery document")
+			}
+		})
+	}
+	for name, mutate := range map[string]func(map[string]any){
+		"nonce":               func(m map[string]any) { m["nonce"] = "unrelated" },
+		"azp":                 func(m map[string]any) { m["azp"] = "another-client" },
+		"additional audience": func(m map[string]any) { m["aud"] = []string{"studio", "another-client"}; m["azp"] = "studio" },
+		"at hash":             func(m map[string]any) { m["at_hash"] = "does-not-match" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newIssuer(t, issuerProfile{idClaims: mutate})
+			s := service(t, config(f))
+			u, flow := pendingLogin(t, f, s)
+			res := hit(t, s, req("GET", u.String(), flow), 401)
+			for _, c := range res.Cookies() {
+				if c.Name == s.name("session") {
+					t.Fatal("invalid ID token yielded a session")
+				}
+			}
+		})
+	}
+	t.Run("legacy issuer response", func(t *testing.T) {
+		f := newIssuer(t, issuerProfile{metadata: func(m map[string]any) { delete(m, "authorization_response_iss_parameter_supported") }, idClaims: func(m map[string]any) { delete(m, "at_hash") }})
+		s := service(t, config(f))
+		u, flow := pendingLogin(t, f, s)
+		q := u.Query()
+		q.Set("iss", "")
+		u.RawQuery = q.Encode()
+		hit(t, s, req("GET", u.String(), flow), 400)
+		q.Del("iss")
+		u.RawQuery = q.Encode()
+		hit(t, s, req("GET", u.String(), flow), 303)
+	})
+}
+
+// A provider may offer both secret methods but register an individual client
+// for only one. Do not probe other methods on a failed one-time code.
+func TestRegisteredClientAuthentication(t *testing.T) {
+	for _, method := range []string{"none", "client_secret_basic", "client_secret_post"} {
+		t.Run(method, func(t *testing.T) {
+			f := newIssuer(t, issuerProfile{
+				metadata: func(m map[string]any) {
+					m["token_endpoint_auth_methods_supported"] = []string{"client_secret_basic", "client_secret_post", "none"}
+				},
+				clientAuth: func(r *http.Request) bool {
+					id, secret, basic := r.BasicAuth()
+					if method == "client_secret_basic" {
+						return basic && id == "studio" && secret == "test-secret" && !r.Form.Has("client_secret")
+					}
+					if basic || r.Form.Get("client_id") != "studio" {
+						return false
+					}
+					if method == "none" {
+						return !r.Form.Has("client_secret")
+					}
+					return r.Form.Get("client_secret") == "test-secret"
+				},
+			})
+			cfg := config(f)
+			cfg.ClientAuthMethod = method
+			if method == "none" {
+				cfg.ClientSecret = ""
+			}
+			s := service(t, cfg)
+			u, flow := pendingLogin(t, f, s)
+			hit(t, s, req("GET", u.String(), flow), 303)
+		})
+	}
+}
+
+func TestSessionDomainAndAuditFailure(t *testing.T) {
+	f := issuer(t)
+	cfg := config(f)
+	var failAudit, failRevoke, failRead bool
+	var records []string
+	cfg.Audit = func(_ context.Context, who Identity, action string) error {
+		if who.Subject != "ada" || who.Workspace != "operations" || who.CSRF != "" {
+			t.Fatal("unverified identity or CSRF in audit")
+		}
+		if failAudit {
+			return errors.New("audit unavailable")
+		}
+		records = append(records, action)
+		return nil
+	}
+	revoke := cfg.RevokeSession
+	read := cfg.IsConsumed
+	cfg.RevokeSession = func(ctx context.Context, key string, exp time.Time, i Identity) error {
+		if failRevoke {
+			return errors.New("shared store unavailable")
+		}
+		err := revoke(ctx, key, exp, i)
+		if err == nil {
+			records = append(records, "auth.logout")
+		}
+		return err
+	}
+	cfg.IsConsumed = func(ctx context.Context, key string) (bool, error) {
+		if failRead {
+			return false, errors.New("shared store unavailable")
+		}
+		return read(ctx, key)
+	}
+	s := service(t, cfg)
+	u, flow := pendingLogin(t, f, s)
+	failAudit = true
+	for _, c := range hit(t, s, req("GET", u.String(), flow), 503).Cookies() {
+		if c.Name == s.name("session") {
+			t.Fatal("login bypassed audit persistence")
+		}
+	}
+	failAudit = false
+	u, flow = pendingLogin(t, f, s)
+	res := hit(t, s, req("GET", u.String(), flow), 303)
+	cookie := getCookie(t, res, s.name("session"))
+	who, ok := s.Browser(req("GET", cfg.ControlURL, cookie))
+	if !ok {
+		t.Fatal("session missing")
+	}
+	changed := cfg
+	changed.RolesClaim = "other_roles"
+	other := service(t, changed)
+	if _, ok := other.Browser(req("GET", cfg.ControlURL, cookie)); ok {
+		t.Fatal("old session accepted after changing trusted claims")
+	}
+	if string(other.ActionKey()) == string(s.ActionKey()) {
+		t.Fatal("old action tickets accepted after claim configuration changed")
+	}
+	if s.IdentityRealm() != f.URL {
+		t.Fatal("production issuer not bound")
+	}
+	dev := service(t, Config{Dev: true, ControlURL: "http://localhost", SitesDomain: "localhost", Issuer: f.URL})
+	if dev.IdentityRealm() != "urn:shoowcase:development" {
+		t.Fatal("dev mode accepted production identity realm")
+	}
+	logout := func(status int) *http.Response {
+		post := httptest.NewRequest("POST", cfg.ControlURL+"/auth/logout", strings.NewReader(url.Values{"csrf": {who.CSRF}}.Encode()))
+		post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		post.AddCookie(cookie)
+		return hit(t, s, post, status)
+	}
+	failRevoke = true
+	for _, c := range logout(503).Cookies() {
+		if c.Name == s.name("session") {
+			t.Fatal("failed sign-out discarded or replaced the cookie needed to retry")
+		}
+	}
+	if len(records) != 1 || records[0] != "auth.login" {
+		t.Fatalf("unexpected committed events %v", records)
+	}
+	failRead = true
+	if _, ok := s.Browser(req("GET", cfg.ControlURL, cookie)); ok {
+		t.Fatal("session accepted with unavailable revocation reads")
+	}
+	failRevoke, failRead = false, false
+	if getCookie(t, logout(303), s.name("session")).MaxAge >= 0 {
+		t.Fatal("successful retry did not remove the session cookie")
+	}
+	if _, ok := s.Browser(req("GET", cfg.ControlURL, cookie)); ok {
+		t.Fatal("session still valid after successful sign-out")
+	}
+	if len(records) != 2 || records[1] != "auth.logout" {
+		t.Fatalf("unexpected committed events after retry: %v", records)
 	}
 }

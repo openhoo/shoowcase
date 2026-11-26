@@ -1,0 +1,29 @@
+{{define "workspace-settings"}}
+<section class="panel stack" aria-labelledby="settings"><h2 id="settings">Workspace settings</h2>
+<form class="stack" method="post" action="/admin"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="workspace-save"><input type="hidden" name="version" value="{{.Settings.Version}}">
+<div class="field"><label for="workspace-name">Workspace display name</label><input id="workspace-name" name="display_name" maxlength="80" value="{{.Settings.DisplayName}}"><small>Permanent workspace ID: <code>{{.Settings.ID}}</code></small></div>
+<div class="field"><label for="access-mode">Access mode</label><div class="select-wrap"><select id="access-mode" name="mode" aria-describedby="mode-help"><option value="identity"{{if eq .Settings.Mode "identity"}} selected{{end}}>Identity provider roles</option><option value="managed"{{if eq .Settings.Mode "managed"}} selected{{end}}>Managed members and groups</option></select></div></div>
+<div id="mode-help"><p><strong>Identity provider roles:</strong> people with a valid workspace claim can use their sign-in permissions. Local role limits and suspensions still apply.</p>
+<p><strong>Managed members and groups:</strong> only workspace members can access private sites. Members start as viewers; groups grant editing or publishing up to each person’s sign-in role and local role limit. Workspace administrators keep their administrative role.</p>
+<p>Prepare members and groups before switching. Saving changes access immediately, including existing agent keys.</p></div><div><button>Save workspace settings</button></div>
+</form></section>{{end}}
+
+{{define "groupRoles"}}<option value="reader"{{if eq . "reader"}} selected{{end}}>Viewer</option><option value="editor"{{if eq . "editor"}} selected{{end}}>Editor</option><option value="publisher"{{if eq . "publisher"}} selected{{end}}>Publisher</option>{{end}}
+{{define "groupFields"}}<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="group" value="{{.Group.ID}}"><input type="hidden" name="version" value="{{.Group.Version}}">{{end}}
+{{define "groups"}}
+<section class="panel stack" aria-labelledby="groups"><h2 id="groups">Groups</h2>
+{{if eq .Settings.Mode "managed"}}<p>Groups grant access in this workspace. A person in several groups gets the highest group role allowed by their account.</p>{{else}}<p>Group grants are inactive while the workspace uses identity provider roles. Prepare groups here, then switch to managed access in <a href="/admin?view=settings">workspace settings</a>.</p>{{end}}
+{{if .Groups}}<ul class="list">{{range .Groups}}<li><a href="/admin?view=groups&amp;group={{.ID}}">{{.Name}}</a> · {{role .Role}} · Members: {{.Members}}</li>{{end}}</ul>{{else}}<p>No groups yet.</p>{{end}}
+<details{{if not .Groups}} open{{end}}><summary>Create a group</summary><form class="stack" action="/admin" method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="group-create">
+<div class="field"><label for="new-group-name">Group name</label><input id="new-group-name" name="name" required maxlength="80"></div><div class="field"><label for="new-group-role">Group role</label><div class="select-wrap"><select id="new-group-role" name="role">{{template "groupRoles" "reader"}}</select></div></div>
+<div><button>Create group</button></div></form></details></section>
+{{if .Group}}
+<section class="panel stack" aria-labelledby="selected-group"><h2 id="selected-group">{{.Group.Name}}</h2>
+<p><a href="/admin?view=quotas#budget-{{.Group.ID}}">View this group’s usage and limits</a></p>
+<h3>Group members</h3>{{if .GroupMembers}}<ul class="list">{{range .GroupMembers}}<li><form class="row" method="post" action="/admin">{{template "groupFields" $}}<input type="hidden" name="action" value="group-remove-member"><input type="hidden" name="subject" value="{{.}}"><code>{{.}}</code> <button type="submit" class="secondary" aria-label="Remove {{.}} from group">Remove</button></form></li>{{end}}</ul>{{else}}<p>This group has no members.</p>{{end}}
+<form class="stack" action="/admin" method="post">{{template "groupFields" .}}<input type="hidden" name="action" value="group-add-member"><div class="field"><label for="group-member">Member sign-in ID</label><input id="group-member" name="subject" maxlength="255" required aria-describedby="subject-help"><small id="subject-help">Use the sign-in ID shown under <a href="/admin">Members</a>.</small></div><div><button>Add to group</button></div></form>
+<details><summary>Edit group</summary><form class="stack" method="post" action="/admin">{{template "groupFields" .}}<input type="hidden" name="action" value="group-update">
+<div class="field"><label for="group-name">Current group name</label><input id="group-name" name="name" value="{{.Group.Name}}" maxlength="80" required></div>
+<div class="field"><label for="group-role">Current group role</label><div class="select-wrap"><select id="group-role" name="role">{{template "groupRoles" .Group.Role}}</select></div></div><div><button>Save group</button></div></form></details>
+<details><summary>Delete group</summary><p>Move any sites assigned to this group in <a href="/admin?view=quotas#site-assignments">Quotas</a> before deleting it.</p><form class="stack" method="post" action="/admin">{{template "groupFields" .}}<input type="hidden" name="action" value="group-delete"><label><input type="checkbox" name="confirm" value="yes" required> Remove this group and all its grants.</label><div><button class="danger">Delete group</button></div></form></details>
+</section>{{end}}{{end}}

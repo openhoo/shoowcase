@@ -82,6 +82,10 @@ spec:
               value: {{ .Values.config.oidc.issuer | quote }}
             - name: SHOOWCASE_CLIENT_ID
               value: {{ .Values.config.oidc.clientId | quote }}
+            - name: SHOOWCASE_CLIENT_AUTH_METHOD
+              value: {{ .Values.config.oidc.clientAuthMethod | quote }}
+            - name: SHOOWCASE_METRICS_WORKSPACE
+              value: {{ .Values.config.metricsWorkspace | quote }}
             - name: SHOOWCASE_AUDIENCE
               value: {{ .Values.config.oidc.audience | quote }}
             - name: SHOOWCASE_WORKSPACE_CLAIM
@@ -97,8 +101,17 @@ spec:
             - name: SHOOWCASE_SIGNUP_URL
               value: {{ .Values.config.signupUrl | quote }}
             {{- include "shoowcase.secretEnv" (dict "env" "SHOOWCASE_DATABASE_URL" "secret" .Values.existingSecret.name "key" .Values.existingSecret.keys.databaseUrl) | nindent 12 }}
+            {{- if ne .Values.config.oidc.clientAuthMethod "none" }}
             {{- include "shoowcase.secretEnv" (dict "env" "SHOOWCASE_CLIENT_SECRET" "secret" .Values.existingSecret.name "key" .Values.existingSecret.keys.clientSecret) | nindent 12 }}
+            {{- end }}
             {{- include "shoowcase.secretEnv" (dict "env" "SHOOWCASE_SESSION_KEY" "secret" .Values.existingSecret.name "key" .Values.existingSecret.keys.sessionKey) | nindent 12 }}
+            {{- with .Values.telemetry.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ . | quote }}
+            {{- if $.Values.telemetry.headersSecret.name }}
+            {{- include "shoowcase.secretEnv" (dict "env" "OTEL_EXPORTER_OTLP_HEADERS" "secret" $.Values.telemetry.headersSecret.name "key" $.Values.telemetry.headersSecret.key) | nindent 12 }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.caBundle.configMapName }}
             - name: SSL_CERT_FILE
               value: /etc/shoowcase/ca/ca-bundle.pem

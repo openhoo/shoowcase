@@ -16,10 +16,10 @@ import (
 )
 
 type consoleContext struct {
-	Actor    sites.Actor
-	Identity auth.Identity
-	Enrolled bool
-	Name     string
+	Actor                sites.Actor
+	Identity             auth.Identity
+	Enrolled             bool
+	Name, WorkspaceLabel string
 }
 
 //go:embed console.html
@@ -75,8 +75,12 @@ func (a *App) console(w http.ResponseWriter, r *http.Request) {
 		a.login(w, r)
 		return
 	}
+	a.signedInConsole(w, r, i)
+}
+
+func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Identity) {
 	ctx := verified(r.Context(), i)
-	c := consoleContext{Actor: actor(i), Identity: i}
+	c := consoleContext{Actor: actor(i), Identity: i, WorkspaceLabel: i.Workspace}
 	m, enrolled, err := a.store.AccountFor(ctx, c.Actor)
 	if err != nil {
 		if enrolled && m.Disabled {
@@ -84,6 +88,13 @@ func (a *App) console(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		memberError(w, c, err)
+		return
+	}
+	if m.WorkspaceDisplayName != "" {
+		c.WorkspaceLabel = m.WorkspaceDisplayName
+	}
+	if !enrolled && m.RequiresProvisioning(ctx, c.Actor) {
+		consoleView(w, c, http.StatusForbidden, "Workspace access required", "", frame.Lookup("provisioning-required"), c)
 		return
 	}
 	if enrolled {

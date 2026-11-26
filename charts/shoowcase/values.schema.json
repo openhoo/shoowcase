@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Shoowcase values",
   "definitions": {
+    "httpsEndpoint": {"type": "string", "pattern": "^https://([A-Za-z0-9.-]+|\\[[A-Fa-f0-9:]+\\])(:[0-9]{1,5})?(/[^\\s?#]*)?$"},
     "dnsName": {
       "type": "string",
       "maxLength": 253,
@@ -86,18 +87,17 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "issuer": {
-              "type": "string",
-              "pattern": "^https://([A-Za-z0-9.-]+|\\[[A-Fa-f0-9:]+\\])(:[0-9]{1,5})?(/[^\\s?#]*)?$"
-            },
+            "issuer": {"$ref": "#/definitions/httpsEndpoint"},
+            "clientAuthMethod": {"enum": ["", "client_secret_basic", "client_secret_post", "none"]},
             "clientId": {"type": "string", "pattern": "\\S"},
             "audience": {"type": "string", "pattern": "\\S"},
             "workspaceClaim": {"type": "string", "pattern": "\\S"},
             "rolesClaim": {"type": "string", "pattern": "\\S"},
             "requiredScope": {"type": "string"}
           },
-          "required": ["issuer", "clientId", "audience", "workspaceClaim", "rolesClaim", "requiredScope"]
+          "required": ["issuer", "clientId", "clientAuthMethod", "audience", "workspaceClaim", "rolesClaim", "requiredScope"]
         },
+        "metricsWorkspace": {"type": "string"},
         "publicSharing": {"type": "boolean"},
         "interactive": {"type": "boolean"},
         "signupUrl": {
@@ -110,7 +110,7 @@
           ]
         }
       },
-      "required": ["controlHost", "sitesDomain", "oidc", "publicSharing", "interactive", "signupUrl"]
+      "required": ["controlHost", "sitesDomain", "oidc", "metricsWorkspace", "publicSharing", "interactive", "signupUrl"]
     },
     "existingSecret": {
       "type": "object",
@@ -129,6 +129,30 @@
         }
       },
       "required": ["name", "keys"]
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint", "headersSecret"],
+      "properties": {
+        "endpoint": {
+          "anyOf": [
+            {"const": ""},
+            {"$ref": "#/definitions/httpsEndpoint"}
+          ]
+        },
+        "headersSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": {"anyOf": [{"const": ""}, {"$ref": "#/definitions/dnsName"}]},
+            "key": {"$ref": "#/definitions/key"}
+          }
+        }
+      },
+      "if": {"properties": {"endpoint": {"const": ""}}},
+      "then": {"properties": {"headersSecret": {"properties": {"name": {"const": ""}}}}}
     },
     "image": {
       "type": "object",
@@ -154,7 +178,7 @@
     },
     "replicaCount": {"type": "integer", "minimum": 1},
     "updateStrategy": {"type": "string", "enum": ["Recreate", "RollingUpdate"]},
-    "terminationGracePeriodSeconds": {"type": "integer", "minimum": 13},
+    "terminationGracePeriodSeconds": {"type": "integer", "minimum": 18},
     "pdb": {
       "type": "object",
       "additionalProperties": false,
@@ -277,6 +301,7 @@
   "required": [
     "config",
     "existingSecret",
+    "telemetry",
     "image",
     "imagePullSecrets",
     "replicaCount",

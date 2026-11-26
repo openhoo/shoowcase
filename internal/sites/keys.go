@@ -67,7 +67,7 @@ func (s *Store) CreateKey(ctx context.Context, a Actor, name, scope string, days
 	if _, e = tx.ExecContext(ctx, "INSERT INTO sc_agent_keys(id,workspace,subject,name,scope,digest,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", key.ID, a.Workspace, a.Subject, name, scope, sum([]byte(secret)), now.Unix(), key.ExpiresAt.Unix()); e != nil {
 		return zero, "", e
 	}
-	if e = recordAccountEvent(ctx, tx, a, "key_created", key.ID); e != nil {
+	if e = recordAccountChange(ctx, tx, a, "key_created", key.ID, "", scope); e != nil {
 		return zero, "", e
 	}
 	if e = tx.Commit(); e != nil {
@@ -94,26 +94,25 @@ func KeyID(secret string) string {
 }
 func invalidKey() error { return fail("unauthorized", "This agent key is not valid.") }
 
-const keyPrincipal = `SELECT k.workspace,k.subject,k.scope,k.digest,m.identity_role,m.ceiling
+const keyPrincipal = `SELECT k.workspace,k.subject,k.scope,k.digest,m.identity_role,m.ceiling,(w.access_mode='managed'),` + groupLevelSQL + `
 	FROM sc_agent_keys k JOIN sc_members m ON m.workspace=k.workspace AND m.subject=k.subject
+	JOIN sc_workspace w ON w.id=k.workspace
 	WHERE k.id=$1 AND NOT k.revoked AND NOT m.disabled AND k.expires_at>$2`
 
 func readKey(ctx context.Context, q queryer, id string) (a Actor, digest string, err error) {
-	var scope, idp, ceiling string
-	err = q.QueryRowContext(ctx, keyPrincipal, id, time.Now().Unix()).Scan(&a.Workspace, &a.Subject, &scope, &digest, &idp, &ceiling)
+	var scope string
+	var m Account
+	err = q.QueryRowContext(ctx, keyPrincipal, id, time.Now().Unix()).Scan(&a.Workspace, &a.Subject, &scope, &digest, &m.IdentityRole, &m.Ceiling, &m.managed, &m.groupLevel)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Actor{}, "", invalidKey()
 	}
 	if err != nil {
 		return Actor{}, "", err
 	}
-	if roleLevel(scope) < 1 || roleLevel(scope) > 3 || roleLevel(idp) < 1 {
+	if roleLevel(scope) < 1 || roleLevel(scope) > 3 || roleLevel(m.IdentityRole) < 1 {
 		return Actor{}, "", invalidKey()
 	}
-	a.Role = minGrant(scope, idp)
-	if ceiling != "" {
-		a.Role = minGrant(a.Role, ceiling)
-	}
+	a.Role = m.effective(scope)
 	if rank(a) < 1 {
 		return Actor{}, "", invalidKey()
 	}

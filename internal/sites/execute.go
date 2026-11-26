@@ -23,6 +23,7 @@ const (
 )
 
 type mutation struct {
+	GroupID         string      `json:"group_id,omitempty"` // Omit to preserve canonical mutation hashes from older releases.
 	Name            string      `json:"name"`
 	Slug            string      `json:"slug"`
 	Site            string      `json:"site_id"`
@@ -45,7 +46,7 @@ type lookup struct {
 }
 
 var fields = map[string]map[string]bool{
-	"create_site": wordset("name slug request_id"), "list_sites": wordset("cursor limit"), "get_site": wordset("site_id path revision cursor limit view"),
+	"list_site_groups": {}, "create_site": wordset("name slug request_id group_id"), "list_sites": wordset("cursor limit"), "get_site": wordset("site_id path revision cursor limit view"),
 	"upload_files": wordset("site_id expected_revision files delete_paths request_id"), "publish_site": wordset("site_id revision request_id"), "set_site_access": wordset("site_id visibility revision request_id"), "rollback_site": wordset("site_id release_id expected_release_id request_id"),
 }
 
@@ -87,7 +88,7 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 	switch tool {
 	case "list_sites", "get_site":
 		level = 1
-	case "create_site", "upload_files":
+	case "create_site", "upload_files", "list_site_groups":
 		level = 2
 	}
 	if e := actorErr(a, level); e != nil {
@@ -96,6 +97,13 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 	m, e := checkedFields(raw, tool)
 	if e != nil {
 		return nil, e
+	}
+	if tool == "list_site_groups" {
+		opts, err := s.CreationGroups(ctx, a)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"groups": opts.Groups, "allow_unassigned": opts.AllowUnassigned}, nil
 	}
 	if level == 1 {
 		var q lookup
@@ -119,6 +127,9 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 		p.Name = strings.TrimSpace(p.Name)
 		if p.Name == "" || utf8.RuneCountInString(p.Name) > 100 || strings.ContainsFunc(p.Name, unicode.IsControl) {
 			return nil, bad("Site name must contain 1–100 characters without control characters.")
+		}
+		if _, has := m["group_id"]; has && !idRE.MatchString(p.GroupID) {
+			return nil, bad("Provide a valid group_id or omit it.")
 		}
 		if _, has := m["slug"]; has && !validSlug(p.Slug) {
 			return nil, bad("Invalid or reserved slug.")
@@ -247,18 +258,18 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 	return effectiveAudience(ctx, res), nil
 }
 func create(ctx context.Context, tx *sql.Tx, a Actor, p mutation) (record, error) {
-	var n int
-	if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM sc_sites WHERE workspace=$1", a.Workspace).Scan(&n); e != nil {
-		return record{}, e
+	group, err := creationGroup(ctx, tx, a, p.GroupID)
+	if err != nil {
+		return record{}, err
 	}
-	if n >= MaxSitesPerWorkspace {
-		return record{}, fail("quota_exceeded", "Workspace site limit reached.")
+	if err = checkCharge(ctx, tx, a.Workspace, group, QuotaUsage{Sites: 1}); err != nil {
+		return record{}, err
 	}
 	slug := p.Slug
 	if slug == "" {
 		slug = defaultSlug(p.Name)
 	}
-	r := record{site: slug, name: p.Name, visibility: "workspace", draft: id()}
+	r := record{group: group, site: slug, name: p.Name, visibility: "workspace", draft: id()}
 	res, e := tx.ExecContext(ctx, "INSERT INTO sc_sites(id,workspace,name,visibility,draft,live,release_id) VALUES($1,$2,$3,'workspace',$4,'','') ON CONFLICT(id) DO NOTHING", slug, a.Workspace, p.Name, r.draft)
 	if e != nil {
 		return r, e
@@ -269,6 +280,11 @@ func create(ctx context.Context, tx *sql.Tx, a Actor, p mutation) (record, error
 	}
 	if num != 1 {
 		return r, conflict("Site slug is unavailable.")
+	}
+	if group != "" {
+		if _, e = tx.ExecContext(ctx, "INSERT INTO sc_site_groups(workspace,site,group_id) VALUES($1,$2,$3)", a.Workspace, r.site, group); e != nil {
+			return r, e
+		}
 	}
 	_, e = tx.ExecContext(ctx, "INSERT INTO sc_revisions(id,site,created_at) VALUES($1,$2,$3)", r.draft, r.site, time.Now().UnixMilli())
 	return r, e
@@ -318,12 +334,17 @@ func upload(ctx context.Context, tx *sql.Tx, a Actor, r *record, p mutation, add
 	if len(manifest) > MaxFiles || size > MaxRevisionBytes {
 		return fail("quota_exceeded", "Revision exceeds 100 files or 8 MiB.")
 	}
-	var storage int64
-	if e = tx.QueryRowContext(ctx, "SELECT used_bytes FROM sc_workspace WHERE id=$1", a.Workspace).Scan(&storage); e != nil {
-		return e
+	// Membership protects the assigned draft even if the proposed manifest
+	// is empty. Unassigned legacy sites require assignment only for growth.
+	if r.group != "" || size > 0 {
+		if e = canChargeSiteGroup(ctx, tx, a, r.group); e != nil {
+			return e
+		}
 	}
-	if storage+int64(size) > MaxWorkspaceManifestBytes {
-		return fail("quota_exceeded", "Workspace revision history exceeds 2 GiB.")
+	if size > 0 {
+		if e = checkCharge(ctx, tx, a.Workspace, r.group, QuotaUsage{Bytes: int64(size)}); e != nil {
+			return e
+		}
 	}
 	if _, e = tx.ExecContext(ctx, "UPDATE sc_workspace SET used_bytes=used_bytes+$1 WHERE id=$2", size, a.Workspace); e != nil {
 		return e
@@ -344,7 +365,7 @@ func upload(ctx context.Context, tx *sql.Tx, a Actor, r *record, p mutation, add
 			return e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, "UPDATE sc_sites SET draft=$1 WHERE id=$2", next, r.site); e == nil {
+	if _, e = tx.ExecContext(ctx, "UPDATE sc_sites SET draft=$1,retained_bytes=retained_bytes+$2 WHERE workspace=$3 AND id=$4", next, size, a.Workspace, r.site); e == nil {
 		r.draft = next
 	}
 	return e
@@ -458,7 +479,8 @@ func (s *Store) lookup(ctx context.Context, a Actor, tool string, q lookup) (map
 		return nil, e
 	}
 	if tool == "list_sites" {
-		rows, e := tx.QueryContext(ctx, "SELECT id,name,visibility,draft,live,release_id FROM sc_sites WHERE workspace=$1 AND id>$2 ORDER BY id LIMIT $3", a.Workspace, q.Cursor, limit+1)
+		rows, e := tx.QueryContext(ctx, `SELECT s.id,s.name,s.visibility,s.draft,s.live,s.release_id,COALESCE(sg.group_id,'') FROM sc_sites s
+			LEFT JOIN sc_site_groups sg ON sg.workspace=s.workspace AND sg.site=s.id WHERE s.workspace=$1 AND s.id>$2 ORDER BY s.id LIMIT $3`, a.Workspace, q.Cursor, limit+1)
 		if e != nil {
 			return nil, e
 		}
@@ -468,7 +490,7 @@ func (s *Store) lookup(ctx context.Context, a Actor, tool string, q lookup) (map
 		next := ""
 		for rows.Next() {
 			var r record
-			if e = rows.Scan(&r.site, &r.name, &r.visibility, &r.draft, &r.live, &r.release); e != nil {
+			if e = rows.Scan(&r.site, &r.name, &r.visibility, &r.draft, &r.live, &r.release, &r.group); e != nil {
 				return nil, e
 			}
 			if len(list) == limit {
@@ -488,6 +510,17 @@ func (s *Store) lookup(ctx context.Context, a Actor, tool string, q lookup) (map
 		return nil, e
 	}
 	out := effectiveAudience(ctx, r.out())
+	// Expose the same group policy before an editor opens the form or an
+	// agent prepares an upload. The actual write always checks it again.
+	if rank(a) >= 2 && q.View != "releases" {
+		if err := canChargeSiteGroup(ctx, tx, a, r.group); err != nil {
+			var denial *Error
+			if !errors.As(err, &denial) || denial.Code != "forbidden" {
+				return nil, err
+			}
+			out["storage_restriction"] = denial.Message
+		}
+	}
 	if q.View != "" && q.View != "releases" && q.View != "files" {
 		return nil, bad("view must be files or releases.")
 	}

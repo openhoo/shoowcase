@@ -62,7 +62,7 @@ type login struct {
 type handoff struct {
 	Dest            destination
 	Who             Identity
-	Once            string
+	Once, Family    string
 	SessionExp, Exp int64
 }
 
@@ -76,6 +76,9 @@ func (s *Service) consume(ctx context.Context, kind, key string, exp int64) bool
 		ok, e := s.cfg.Consume(ctx, k, t)
 		return ok && e == nil
 	}
+	return s.consumeLocal(k, t)
+}
+func (s *Service) consumeLocal(k string, t time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for k, v := range s.markers {
@@ -89,6 +92,52 @@ func (s *Service) consume(ctx context.Context, kind, key string, exp int64) bool
 	s.markers[k] = t
 	return true
 }
+
+// All host-specific cookies and unfinished handoffs belonging to one browser
+// sign-in share this family. Only its digest is persisted, until session expiry.
+func (s *Service) familyActive(ctx context.Context, family string) bool {
+	if family == "" {
+		return false
+	}
+	key := "logout:" + hash(family)
+	if s.cfg.IsConsumed != nil {
+		spent, err := s.cfg.IsConsumed(ctx, key)
+		return err == nil && !spent
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.markers[key].After(s.now())
+}
+
+func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	v, ok := s.sessionCookie(r)
+	if !ok || r.ParseForm() != nil || !s.validForm(r, v.Who, r.PostForm.Get("csrf")) {
+		deny(w, 403)
+		return
+	}
+	key := "logout:" + hash(v.Family)
+	v.Who.CSRF = ""
+	if s.cfg.RevokeSession != nil {
+		if err := s.cfg.RevokeSession(r.Context(), key, time.Unix(v.Exp, 0), v.Who); err != nil {
+			deny(w, 503)
+			return
+		}
+	} else if !s.consumeLocal(key, time.Unix(v.Exp, 0)) && s.familyActive(r.Context(), v.Family) {
+		deny(w, 503)
+		return
+	}
+	// Keep the family's signed cookie available for a retry if its
+	// revocation or audit write fails.
+	s.cookie(w, "session", "", -1)
+	topRedirect(w, r, "/")
+}
+
+func (s *Service) audit(ctx context.Context, who Identity, action string) bool {
+	who.CSRF = ""
+	return s.cfg.Audit == nil || s.cfg.Audit(ctx, who, action) == nil
+}
+
 func nextPath(raw string) (string, bool) {
 	if raw == "" {
 		return "/", true
@@ -158,13 +207,7 @@ func (s *Service) Handle(w http.ResponseWriter, r *http.Request) bool {
 			deny(w, 405)
 			return true
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 4096)
-		if e := r.ParseForm(); e != nil || !s.ValidCSRF(r, r.PostForm.Get("csrf")) {
-			deny(w, 403)
-			return true
-		}
-		s.cookie(w, "session", "", -1)
-		topRedirect(w, r, "/")
+		s.logout(w, r)
 		return true
 	}
 	if r.Method != "GET" {
@@ -219,21 +262,12 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	topRedirect(w, r, s.control.String()+"/auth/login?ticket="+url.QueryEscape(t))
 }
 func (s *Service) authorize(w http.ResponseWriter, r *http.Request, d destination) {
-	if c, e := r.Cookie(s.name("session")); e == nil {
-		var v session
-		if s.open("session", c.Value, &v) && s.isControl(v.Host) && v.Exp > s.now().Unix() {
-			s.returnTo(w, r, d, v.Who, v.Exp)
-			return
-		}
+	if v, ok := s.liveSession(r); ok {
+		s.returnTo(w, r, d, v.Who, v.Family, v.Exp)
+		return
 	}
 	if s.cfg.Dev {
-		exp := s.now().Add(sessionTTL).Unix()
-		who := s.devIdentity()
-		if !s.mint(w, s.control.Host, who, exp) {
-			deny(w, 500)
-			return
-		}
-		s.returnTo(w, r, d, who, exp)
+		s.completeLogin(w, r, d, s.devIdentity(), s.now().Add(sessionTTL).Unix())
 		return
 	}
 	tx := login{State: random(), Verifier: oauth2.GenerateVerifier(), Nonce: random(), Dest: d, Exp: s.now().Add(authTTL).Unix()}
@@ -253,61 +287,82 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tx login
-	q := r.URL.Query()
+	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil || len(q["state"]) != 1 || len(q["code"]) > 1 || len(q["iss"]) > 1 || len(q["error"]) > 1 {
+		s.rejectCallback(w, 400, "invalid_parameters")
+		return
+	}
+	// RFC 9207: a provider advertising response issuer identification must
+	// supply iss. Any iss, including from older providers, must match exactly.
+	if (s.responseIssuer || q.Has("iss")) && q.Get("iss") != s.cfg.Issuer {
+		s.rejectCallback(w, 400, "issuer_mismatch")
+		return
+	}
 	state := q.Get("state")
 	if len(state) != 43 { // 32 random bytes in unpadded base64url
-		deny(w, 400)
+		s.rejectCallback(w, 400, "invalid_state")
 		return
 	}
 	name := flowKind("oidc", state)
 	c, e := r.Cookie(s.name(name))
 	if e != nil || !s.open("transaction", c.Value, &tx) || !s.destOK(tx.Dest) || !equal(state, tx.State) {
-		deny(w, 400)
+		s.rejectCallback(w, 400, "invalid_transaction")
 		return
 	}
 	// Consume before exchange, across replicas, even if a transient exchange
 	// error requires the author to start a new sign-in.
 	if !s.consume(r.Context(), "oidc", tx.State, tx.Exp) {
-		deny(w, 400)
+		s.rejectCallback(w, 400, "transaction_unavailable")
 		return
 	}
 	s.cookie(w, name, "", -1)
 	if q.Get("code") == "" || len(q.Get("code")) > 4096 || q.Has("error") {
-		deny(w, 400)
+		s.rejectCallback(w, 400, "authorization_unsuccessful")
 		return
 	}
 	ctx := s.oidcCtx(r.Context())
 	tok, e := s.oauth.Exchange(ctx, q.Get("code"), oauth2.VerifierOption(tx.Verifier))
 	if e != nil {
-		deny(w, 401)
+		s.rejectCallback(w, 401, "exchange_failed")
 		return
 	}
 	raw, _ := tok.Extra("id_token").(string)
 	t, e := s.idVerifier.Verify(ctx, raw)
 	if e != nil || !equal(t.Nonce, tx.Nonce) {
-		deny(w, 401)
+		s.rejectCallback(w, 401, "invalid_id_token")
 		return
 	}
 	var az struct {
 		Authorized string `json:"azp"`
 	}
-	if t.Claims(&az) != nil || (len(t.Audience) > 1 || az.Authorized != "") && az.Authorized != s.cfg.ClientID {
-		deny(w, 401)
+	// No other ID token audiences are configured as trusted on this client.
+	if t.Claims(&az) != nil || len(t.Audience) != 1 || t.Audience[0] != s.cfg.ClientID ||
+		(az.Authorized != "" && az.Authorized != s.cfg.ClientID) ||
+		(t.AccessTokenHash != "" && t.VerifyAccessToken(tok.AccessToken) != nil) {
+		s.rejectCallback(w, 401, "invalid_token_binding")
 		return
 	}
 	who, e := s.identity(t)
 	if e != nil {
-		deny(w, 403)
+		s.rejectCallback(w, 403, "missing_identity")
 		return
 	}
 	exp := min(t.Expiry.Unix(), s.now().Add(sessionTTL).Unix())
-	if !s.mint(w, s.control.Host, who, exp) {
+	s.completeLogin(w, r, tx.Dest, who, exp)
+}
+func (s *Service) completeLogin(w http.ResponseWriter, r *http.Request, d destination, who Identity, exp int64) {
+	if !s.audit(r.Context(), who, "auth.login") {
+		deny(w, 503)
+		return
+	}
+	family := random()
+	if !s.mint(w, s.control.Host, family, who, exp) {
 		deny(w, 401)
 		return
 	}
-	s.returnTo(w, r, tx.Dest, who, exp)
+	s.returnTo(w, r, d, who, family, exp)
 }
-func (s *Service) returnTo(w http.ResponseWriter, r *http.Request, d destination, who Identity, exp int64) {
+func (s *Service) returnTo(w http.ResponseWriter, r *http.Request, d destination, who Identity, family string, exp int64) {
 	if !s.destOK(d) {
 		deny(w, 400)
 		return
@@ -317,7 +372,7 @@ func (s *Service) returnTo(w http.ResponseWriter, r *http.Request, d destination
 		return
 	}
 	who.CSRF = ""
-	h := handoff{Dest: d, Who: who, Once: random(), SessionExp: exp, Exp: min(exp, s.now().Add(time.Minute).Unix())}
+	h := handoff{Dest: d, Who: who, Family: family, Once: random(), SessionExp: exp, Exp: min(exp, s.now().Add(time.Minute).Unix())}
 	t, e := s.seal("handoff", h)
 	if e != nil {
 		deny(w, 500)
@@ -333,12 +388,12 @@ func (s *Service) finish(w http.ResponseWriter, r *http.Request) {
 	}
 	name := flowKind("binding", h.Dest.Binding)
 	c, e := r.Cookie(s.name(name))
-	if e != nil || !equal(h.Dest.Binding, hash(c.Value)) || !s.consume(r.Context(), "handoff", h.Once, h.Exp) {
+	if e != nil || !equal(h.Dest.Binding, hash(c.Value)) || !s.familyActive(r.Context(), h.Family) || !s.consume(r.Context(), "handoff", h.Once, h.Exp) {
 		deny(w, 400)
 		return
 	}
 	s.cookie(w, name, "", -1)
-	if !s.mint(w, h.Dest.Host, h.Who, h.SessionExp) {
+	if !s.mint(w, h.Dest.Host, h.Family, h.Who, h.SessionExp) {
 		deny(w, 401)
 		return
 	}

@@ -36,10 +36,12 @@ var accountSchema = []string{
 }
 
 type Account struct {
-	Subject, Workspace, DisplayName, IdentityRole, Ceiling, Role string
-	Disabled                                                     bool
-	CreatedAt                                                    time.Time
-	identityAt                                                   int64
+	Subject, Workspace, WorkspaceDisplayName, DisplayName, IdentityRole, Ceiling, Role string
+	Disabled                                                                           bool
+	CreatedAt                                                                          time.Time
+	identityAt                                                                         int64
+	managed                                                                            bool
+	groupLevel                                                                         int
 }
 
 type WorkspaceSummary struct{ Members, Sites, ActiveKeys int }
@@ -68,7 +70,18 @@ type queryer interface {
 }
 type scanner interface{ Scan(...any) error }
 
-const memberColumns = "workspace,subject,display_name,identity_role,identity_at,ceiling,disabled,created_at"
+// SQL aliases m and w select the member and its verified workspace. Compute the
+// strongest group role in the same snapshot as suspension and role ceilings.
+const groupLevelSQL = `COALESCE((SELECT MAX(CASE g.role WHEN 'publisher' THEN 3 WHEN 'editor' THEN 2 ELSE 1 END)
+    FROM sc_group_members gm JOIN sc_groups g ON g.workspace=gm.workspace AND g.id=gm.group_id
+    WHERE gm.workspace=m.workspace AND gm.subject=m.subject),1)`
+
+// For an unenrolled identity the LEFT JOIN yields only tenant settings. The
+// empty subject distinguishes that row; authenticated accounts never have one.
+const memberColumns = `w.id,w.display_name,COALESCE(m.subject,''),COALESCE(m.display_name,''),COALESCE(m.identity_role,''),
+	COALESCE(m.identity_at,0),COALESCE(m.ceiling,''),COALESCE(m.disabled,FALSE),COALESCE(m.created_at,0),
+	(w.access_mode='managed'),` + groupLevelSQL
+const memberFrom = " FROM sc_members m JOIN sc_workspace w ON w.id=m.workspace "
 
 func roleLevel(role string) int {
 	switch role {
@@ -91,6 +104,16 @@ func minGrant(a, b string) string {
 }
 func (m Account) effective(claim string) string {
 	r := minGrant(m.IdentityRole, claim)
+	if m.managed && m.IdentityRole != "admin" {
+		groupRole := "reader"
+		switch m.groupLevel {
+		case 2:
+			groupRole = "editor"
+		case 3:
+			groupRole = "publisher"
+		}
+		r = minGrant(r, groupRole)
+	}
 	if m.Ceiling != "" {
 		r = minGrant(r, m.Ceiling)
 	}
@@ -99,17 +122,24 @@ func (m Account) effective(claim string) string {
 func scanMember(row scanner) (Account, error) {
 	var m Account
 	var t int64
-	e := row.Scan(&m.Workspace, &m.Subject, &m.DisplayName, &m.IdentityRole, &m.identityAt, &m.Ceiling, &m.Disabled, &t)
+	e := row.Scan(&m.Workspace, &m.WorkspaceDisplayName, &m.Subject, &m.DisplayName, &m.IdentityRole, &m.identityAt, &m.Ceiling, &m.Disabled, &t, &m.managed, &m.groupLevel)
 	m.CreatedAt = time.UnixMilli(t).UTC()
 	m.Role = m.effective(m.IdentityRole)
 	return m, e
 }
 func member(ctx context.Context, q queryer, a Actor) (Account, bool, error) {
-	m, e := scanMember(q.QueryRowContext(ctx, "SELECT "+memberColumns+" FROM sc_members WHERE workspace=$1 AND subject=$2", a.Workspace, a.Subject))
+	m, e := scanMember(q.QueryRowContext(ctx, "SELECT "+memberColumns+` FROM sc_workspace w
+		LEFT JOIN sc_members m ON m.workspace=w.id AND m.subject=$2 WHERE w.id=$1`, a.Workspace, a.Subject))
 	if errors.Is(e, sql.ErrNoRows) {
 		return Account{}, false, nil
 	}
-	return m, e == nil, e
+	return m, e == nil && m.Subject != "", e
+}
+
+// RequiresProvisioning reports whether a verified identity needs its workspace
+// administrator to create a member record. An IdP administrator can self-enroll.
+func (m Account) RequiresProvisioning(ctx context.Context, a Actor) bool {
+	return m.Subject == "" && m.managed && (a.Role != "admin" || issued(ctx) <= 0)
 }
 func labelOK(n string) bool {
 	return n != "" && utf8.ValidString(n) && utf8.RuneCountInString(n) <= 80 && !strings.ContainsFunc(n, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) })
@@ -148,6 +178,12 @@ func (s *Store) accountWrite(ctx context.Context, a Actor) (*sql.Tx, error) {
 }
 
 func recordAccountEvent(ctx context.Context, tx *sql.Tx, a Actor, action, target string) error {
+	return recordAccountChange(ctx, tx, a, action, target, "", "")
+}
+func recordAccountChange(ctx context.Context, tx *sql.Tx, a Actor, action, target, before, after string) error {
+	if err := appendAudit(ctx, tx, a, AuditEvent{Action: action, Target: target, Previous: before, Value: after}); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, "INSERT INTO sc_account_events(id,workspace,subject,action,target,at) VALUES($1,$2,$3,$4,$5,$6)", id(), a.Workspace, a.Subject, action, target, time.Now().UnixMicro())
 	if err != nil {
 		return err
@@ -179,22 +215,17 @@ func (s *Store) EnrollAccount(ctx context.Context, a Actor, displayName string) 
 		m.Role = m.effective(a.Role)
 		return m, nil
 	}
-	var n int
-	if e = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM sc_members WHERE workspace=$1", a.Workspace).Scan(&n); e != nil {
-		return Account{}, e
-	}
-	if n >= maxMembers {
-		return Account{}, fail("quota_exceeded", "Workspace account limit reached. Contact your administrator.")
+	if m.RequiresProvisioning(ctx, a) {
+		return Account{}, managedMembershipRequired()
 	}
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	_, e = tx.ExecContext(ctx, "INSERT INTO sc_members(workspace,subject,display_name,identity_role,identity_at,created_at) VALUES($1,$2,$3,$4,$5,$6)", a.Workspace, a.Subject, displayName, a.Role, issued(ctx), now.UnixMilli())
-	if e != nil {
+	if e = insertMember(ctx, tx, a, displayName, issued(ctx), now); e != nil {
 		return Account{}, e
 	}
 	if e = recordAccountEvent(ctx, tx, a, "account_created", a.Subject); e != nil {
 		return Account{}, e
 	}
-	m = Account{Workspace: a.Workspace, Subject: a.Subject, DisplayName: displayName, IdentityRole: a.Role, Role: a.Role, CreatedAt: now}
+	m = Account{Workspace: a.Workspace, WorkspaceDisplayName: m.WorkspaceDisplayName, Subject: a.Subject, DisplayName: displayName, IdentityRole: a.Role, Role: a.Role, CreatedAt: now}
 	return m, tx.Commit()
 }
 
@@ -226,7 +257,7 @@ func (s *Store) AccountFor(ctx context.Context, a Actor) (Account, bool, error) 
 				return Account{}, false, e
 			}
 			if m.IdentityRole != a.Role {
-				if e = recordAccountEvent(ctx, tx, a, "identity_role_updated", a.Subject); e != nil {
+				if e = recordAccountChange(ctx, tx, a, "identity_role_updated", a.Subject, m.IdentityRole, a.Role); e != nil {
 					return Account{}, false, e
 				}
 			}
@@ -243,8 +274,8 @@ func (s *Store) AccountFor(ctx context.Context, a Actor) (Account, bool, error) 
 	return m, true, nil
 }
 
-// LimitActor keeps existing IdP-only clients working before enrollment, and
-// enforces the workspace's local restrictions for every enrolled identity.
+// LimitActor permits unenrolled IdP clients only in identity mode. Enrolled
+// members are subject to tenant restrictions in both modes.
 func (s *Store) LimitActor(ctx context.Context, a Actor) (Actor, error) {
 	m, ok, e := s.AccountFor(ctx, a)
 	if e != nil {
@@ -252,6 +283,8 @@ func (s *Store) LimitActor(ctx context.Context, a Actor) (Actor, error) {
 	}
 	if ok {
 		a.Role = m.Role
+	} else if m.managed {
+		return Actor{}, managedMembershipRequired()
 	}
 	return a, nil
 }
@@ -269,8 +302,13 @@ func accountPolicy(ctx context.Context, q queryer, a Actor, require bool) (Actor
 	if e != nil {
 		return Actor{}, e
 	}
-	if !ok && require {
-		return Actor{}, membershipRequired()
+	if !ok {
+		if require {
+			return Actor{}, membershipRequired()
+		}
+		if m.managed {
+			return Actor{}, managedMembershipRequired()
+		}
 	}
 	if ok {
 		if m.Disabled {
@@ -341,7 +379,7 @@ func (s *Store) SetMember(ctx context.Context, a Actor, subject, ceiling string,
 		}
 	}
 	if m.Ceiling != ceiling {
-		if e = recordAccountEvent(ctx, tx, a, "account_role_changed", subject); e != nil {
+		if e = recordAccountChange(ctx, tx, a, "account_role_changed", subject, m.Ceiling, ceiling); e != nil {
 			return e
 		}
 	}
@@ -360,7 +398,7 @@ func (s *Store) ListAccounts(ctx context.Context, a Actor, after string) ([]Acco
 	if _, e = authorizeMember(ctx, tx, a, 4); e != nil {
 		return nil, "", e
 	}
-	rows, e := tx.QueryContext(ctx, "SELECT "+memberColumns+" FROM sc_members WHERE workspace=$1 AND subject>$2 ORDER BY subject LIMIT $3", a.Workspace, after, accountPage+1)
+	rows, e := tx.QueryContext(ctx, "SELECT "+memberColumns+memberFrom+" WHERE m.workspace=$1 AND m.subject>$2 ORDER BY m.subject LIMIT $3", a.Workspace, after, accountPage+1)
 	if e != nil {
 		return nil, "", e
 	}

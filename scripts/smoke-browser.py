@@ -60,7 +60,7 @@ async def local_server(binary, *, fixture_workspace=None, fixture_paths=False):
     control = f"http://localhost:{port}"
     with tempfile.TemporaryDirectory(prefix="shoowcase-browser-") as state:
         # The trial must never touch an existing database or inherit a production token.
-        env = {k: v for k, v in os.environ.items() if not k.startswith("SHOOWCASE_")}
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("SHOOWCASE_", "OTEL_"))}
         env.update(SHOOWCASE_LISTEN=f"127.0.0.1:{port}", SHOOWCASE_PUBLIC="true", SHOOWCASE_STATE_DIR=state)
         if fixture_workspace:
             env["SHOOWCASE_DEV_WORKSPACE"] = fixture_workspace

@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import hashlib
 import io
+import re
 import zipfile
 from functools import cache
 from importlib import import_module
@@ -191,6 +192,92 @@ async def revoke_pending(page, pending_review, control, endpoint, secret, agent,
     check(await page.get_by_text("extra.css", exact=True).count() == 0, "revoked ticket changed draft")
 
 
+async def admin_image(page, directory, name):
+    if directory is None:
+        return
+    # Only called on the disposable tenant fixture. Never capture key receipts
+    # or sign-in callbacks. Restore the mobile viewport for the acceptance test.
+    previous = page.viewport_size
+    try:
+        await page.set_viewport_size({"width": 1200, "height": 840})
+        await page.evaluate("document.fonts.ready")
+        nav = page.get_by_role("navigation", name="Administration views")
+        await nav.evaluate("""el => { document.activeElement.blur(); window.scrollTo({
+            top: window.scrollY + el.getBoundingClientRect().top - 24, behavior: 'instant'
+        }); }""")
+        await page.evaluate("new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))")
+        directory.mkdir(parents=True, exist_ok=True)
+        await page.screenshot(path=directory / f"{name}.png", animations="disabled")
+    finally:
+        await page.set_viewport_size(previous)
+
+
+async def manage_workspace_access(page, control, media=None):
+    await page.goto(control + "/admin")
+    nav = page.get_by_role("navigation", name="Administration views")
+    subject = "workshop-editor"
+    await page.get_by_text("Add a member", exact=True).click()
+    await page.get_by_label("Sign-in ID", exact=True).fill(subject)
+    await page.get_by_label("Display name", exact=True).fill("Sam Editor")
+    await fits(page, "provision member")
+    await page.get_by_role("button", name="Add member").click()
+    await expect(page.get_by_text("Sam Editor", exact=True)).to_be_visible()
+
+    await nav.get_by_role("link", name="Groups").click()
+    await page.get_by_label("Group name", exact=True).fill("Authors")
+    await page.get_by_label("Group role", exact=True).select_option("editor")
+    await fits(page, "create group")
+    await page.get_by_role("button", name="Create group").click()
+    await expect(page.get_by_role("heading", name="Authors")).to_be_visible()
+    await page.get_by_label("Member sign-in ID").fill(subject)
+    await page.get_by_role("button", name="Add to group").click()
+    await expect(page.get_by_role("button", name=f"Remove {subject} from group")).to_be_visible()
+    await page.get_by_text("Edit group", exact=True).click()
+    await page.get_by_label("Current group name").fill("Releases")
+    await page.get_by_label("Current group role").select_option("publisher")
+    await fits(page, "edit populated group")
+    await page.get_by_role("button", name="Save group").click()
+    await expect(page.get_by_role("heading", name="Releases")).to_be_visible()
+
+    await nav.get_by_role("link", name="Workspace settings").click()
+    await page.get_by_label("Access mode").select_option("managed")
+    await fits(page, "workspace access settings")
+    await page.get_by_role("button", name="Save workspace settings").click()
+    await expect(page.get_by_label("Access mode")).to_have_value("managed")
+    await admin_image(page, media, "access-mode")
+    await nav.get_by_role("link", name="Groups").click()
+    await page.get_by_role("link", name="Releases").click()
+    await admin_image(page, media, "groups")
+    await page.get_by_role("button", name=f"Remove {subject} from group").click()
+    await expect(page.get_by_text("This group has no members.")).to_be_visible()
+    await page.get_by_text("Delete group", exact=True).first.click()
+    await page.get_by_label("Remove this group and all its grants.").check()
+    await page.get_by_role("button", name="Delete group").click()
+    await expect(page.get_by_text("No groups yet.")).to_be_visible()
+    await nav.get_by_role("link", name="Workspace settings").click()
+    await page.get_by_label("Access mode").select_option("identity")
+    await page.get_by_role("button", name="Save workspace settings").click()
+    await expect(page.get_by_label("Access mode")).to_have_value("identity")
+
+    await nav.get_by_role("link", name="Activity").click()
+    await expect(page.get_by_role("heading", name="Audit log")).to_be_visible()
+    await expect(page.get_by_text("Group deleted", exact=True)).to_be_visible()
+    await fits(page, "tenant audit log")
+    await admin_image(page, media, "audit-log")
+    export = await page.get_by_role("link", name="Open JSON export").get_attribute("href")
+    response = await page.context.request.get(control + export)
+    check(response.status == 200, "audit export unavailable")
+    report = await response.json()
+    events = report["events"]
+    steps = [e["action"] for e in events]
+    expected = ["member_provisioned", "group_created", "group_member_added", "group_updated",
+                "workspace_access_changed", "group_member_removed", "group_deleted", "workspace_access_changed"]
+    check([step for step in steps if step in expected] == expected, "missing or unordered tenant audit records")
+    check(report["next_after"] == events[-1]["sequence"], "audit export checkpoint differs from last event")
+    tail = await page.context.request.get(control + export, params={"after": str(report["next_after"])})
+    check(tail.status == 200 and (await tail.json())["events"] == [], "audit export repeated checkpointed events")
+
+
 async def filter_directory(page):
     async def open_filters():
         toggle = page.get_by_role("button", name="Filter and sort")
@@ -220,7 +307,71 @@ async def filter_directory(page):
     await expect(rows).to_have_text(["Field handbook", "Onboarding notes", "Workshop tally"])
 
 
-async def workspace(binary, channel, screenshot):
+async def check_group_budget(page, control, media):
+    await page.goto(control + "/admin")
+    nav = page.get_by_role("navigation", name="Administration views")
+    await nav.get_by_role("link", name="Groups").click()
+    group = "Field team"
+    await page.get_by_label("Group name", exact=True).fill(group)
+    await page.get_by_label("Group role", exact=True).select_option("editor")
+    await page.get_by_role("button", name="Create group").click()
+    await expect(page.get_by_role("heading", name=group)).to_be_visible()
+    await nav.get_by_role("link", name="Quotas").click()
+
+    first = "<p>Field guide</p>"
+    size = str(len(first.encode()))
+    summary = f"Edit limits for {group}"
+    await page.get_by_text(summary, exact=True).click()
+    form = page.locator("details").filter(has=page.get_by_text(summary, exact=True))
+    await form.get_by_label("Maximum sites").fill("1")
+    await form.get_by_label("Storage unit").select_option("B")
+    await form.get_by_label("Maximum storage").fill(size)
+    await fits(page, "group quota form")
+    await form.get_by_role("button", name="Save limits").click()
+
+    async def create_site(name, slug):
+        await page.goto(control + "/sites/new")
+        await page.get_by_label("Site name").fill(name)
+        await page.get_by_label("Site address").fill(slug)
+        await page.get_by_label("Budget group").select_option(label=group)
+        async with page.expect_response(lambda resp: resp.request.method == "POST") as submitted:
+            await page.get_by_role("button", name="Create site").click()
+        return (await submitted.value).status
+
+    name, slug = "Field notes", "quota-field-notes"
+    check(await create_site(name, slug) == 303, "group could not create its first site")
+    await expect(page.get_by_role("heading", name=name, exact=True)).to_be_visible()
+    await page.get_by_role("link", name="New file").click()
+    await page.get_by_label("File path").fill("index.html")
+    await page.get_by_label("File contents").fill(first)
+    await page.get_by_role("button", name="Save file").click()
+    await expect(page.get_by_role("status")).to_have_text("File saved to the draft.")
+    await page.get_by_role("link", name="index.html", exact=True).click()
+    await page.get_by_label("File contents").fill("<p>Updated</p>")
+    await page.get_by_role("button", name="Save file").click()
+    await expect(page.get_by_role("alert")).to_contain_text(re.compile(r"group.*(storage|bytes)", re.I))
+    await page.goto(control + f"/sites/{slug}")
+    await page.get_by_role("link", name="index.html", exact=True).click()
+    await expect(page.get_by_label("File contents")).to_have_value(first)
+
+    check(await create_site("Over budget", "quota-over-budget") == 429, "group created a second site")
+    await expect(page.get_by_role("alert")).to_contain_text(re.compile(r"group.*site", re.I))
+    await page.goto(control + "/admin?view=quotas")
+    budget = page.get_by_role("listitem").filter(has=page.get_by_role("heading", name=group, exact=True))
+    usage = budget.get_by_role("definition")
+    await expect(usage).to_have_text([re.compile(r"^1 of 1\b.*At limit"), re.compile(rf"^{size} B of {size} B\b.*At limit")])
+    await fits(page, "budget usage at the group limits")
+    await admin_image(page, media, "quotas")
+    await page.get_by_role("link", name=f"Change group for {name}", exact=True).click()
+    await page.get_by_label(f"Group for {name}", exact=True).select_option("")
+    await page.get_by_role("button", name="Save assignment").click()
+    await expect(usage).to_have_text([re.compile(r"^0 of 1\b"), re.compile(rf"^0 B of {size} B\b")])
+    await nav.get_by_role("link", name="Activity").click()
+    await expect(page.get_by_text("Site group changed", exact=True)).to_be_visible()
+    await expect(page.get_by_text("Group limits changed", exact=True)).to_be_visible()
+
+
+async def workspace(binary, channel, screenshot, admin_media):
     async with browser_smoke.local_server(binary) as (endpoint, _, http), async_playwright() as pw:
         control = endpoint.removesuffix("/mcp")
         browser = await pw.chromium.launch(channel=channel)
@@ -229,6 +380,7 @@ async def workspace(binary, channel, screenshot):
             page = await ctx.new_page()
             anon = await browser.new_page(viewport={"width": 320, "height": 780})
             await enroll(page, control)
+            await manage_workspace_access(page, control, admin_media)
             secret = await create_key(page, endpoint)
             async with browser_smoke.connect(endpoint, secret) as agent:
                 await add_sample_sites(agent)
@@ -243,6 +395,8 @@ async def workspace(binary, channel, screenshot):
                 await page.set_viewport_size({"width": 1200, "height": 810})
                 await page.evaluate("document.activeElement.blur()")
                 await page.screenshot(path=screenshot, animations="disabled")
+                await page.set_viewport_size({"width": 320, "height": 780})
+            await check_group_budget(page, control, admin_media)
         finally:
             await browser.close()
 
@@ -252,6 +406,7 @@ if __name__ == "__main__":
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--browser-channel", default="chrome")
     parser.add_argument("--screenshot", type=Path, help="optional desktop PNG of the synthetic workspace")
+    parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access, audit and quota screenshots")
     args = parser.parse_args()
-    asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot))
-    print("PASS: filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")
+    asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot, args.admin_media))
+    print("PASS: tenant administration, group site and storage quotas, audit export, filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")

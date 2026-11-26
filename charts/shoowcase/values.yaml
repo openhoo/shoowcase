@@ -6,10 +6,14 @@ config:
   oidc:
     issuer: ""
     clientId: ""
+    # Empty: discover the confidential method. Use "none" for a registered public client.
+    clientAuthMethod: ""
     audience: ""
     workspaceClaim: workspace
     rolesClaim: roles
     requiredScope: ""
+  # Empty disables legacy /metrics. Otherwise only this operator workspace's IdP admins can scrape it.
+  metricsWorkspace: ""
   publicSharing: false
   interactive: true
   signupUrl: ""
@@ -22,9 +26,16 @@ existingSecret:
     clientSecret: client-secret
     sessionKey: session-key
 
+# Optional OTLP/HTTP export of traces, metrics and logs. Supply authentication only by Secret reference.
+telemetry:
+  endpoint: ""
+  headersSecret:
+    name: ""
+    key: otlp-headers
+
 image:
   repository: ghcr.io/openhoo/shoowcase
-  digest: sha256:6f9e34dfee955ca2921a09e242ecd9805b63b31451fb629b3f90b1e89de537d7
+  digest: sha256:831f3a34875545da581bfa1288ad42350a9fb8fa5b3ca767fdae7eb0204daa33
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 

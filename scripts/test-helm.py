@@ -90,6 +90,9 @@ class ChartTest(unittest.TestCase):
         self.assertEqual(env["SHOOWCASE_CONTROL_URL"]["value"], "https://" + CONTROL)
         self.assertEqual(env["SHOOWCASE_SITES_DOMAIN"]["value"], SITES)
         self.assertEqual(env["SHOOWCASE_PUBLIC"]["value"], "false")
+        self.assertEqual(env["SHOOWCASE_METRICS_WORKSPACE"]["value"], "")
+        self.assertNotIn("OTEL_EXPORTER_OTLP_ENDPOINT", env)
+        self.assertNotIn("OTEL_EXPORTER_OTLP_HEADERS", env)
         for var, key in {"DATABASE_URL": "database-url", "CLIENT_SECRET": "client-secret", "SESSION_KEY": "session-key"}.items():
             ref = env["SHOOWCASE_" + var]["valueFrom"]["secretKeyRef"]
             self.assertEqual((ref["name"], ref["key"]), ("external-credentials", key))
@@ -145,6 +148,19 @@ class ChartTest(unittest.TestCase):
         else:
             self.fail("CA ConfigMap was not mounted")
 
+    def test_public_oidc_client_and_operator_telemetry(self):
+        docs = render(CHART, "--set", "config.oidc.clientAuthMethod=none,config.metricsWorkspace=ops",
+                      "--set", "telemetry.endpoint=https://collector.example.org:4318",
+                      "--set", "telemetry.headersSecret.name=collector-credentials,telemetry.headersSecret.key=headers")
+        app, = only(docs, "Deployment")["spec"]["template"]["spec"]["containers"]
+        env = {item["name"]: item for item in app["env"]}
+        self.assertEqual(env["SHOOWCASE_CLIENT_AUTH_METHOD"]["value"], "none")
+        self.assertNotIn("SHOOWCASE_CLIENT_SECRET", env)
+        self.assertEqual(env["SHOOWCASE_METRICS_WORKSPACE"]["value"], "ops")
+        self.assertEqual(env["OTEL_EXPORTER_OTLP_ENDPOINT"]["value"], "https://collector.example.org:4318")
+        self.assertEqual(env["OTEL_EXPORTER_OTLP_HEADERS"]["valueFrom"]["secretKeyRef"],
+                         {"name": "collector-credentials", "key": "headers"})
+
     def test_autoscaling(self):
         docs = render(CHART, "--set", "autoscaling.enabled=true,autoscaling.minReplicas=3",
                       "--set", "autoscaling.maxReplicas=7,autoscaling.targetCPUUtilizationPercentage=65")
@@ -161,7 +177,10 @@ class ChartTest(unittest.TestCase):
     def test_rejects_invalid_installs(self):
         for args in ([], ["--set-string", "image.digest=latest"], ["--set", "replicaCount=0"],
                      ["--set", "ingress.enabled=true"], ["--set-string", "config.publicSharing=fales"],
-                     ["--set", "config.oidc.audience=browser"], ["--set", "config.controlHost=" + SITES],
+                     ["--set", "config.oidc.audience=browser"],
+                     ["--set", "config.oidc.clientAuthMethod=private_key_jwt"],
+                     ["--set", "telemetry.endpoint=http://collector.example.org"],
+                     ["--set", "telemetry.headersSecret.name=credentials"], ["--set", "config.controlHost=" + SITES],
                      ["--set", "autoscaling.enabled=true,autoscaling.minReplicas=8,autoscaling.maxReplicas=2"],
                      ["--set", "config.oidc.clientSecret=unmanaged"], ["--set", "existingSecret.name="]):
             with self.subTest(flags=args):

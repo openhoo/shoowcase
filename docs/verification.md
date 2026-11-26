@@ -79,6 +79,30 @@ To repeat the browser and machine checks, see the [operator skill](../skills/sho
 
 On a trusted checkout, verify a published v0.2 or later release with `python3 scripts/verify-published.py TAG TRUSTED_COMMIT --out NEW_DIRECTORY`. This checks the public downloads, corresponding Git source, archives, dependency inventories, image contents on both Linux architectures and GitHub build provenance. It requires Python, Git, Go and an authenticated GitHub CLI for the provenance check; downloads use anonymous reads.
 
+## Managed access, audit and telemetry (schema 3)
+
+The feature was exercised locally with synthetic accounts and data on November 26, 2026.
+
+| Area | What was verified |
+| --- | --- |
+| OIDC | A real Chrome session signed in to Keycloak 26.8.2 using required S256 and a confidential client. Shoowcase ran in production mode with HTTPS OIDC endpoints and PostgreSQL certificate verification. The signed workspace and role allowed the user to enroll and open the admin console. After sign-out the previous session could no longer read the audit export. The ledger contained one sign-in and one sign-out for the Keycloak subject. |
+| Tenant access | The race suite ran against SQLite and PostgreSQL. It exercised tenant isolation, managed membership, group changes and stale forms, personal keys, private reads and the signed upload and approval paths. The workspace browser smoke exercised the administration views and audit export, including keyboard, axe and narrow-screen checks. |
+| Recovery | The upgrade drill used binaries built from the v0.1.1 and v0.2.0 Git tags. Both SQLite and PostgreSQL 16.16 preserved private data and history. A v0.2.0 member’s existing reader key stayed read-only after upgrade and after restoring the pre-upgrade snapshot. The audit export resumed at its checkpoint and distinguished draft and live revisions after rollback. |
+| OpenTelemetry | The OTLP tests decoded trace, metric and log payloads, checked correlation and rejected a synthetic private identifier in all three signals. A separate loopback run with the official OpenTelemetry Collector 0.166.0 accepted all three signals from the service. |
+| Grafana | Grafana 13.3.2 displayed measurements from Prometheus 3.16.0 and Collector Contrib 0.166.0 in all 18 panels. In Chrome, switching between the three dashboards preserved the service, replica and time range in all six directions. |
+
+## Reproduce the documentation screenshots
+
+The [Grafana guide](grafana.md) includes three dashboards. `python3 scripts/check-grafana.py` evaluates their queries using Prometheus. The [browser capture](../scripts/capture-grafana.py) exercises the service against the local monitoring stack, checks the dashboard panels against actual Grafana data-source responses, and writes the three images. Follow the [local quickstart](grafana.md#open-the-dashboards-locally) to repeat it.
+
+To refresh the [workspace access](tenant-access.md) and [audit](audit.md) screenshots, run `make build`, `npm ci --prefix runtime --ignore-scripts`, then `uv run scripts/smoke-workspace.py --binary ./bin/shoowcase --admin-media docs/media/admin`. The fixture uses its own SQLite database and synthetic members.
+
+## Workspace and group quotas (schema 4)
+
+The store race suite exercises concurrent writers against SQLite and PostgreSQL: only one can claim the last site or storage allowance. It also checks that moving a site transfers the sizes of all its revisions, failed writes leave usage unchanged, and pre-upgrade mutations can be replayed. The HTTP tests lower a group limit after an agent has obtained a signed upload link, verify that redeeming the link is refused, then retry after restoring capacity.
+
+The workspace browser smoke creates a group limited to one site and 18 bytes, fills both limits, and checks that excess writes leave the original file intact. It then moves the site and verifies the updated usage and audit events. The [upgrade drill](restore-drill.md) also covers migration from v0.2.0 to schema 4 on both backends, including a PostgreSQL dump and restore.
+
 ## Kubernetes chart rehearsal (November 26, 2026)
 
 The local chart archive (chart 0.1.0, app v0.2.0) installed on a disposable two-node k3s 1.35.5 cluster using Helm 4.3.2. Both restricted pods became ready using the released Linux arm64 image, PostgreSQL 17 with verified TLS, a shared external Secret, and a test issuer serving HTTPS discovery. Through Traefik, the control and wildcard content hosts presented their respective trusted certificates and routed to Shoowcase. The content host rejected control-plane discovery. A pod outside the permitted ingress peers could not connect directly to the service.

@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTROL = "studio.example.com"
@@ -78,7 +79,9 @@ def fixtures(kube, app, deps, tmp):
     password = secrets.token_urlsafe(24)
     manifest(kube, deps, "Secret", "fixture-password", stringData={"password": password})
     discover = {"issuer": issuer, "authorization_endpoint": issuer + "/authorize",
-                "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys"}
+                "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys",
+                "code_challenge_methods_supported": ["S256"],
+                "token_endpoint_auth_methods_supported": ["client_secret_basic"]}
     conf = ("server { listen 8443 ssl; ssl_certificate /tls/tls.crt; ssl_certificate_key /tls/tls.key; "
             "location = /.well-known/openid-configuration { default_type application/json; "
             f"return 200 '{json.dumps(discover)}'; }} location / {{ return 404; }} }}")
@@ -113,14 +116,15 @@ def forward(kube, target, remote):
             proc.terminate()
 
 
-def probe(port, path, status, host=CONTROL):
+def probe(port, path, status, host=CONTROL, *, header=None):
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=6)
     try:
         c.request("GET", path, headers={"Host": host})
         r = c.getresponse()
         if r.status != status:
             raise RuntimeError(f"GET {host}{path}: expected {status}, received {r.status}")
-        return r.read()
+        body = r.read()
+        return r.getheader(header, "") if header else body
     finally:
         c.close()
 
@@ -219,7 +223,16 @@ def smoke(context, chart, traefik=False):
                 probe(port, "/healthz", 200)
                 probe(port, "/readyz", 200)
                 probe(port, "/healthz", 421, "wrong.example.org")
-                probe(port, "/metrics", 401)
+                probe(port, "/metrics", 404)
+                location = urlsplit(probe(port, "/auth/login", 303, header="Location"))
+                auth = parse_qs(location.query)
+                expected = settings["config"]["oidc"]["issuer"] + "/authorize"
+                if (location._replace(query="").geturl() != expected
+                        or auth.get("client_id") != ["browser"]
+                        or auth.get("redirect_uri") != [f"https://{CONTROL}/auth/callback"]
+                        or auth.get("code_challenge_method") != ["S256"]
+                        or not re.fullmatch(r"[A-Za-z0-9_-]{43}", auth.get("code_challenge", [""])[0])):
+                    raise RuntimeError("browser login did not send the expected PKCE challenge to the issuer")
                 resource = json.loads(probe(port, "/.well-known/oauth-protected-resource/mcp", 200))
                 if resource["resource"] != "https://" + CONTROL + "/mcp":
                     raise RuntimeError("unexpected MCP resource URL")
@@ -231,15 +244,18 @@ def smoke(context, chart, traefik=False):
                 finally:
                     sql("ALTER DATABASE shoowcase ALLOW_CONNECTIONS true;")
                 probe(port, "/readyz", 200)
-            run([*helm, "upgrade", *common, "--set", "config.interactive=false"], timeout=260)
+            run([*helm, "upgrade", *common, "--set", "config.metricsWorkspace=smoke-operators"], timeout=260)
             if old_pods & check_ready():
                 raise RuntimeError("upgrade did not replace all original pods")
+            with forward(k, "svc/" + service["metadata"]["name"], service["spec"]["ports"][0]["port"]) as port:
+                probe(port, "/metrics", 401)
             run([*helm, "uninstall", "smoke", "--wait", "--timeout=2m"], timeout=130)
             if get("deployments") or get("svc"):
                 raise RuntimeError("workload still present after uninstall")
             run([*k, "get", "secret", "smoke-credentials", "-o", "name"])
-            print("Passed: two restricted replicas, TLS dependencies, Host routing, protected metrics, "
-                  "database outage/recovery, upgrade and uninstall with external Secret retained.")
+            print("Passed: two restricted replicas, TLS dependencies, Host routing, OIDC PKCE redirect, "
+                  "metrics disabled by default and guarded after upgrade, database outage/recovery, "
+                  "and uninstall with external Secret retained.")
         except Exception:
             for args in ([*fixtures_k, "get", "pods"], [*k, "get", "pods"], [*k, "get", "events"]):
                 subprocess.run(args, check=False, timeout=20)
