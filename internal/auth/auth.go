@@ -50,6 +50,7 @@ type Identity struct {
 }
 
 type Config struct {
+	OIDCProjectAudience                                                                 string
 	LocalWorkspace, OIDCAdminSubject, OIDCAdminWorkspace                                string
 	PublicRegistration                                                                  bool
 	LocalAccounts                                                                       LocalAccounts
@@ -175,6 +176,9 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	if cfg.LocalWorkspace != "" && (!nonEmpty(cfg.LocalWorkspace) || cfg.LocalAccounts == nil) || cfg.PublicRegistration && cfg.LocalWorkspace == "" {
 		return nil, errors.New("local accounts require a workspace and credential store; public registration requires local accounts")
 	}
+	if cfg.OIDCProjectAudience != "" && (cfg.Dev || !nonEmpty(cfg.OIDCProjectAudience) || cfg.OIDCProjectAudience == cfg.ClientID) {
+		return nil, errors.New("OIDC project audience must be distinct from the browser client ID")
+	}
 	if (cfg.OIDCAdminSubject == "") != (cfg.OIDCAdminWorkspace == "") || cfg.OIDCAdminSubject != "" && (cfg.Dev || !nonEmpty(cfg.OIDCAdminSubject) || !nonEmpty(cfg.OIDCAdminWorkspace) || reservedSubject(cfg.OIDCAdminSubject)) {
 		return nil, errors.New("configure an exact OIDC admin subject and workspace together for production")
 	}
@@ -232,6 +236,9 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	binding := []string{"shoowcase/browser/v2", u.String(), zone, cfg.Issuer, cfg.ClientID, cfg.WorkspaceClaim, cfg.RolesClaim, cfg.Audience, cfg.RequiredScope, strconv.FormatBool(cfg.Dev)}
 	if cfg.LocalWorkspace != "" || cfg.OIDCAdminSubject != "" {
 		binding = append(binding, cfg.LocalWorkspace, cfg.OIDCAdminSubject, cfg.OIDCAdminWorkspace)
+	}
+	if cfg.OIDCProjectAudience != "" {
+		binding = append(binding, "project-audience", cfg.OIDCProjectAudience)
 	}
 	domain, _ := json.Marshal(binding)
 	s.cookieDomain = hash(string(domain)) + ":"

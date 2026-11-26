@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -343,9 +344,9 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	var az struct {
 		Authorized string `json:"azp"`
 	}
-	// No other ID token audiences are configured as trusted on this client.
-	if t.Claims(&az) != nil || len(t.Audience) != 1 || t.Audience[0] != s.cfg.ClientID ||
-		(az.Authorized != "" && az.Authorized != s.cfg.ClientID) ||
+	// Some providers identify both the browser client and its project. In
+	// that case require the explicit project allowlist and the exact azp.
+	if t.Claims(&az) != nil || !s.trustedIDAudience(t.Audience, az.Authorized) ||
 		(t.AccessTokenHash != "" && t.VerifyAccessToken(tok.AccessToken) != nil) {
 		s.rejectCallback(w, 401, "invalid_token_binding")
 		return
@@ -358,6 +359,17 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	exp := min(t.Expiry.Unix(), s.now().Add(sessionTTL).Unix())
 	s.completeLogin(w, r, tx.Dest, who, exp)
 }
+func (s *Service) trustedIDAudience(aud []string, azp string) bool {
+	if azp != "" && azp != s.cfg.ClientID {
+		return false
+	}
+	if len(aud) == 1 {
+		return aud[0] == s.cfg.ClientID
+	}
+	return len(aud) == 2 && azp == s.cfg.ClientID && s.cfg.OIDCProjectAudience != "" &&
+		slices.Contains(aud, s.cfg.ClientID) && slices.Contains(aud, s.cfg.OIDCProjectAudience)
+}
+
 func (s *Service) completeLogin(w http.ResponseWriter, r *http.Request, d destination, who Identity, exp int64) {
 	if !s.audit(r.Context(), who, "auth.login") {
 		deny(w, 503)

@@ -96,6 +96,8 @@ spec:
               value: {{ .Values.config.metricsWorkspace | quote }}
             - name: SHOOWCASE_AUDIENCE
               value: {{ .Values.config.oidc.audience | quote }}
+            - name: SHOOWCASE_OIDC_PROJECT_AUDIENCE
+              value: {{ .Values.config.oidc.projectAudience | quote }}
             - name: SHOOWCASE_WORKSPACE_CLAIM
               value: {{ .Values.config.oidc.workspaceClaim | quote }}
             - name: SHOOWCASE_ROLES_CLAIM

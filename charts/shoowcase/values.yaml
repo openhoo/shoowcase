@@ -9,6 +9,8 @@ config:
     # Empty: discover the confidential method. Use "none" for a registered public client.
     clientAuthMethod: ""
     audience: ""
+    # Optional extra audience in browser ID tokens, e.g. the identity provider's project ID.
+    projectAudience: ""
     workspaceClaim: workspace
     rolesClaim: roles
     requiredScope: ""

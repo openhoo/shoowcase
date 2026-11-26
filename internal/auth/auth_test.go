@@ -696,3 +696,31 @@ func TestPinnedOIDCAdministrator(t *testing.T) {
 		})
 	}
 }
+
+func TestProjectAudienceOnBrowserCallback(t *testing.T) {
+	for _, tc := range []struct {
+		name, azp string
+		audience  []string
+		status    int
+	}{
+		{"one explicitly trusted project", "studio", []string{"project-id", "studio"}, 303},
+		{"no authorized client", "", []string{"studio", "project-id"}, 401},
+		{"different authorized client", "other", []string{"studio", "project-id"}, 401},
+		{"different project", "studio", []string{"studio", "other"}, 401},
+		{"additional client", "studio", []string{"studio", "project-id", "other"}, 401},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newIssuer(t, issuerProfile{idClaims: func(m map[string]any) {
+				m["aud"] = tc.audience
+				if tc.azp != "" {
+					m["azp"] = tc.azp
+				}
+			}})
+			cfg := config(f)
+			cfg.OIDCProjectAudience = "project-id"
+			s := service(t, cfg)
+			callback, flow := pendingLogin(t, f, s)
+			hit(t, s, req("GET", callback.String(), flow), tc.status)
+		})
+	}
+}

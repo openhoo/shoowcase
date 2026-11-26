@@ -89,6 +89,7 @@
           "additionalProperties": false,
           "properties": {
             "issuer": {"$ref": "#/definitions/httpsEndpoint"},
+            "projectAudience": {"$ref": "#/definitions/identity"},
             "clientAuthMethod": {"enum": ["", "client_secret_basic", "client_secret_post", "none"]},
             "clientId": {"type": "string", "pattern": "\\S"},
             "audience": {"type": "string", "pattern": "\\S"},
@@ -98,7 +99,7 @@
             "adminSubject": {"allOf": [{"$ref": "#/definitions/identity"}, {"not": {"pattern": "^local:"}}]},
             "adminWorkspace": {"$ref": "#/definitions/identity"}
           },
-          "required": ["issuer", "clientId", "clientAuthMethod", "audience", "workspaceClaim", "rolesClaim", "requiredScope", "adminSubject", "adminWorkspace"],
+          "required": ["issuer", "clientId", "clientAuthMethod", "audience", "projectAudience", "workspaceClaim", "rolesClaim", "requiredScope", "adminSubject", "adminWorkspace"],
           "if": {"properties": {"adminSubject": {"const": ""}}},
           "then": {"properties": {"adminWorkspace": {"const": ""}}},
           "else": {"properties": {"adminWorkspace": {"minLength": 1}}}

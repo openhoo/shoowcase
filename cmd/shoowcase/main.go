@@ -162,7 +162,7 @@ func run() error {
 		Dev: *dev, DevWorkspace: env("DEV_WORKSPACE", "local"), DevSubject: env("DEV_SUBJECT", "local-user"), DevToken: token,
 		Consume: s.Consume, IsConsumed: s.IsConsumed,
 		LocalAccounts: s, LocalWorkspace: env("LOCAL_WORKSPACE", ""), PublicRegistration: registration == "true",
-		OIDCAdminSubject: adminSub, OIDCAdminWorkspace: adminWorkspace,
+		OIDCProjectAudience: env("OIDC_PROJECT_AUDIENCE", ""), OIDCAdminSubject: adminSub, OIDCAdminWorkspace: adminWorkspace,
 		Audit: func(ctx context.Context, i auth.Identity, action string) error {
 			if adminSub != "" && i.Subject == adminSub && i.Workspace == adminWorkspace && i.Role == auth.Admin && i.LocalGeneration == 0 {
 				if _, err := s.EnrollAccount(sites.WithIdentityIssuedAt(ctx, i.IssuedAt), sessionActor(i), "Workspace administrator"); err != nil {
