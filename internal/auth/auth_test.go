@@ -576,13 +576,13 @@ func TestRegisteredClientAuthentication(t *testing.T) {
 func TestSessionDomainAndAuditFailure(t *testing.T) {
 	f := issuer(t)
 	cfg := config(f)
-	var fail bool
+	var failAudit, failRevoke, failRead bool
 	var records []string
 	cfg.Audit = func(_ context.Context, who Identity, action string) error {
 		if who.Subject != "ada" || who.Workspace != "operations" || who.CSRF != "" {
 			t.Fatal("unverified identity or CSRF in audit")
 		}
-		if fail {
+		if failAudit {
 			return errors.New("audit unavailable")
 		}
 		records = append(records, action)
@@ -591,26 +591,30 @@ func TestSessionDomainAndAuditFailure(t *testing.T) {
 	revoke := cfg.RevokeSession
 	read := cfg.IsConsumed
 	cfg.RevokeSession = func(ctx context.Context, key string, exp time.Time, i Identity) error {
-		if fail {
+		if failRevoke {
 			return errors.New("shared store unavailable")
 		}
-		return revoke(ctx, key, exp, i)
+		err := revoke(ctx, key, exp, i)
+		if err == nil {
+			records = append(records, "auth.logout")
+		}
+		return err
 	}
 	cfg.IsConsumed = func(ctx context.Context, key string) (bool, error) {
-		if fail {
+		if failRead {
 			return false, errors.New("shared store unavailable")
 		}
 		return read(ctx, key)
 	}
 	s := service(t, cfg)
 	u, flow := pendingLogin(t, f, s)
-	fail = true
+	failAudit = true
 	for _, c := range hit(t, s, req("GET", u.String(), flow), 503).Cookies() {
 		if c.Name == s.name("session") {
 			t.Fatal("login bypassed audit persistence")
 		}
 	}
-	fail = false
+	failAudit = false
 	u, flow = pendingLogin(t, f, s)
 	res := hit(t, s, req("GET", u.String(), flow), 303)
 	cookie := getCookie(t, res, s.name("session"))
@@ -634,17 +638,33 @@ func TestSessionDomainAndAuditFailure(t *testing.T) {
 	if dev.IdentityRealm() != "urn:shoowcase:development" {
 		t.Fatal("dev mode accepted production identity realm")
 	}
-	fail = true
-	post := httptest.NewRequest("POST", cfg.ControlURL+"/auth/logout", strings.NewReader(url.Values{"csrf": {who.CSRF}}.Encode()))
-	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	post.AddCookie(cookie)
-	if getCookie(t, hit(t, s, post, 503), s.name("session")).MaxAge >= 0 {
-		t.Fatal("logout audit failure kept cookie")
+	logout := func(status int) *http.Response {
+		post := httptest.NewRequest("POST", cfg.ControlURL+"/auth/logout", strings.NewReader(url.Values{"csrf": {who.CSRF}}.Encode()))
+		post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		post.AddCookie(cookie)
+		return hit(t, s, post, status)
 	}
-	if _, ok := s.Browser(req("GET", cfg.ControlURL, cookie)); ok {
-		t.Fatal("logout audit failure kept session active")
+	failRevoke = true
+	for _, c := range logout(503).Cookies() {
+		if c.Name == s.name("session") {
+			t.Fatal("failed sign-out discarded or replaced the cookie needed to retry")
+		}
 	}
 	if len(records) != 1 || records[0] != "auth.login" {
 		t.Fatalf("unexpected committed events %v", records)
+	}
+	failRead = true
+	if _, ok := s.Browser(req("GET", cfg.ControlURL, cookie)); ok {
+		t.Fatal("session accepted with unavailable revocation reads")
+	}
+	failRevoke, failRead = false, false
+	if getCookie(t, logout(303), s.name("session")).MaxAge >= 0 {
+		t.Fatal("successful retry did not remove the session cookie")
+	}
+	if _, ok := s.Browser(req("GET", cfg.ControlURL, cookie)); ok {
+		t.Fatal("session still valid after successful sign-out")
+	}
+	if len(records) != 2 || records[1] != "auth.logout" {
+		t.Fatalf("unexpected committed events after retry: %v", records)
 	}
 }

@@ -116,7 +116,6 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 		deny(w, 403)
 		return
 	}
-	s.cookie(w, "session", "", -1)
 	key := "logout:" + hash(v.Family)
 	v.Who.CSRF = ""
 	if s.cfg.RevokeSession != nil {
@@ -128,6 +127,9 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 		deny(w, 503)
 		return
 	}
+	// Keep the family's signed cookie available for a retry if its
+	// revocation or audit write fails.
+	s.cookie(w, "session", "", -1)
 	topRedirect(w, r, "/")
 }
 
