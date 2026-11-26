@@ -114,7 +114,7 @@ The **control host** handles MCP, sign-in, uploads and human approvals. **Site a
 
 In **Admin**, a workspace admin can lower a member’s role limit, suspend access, restore membership, or revoke a key. Suspension revokes the member’s keys; restoring the member does not reactivate them. Administrators are assigned through the identity provider.
 
-Start with [deployment and identity setup](docs/operations.md) and the [container configuration](deploy/compose.yaml). Before accepting company traffic, test your real identity provider and agent client, cross-workspace access, withdrawal and a [restore into a separate database](docs/restore-drill.md). The [verification report](docs/verification.md) and [HTTP measurements](docs/http-benchmark.md) show what was tested and under what conditions.
+Install the [Kubernetes Helm chart](charts/shoowcase/) with your PostgreSQL database, OIDC provider and TLS gateway, or use the [Compose deployment](deploy/compose.yaml). Both use the same [identity and access setup](docs/operations.md). Before accepting company traffic, test your real identity provider and agent client, cross-workspace access, withdrawal and a [restore into a separate database](docs/restore-drill.md). The [verification report](docs/verification.md) and [HTTP measurements](docs/http-benchmark.md) show what was tested and under what conditions.
 
 ## Skills and project guide
 

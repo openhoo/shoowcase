@@ -75,8 +75,10 @@ def verify_repo(tag, commit):
     return r
 
 
-def inventory(tag):
+def inventory(tag, has_chart):
     names = {"SHA256SUMS", "image.txt", *NOTICES, f"shoowcase-{tag}-skills.zip"}
+    if has_chart:
+        names.update({"chart.txt", f"shoowcase-{tag[1:]}.tgz"})
     for osname, arch in TARGETS:
         base = f"shoowcase-{tag}-{osname}-{arch}"
         for suffix in (".buildinfo.json", ".cdx.json", ".spdx.json", ".zip" if osname == "windows" else ".tar.gz"):
@@ -84,8 +86,8 @@ def inventory(tag):
     return names
 
 
-def get_assets(rel, tag, dest):
-    want = inventory(tag)
+def get_assets(rel, tag, dest, has_chart):
+    want = inventory(tag, has_chart)
     require(len(rel["assets"]) == len(want) and {x["name"] for x in rel["assets"]} == want, "unexpected release asset inventory")
     for asset in rel["assets"]:
         name = asset["name"]
@@ -97,6 +99,39 @@ def get_assets(rel, tag, dest):
     sums = (dest / "SHA256SUMS").read_text().splitlines()
     require(len(sums) == len(want) - 1, "incorrect checksum count")
     require(set(sums) == {digest((dest / name).read_bytes()) + "  " + name for name in want - {"SHA256SUMS"}}, "checksums differ")
+
+
+def verify_chart(dest, tag, image):
+    """Verify that anonymous OCI by tag and digest serves the attested release asset."""
+    repo = REPO.split("/")[0] + "/charts/shoowcase"
+    ref = (dest / "chart.txt").read_text().strip()
+    name, _, expected = ref.partition("@")
+    require(name == "ghcr.io/" + repo and re.fullmatch(r"sha256:[0-9a-f]{64}", expected), "unexpected chart OCI reference")
+    token = json.loads(read_url("https://ghcr.io/token?" + urlencode({"service": "ghcr.io", "scope": f"repository:{repo}:pull"})))["token"]
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.oci.image.manifest.v1+json"}
+    registry = "https://ghcr.io/v2/" + repo
+    for selector in [tag[1:], expected]:
+        raw = read_url(registry + "/manifests/" + selector, headers=headers)
+        require("sha256:" + digest(raw) == expected, "OCI chart manifest digest mismatch")
+    manifest = json.loads(raw)
+    archive = dest / f"shoowcase-{tag[1:]}.tgz"
+    layer_digest = "sha256:" + digest(archive.read_bytes())
+    require(len(manifest["layers"]) == 1 and manifest["layers"][0]["mediaType"] == "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+            and manifest["layers"][0]["digest"] == layer_digest, "OCI chart layer differs from release archive")
+    data = read_url(registry + "/blobs/" + layer_digest, archive.stat().st_size, headers)
+    require("sha256:" + digest(data) == layer_digest, "anonymous OCI chart bytes differ")
+    with tarfile.open(archive) as tar:
+        def textfile(name):
+            entry = tar.getmember("shoowcase/" + name)
+            require(entry.isfile() and entry.size <= 1 << 20, "unexpected chart member: " + name)
+            return tar.extractfile(entry).read().decode()
+        meta = textfile("Chart.yaml").splitlines()
+        require("name: shoowcase" in meta and f"version: {tag[1:]}" in meta and f"appVersion: {tag}" in meta, "chart metadata differs from release")
+        values = re.search(r"^image:\s*\n((?:[ \t][^\n]*\n)+)", textfile("values.yaml"), re.MULTILINE)
+        repository, sha = image.split("@")
+        require(values and f'  repository: "{repository}"' in values[1].splitlines() and f'  digest: "{sha}"' in values[1].splitlines(),
+                "chart does not use the verified release image by default")
+    return ref
 
 
 def verify_skills(dest, tag, commit):
@@ -205,13 +240,21 @@ def main():
     dest = args.out.resolve()
     dest.mkdir(mode=0o700)
     rel = verify_repo(args.tag, args.commit)
-    get_assets(rel, args.tag, dest)
+    # Earlier releases predate the chart. Derive the expected inventory from
+    # the trusted commit, never from what the remote release happens to contain.
+    has_chart = bool(subprocess.check_output(["git", "-C", ROOT, "ls-tree", "--name-only", args.commit, "charts/shoowcase/Chart.yaml"]).strip())
+    get_assets(rel, args.tag, dest, has_chart)
     verify_skills(dest, args.tag, args.commit)
     exes, notices = verify_binaries(dest, args.tag, args.commit)
     image = verify_image(dest, args.tag, args.commit, exes, notices)
     print(f"PASS: {rel['html_url']}: immutable tag → {args.commit}, {len(rel['assets'])} anonymous assets, both skills, four Go binaries, SPDX/CycloneDX, notices, and both anonymous OCI platforms for {image}", flush=True)
     command("gh", "release", "verify", args.tag, "--repo", REPO)
-    for artifact in [str(dest / "SHA256SUMS"), str(dest / f"shoowcase-{args.tag}-darwin-arm64.tar.gz"), str(dest / f"shoowcase-{args.tag}-skills.zip"), "oci://" + image]:
+    artifacts = [str(dest / "SHA256SUMS"), str(dest / f"shoowcase-{args.tag}-darwin-arm64.tar.gz"), str(dest / f"shoowcase-{args.tag}-skills.zip"), "oci://" + image]
+    if has_chart:
+        chart_ref = verify_chart(dest, args.tag, image)
+        artifacts.extend([str(dest / f"shoowcase-{args.tag[1:]}.tgz"), "oci://" + chart_ref])
+        print(f"PASS: chart archive, release image default and anonymous OCI pull for {chart_ref}", flush=True)
+    for artifact in artifacts:
         command("gh", "attestation", "verify", artifact, "--repo", REPO, "--source-ref", "refs/tags/" + args.tag,
                 "--source-digest", args.commit, "--signer-workflow", REPO + "/.github/workflows/release.yml", "--deny-self-hosted-runners")
     print("PASS: immutable release attestation and signed build provenance for checksums, native archive, skills ZIP, and OCI index.")

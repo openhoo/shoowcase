@@ -1,0 +1,10 @@
+Shoowcase control: https://{{ .Values.config.controlHost }}
+OIDC callback: https://{{ .Values.config.controlHost }}/auth/callback
+MCP endpoint: https://{{ .Values.config.controlHost }}/mcp
+Site DNS/TLS: *.{{ .Values.config.sitesDomain }}
+Public sharing: {{ .Values.config.publicSharing }}
+
+Check readiness on the control hostname at /readyz. /healthz checks the process only.
+{{- if not .Values.ingress.enabled }}
+Expose both hostnames through your TLS gateway, preserving the original Host header.
+{{- end }}

@@ -1,0 +1,136 @@
+{{- include "shoowcase.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "shoowcase.fullname" . | quote }}
+  labels: {{- include "shoowcase.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  minReadySeconds: 5
+  revisionHistoryLimit: 3
+  strategy:
+    type: {{ .Values.updateStrategy }}
+    {{- if eq .Values.updateStrategy "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    {{- end }}
+  selector:
+    matchLabels: {{- include "shoowcase.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "shoowcase.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: {{ include "shoowcase.serviceAccountName" . | quote }}
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- range . }}
+        - {{- toYaml . | nindent 10 }}
+          {{- if not (hasKey . "labelSelector") }}
+          labelSelector:
+            matchLabels: {{- include "shoowcase.selectorLabels" $ | nindent 14 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: shoowcase
+          image: {{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 7878
+              protocol: TCP
+          env:
+            - name: SHOOWCASE_LISTEN
+              value: ":7878"
+            - name: SHOOWCASE_CONTROL_URL
+              value: {{ printf "https://%s" .Values.config.controlHost | quote }}
+            - name: SHOOWCASE_SITES_DOMAIN
+              value: {{ .Values.config.sitesDomain | quote }}
+            - name: SHOOWCASE_ISSUER
+              value: {{ .Values.config.oidc.issuer | quote }}
+            - name: SHOOWCASE_CLIENT_ID
+              value: {{ .Values.config.oidc.clientId | quote }}
+            - name: SHOOWCASE_AUDIENCE
+              value: {{ .Values.config.oidc.audience | quote }}
+            - name: SHOOWCASE_WORKSPACE_CLAIM
+              value: {{ .Values.config.oidc.workspaceClaim | quote }}
+            - name: SHOOWCASE_ROLES_CLAIM
+              value: {{ .Values.config.oidc.rolesClaim | quote }}
+            - name: SHOOWCASE_REQUIRED_SCOPE
+              value: {{ .Values.config.oidc.requiredScope | quote }}
+            - name: SHOOWCASE_PUBLIC
+              value: {{ .Values.config.publicSharing | quote }}
+            - name: SHOOWCASE_INTERACTIVE
+              value: {{ .Values.config.interactive | quote }}
+            - name: SHOOWCASE_SIGNUP_URL
+              value: {{ .Values.config.signupUrl | quote }}
+            {{- include "shoowcase.secretEnv" (dict "env" "SHOOWCASE_DATABASE_URL" "secret" .Values.existingSecret.name "key" .Values.existingSecret.keys.databaseUrl) | nindent 12 }}
+            {{- include "shoowcase.secretEnv" (dict "env" "SHOOWCASE_CLIENT_SECRET" "secret" .Values.existingSecret.name "key" .Values.existingSecret.keys.clientSecret) | nindent 12 }}
+            {{- include "shoowcase.secretEnv" (dict "env" "SHOOWCASE_SESSION_KEY" "secret" .Values.existingSecret.name "key" .Values.existingSecret.keys.sessionKey) | nindent 12 }}
+            {{- if .Values.caBundle.configMapName }}
+            - name: SSL_CERT_FILE
+              value: /etc/shoowcase/ca/ca-bundle.pem
+            {{- end }}
+          startupProbe:
+            {{- include "shoowcase.httpGet" (dict "host" .Values.config.controlHost "path" "/healthz") | nindent 12 }}
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            {{- include "shoowcase.httpGet" (dict "host" .Values.config.controlHost "path" "/healthz") | nindent 12 }}
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            {{- include "shoowcase.httpGet" (dict "host" .Values.config.controlHost "path" "/readyz") | nindent 12 }}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.caBundle.configMapName }}
+          volumeMounts:
+            - name: ca-bundle
+              mountPath: /etc/shoowcase/ca
+              readOnly: true
+          {{- end }}
+      {{- if .Values.caBundle.configMapName }}
+      volumes:
+        - name: ca-bundle
+          configMap:
+            name: {{ .Values.caBundle.configMapName | quote }}
+            items:
+              - key: {{ .Values.caBundle.key | quote }}
+                path: ca-bundle.pem
+      {{- end }}

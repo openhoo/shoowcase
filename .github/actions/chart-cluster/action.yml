@@ -1,0 +1,51 @@
+name: Create chart test cluster
+description: Install pinned chart tools and start an isolated k3s cluster with Traefik and NetworkPolicy
+inputs:
+  name:
+    description: Disposable cluster name
+    required: true
+  ghcr-pull-token:
+    description: Optional read-only GHCR token for the disposable nodes
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Install Helm, k3d and the matching kubectl
+      shell: bash
+      run: |
+        set -euo pipefail
+        tools="$RUNNER_TEMP/chart-tools"
+        scripts/install-chart-helm.sh "$tools"
+        curl --fail --silent --show-error --location --proto '=https' --retry 3 \
+          https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-amd64 -o "$tools/k3d"
+        curl --fail --silent --show-error --location --proto '=https' --retry 3 \
+          https://dl.k8s.io/release/v1.35.5/bin/linux/amd64/kubectl -o "$tools/kubectl"
+        (cd "$tools" && sha256sum --check <<'SUMS'
+        06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0  k3d
+        90f75ea6ecc9ea5633262e1c0b83a40560003b30fc94a04cb099404fcef0c224  kubectl
+        SUMS
+        )
+        chmod +x "$tools/k3d" "$tools/kubectl"
+        echo "$tools" >> "$GITHUB_PATH"
+    - name: Create disposable Kubernetes cluster
+      shell: bash
+      env:
+        CLUSTER: ${{ inputs.name }}
+        GHCR_PULL_TOKEN: ${{ inputs.ghcr-pull-token }}
+      run: |
+        set -euo pipefail
+        [[ $CLUSTER =~ ^shoowcase-[a-z0-9-]+$ ]]
+        registry_args=()
+        if [[ -n $GHCR_PULL_TOKEN ]]; then
+          # k3s nodes need read access to the just-published image even when GHCR is private.
+          # Keep credentials outside the checkout, chart, Helm release and command arguments.
+          registry_config=$(mktemp "$RUNNER_TEMP/registries.XXXXXX")
+          trap 'rm -f "$registry_config"' EXIT
+          python3 -c 'import json,os; print(json.dumps({"configs":{"ghcr.io":{"auth":{"username":os.environ["GITHUB_ACTOR"],"password":os.environ["GHCR_PULL_TOKEN"]}}}}))' > "$registry_config"
+          registry_args=(--registry-config "$registry_config")
+        fi
+        unset GHCR_PULL_TOKEN
+        k3d cluster create "$CLUSTER" --wait --timeout 3m --no-lb --no-image-volume \
+          --image rancher/k3s:v1.35.5-k3s1@sha256:2074403abe1bded11ef3dde09d457e13be8e0b64c218b1c4f8269b4565cfbc65 \
+          --k3s-arg '--disable=servicelb@server:*' "${registry_args[@]}"
