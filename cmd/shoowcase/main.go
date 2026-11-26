@@ -137,6 +137,11 @@ func run() error {
 	if public != "true" && public != "false" {
 		return errors.New("SHOOWCASE_PUBLIC must be true or false")
 	}
+	registration := env("PUBLIC_REGISTRATION", "false")
+	if registration != "true" && registration != "false" {
+		return errors.New("SHOOWCASE_PUBLIC_REGISTRATION must be true or false")
+	}
+	adminSub, adminWorkspace := env("OIDC_ADMIN_SUBJECT", ""), env("OIDC_ADMIN_WORKSPACE", "")
 	apps := env("INTERACTIVE", "true")
 	if apps != "true" && apps != "false" {
 		return errors.New("SHOOWCASE_INTERACTIVE must be true or false")
@@ -156,7 +161,14 @@ func run() error {
 		WorkspaceClaim: env("WORKSPACE_CLAIM", "workspace"), RolesClaim: env("ROLES_CLAIM", "roles"), RequiredScope: env("REQUIRED_SCOPE", ""),
 		Dev: *dev, DevWorkspace: env("DEV_WORKSPACE", "local"), DevSubject: env("DEV_SUBJECT", "local-user"), DevToken: token,
 		Consume: s.Consume, IsConsumed: s.IsConsumed,
+		LocalAccounts: s, LocalWorkspace: env("LOCAL_WORKSPACE", ""), PublicRegistration: registration == "true",
+		OIDCAdminSubject: adminSub, OIDCAdminWorkspace: adminWorkspace,
 		Audit: func(ctx context.Context, i auth.Identity, action string) error {
+			if adminSub != "" && i.Subject == adminSub && i.Workspace == adminWorkspace && i.Role == auth.Admin && i.LocalGeneration == 0 {
+				if _, err := s.EnrollAccount(sites.WithIdentityIssuedAt(ctx, i.IssuedAt), sessionActor(i), "Workspace administrator"); err != nil {
+					return err
+				}
+			}
 			return s.RecordSession(ctx, sessionActor(i), action)
 		},
 		RevokeSession: func(ctx context.Context, key string, expires time.Time, i auth.Identity) error {

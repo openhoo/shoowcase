@@ -167,7 +167,7 @@ func (s *Service) Handle(w http.ResponseWriter, r *http.Request) bool {
 	switch r.URL.Path {
 	case "/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp":
 		isMetadata = true
-	case "/auth/login", "/auth/callback", "/auth/finish", "/auth/logout":
+	case "/auth/login", "/auth/local", "/auth/register", "/auth/callback", "/auth/finish", "/auth/logout":
 	default:
 		return false
 	}
@@ -201,6 +201,10 @@ func (s *Service) Handle(w http.ResponseWriter, r *http.Request) bool {
 		}
 		return true
 	}
+	if r.URL.Path == "/auth/local" || r.URL.Path == "/auth/register" {
+		s.passwordRoute(w, r)
+		return true
+	}
 	if r.URL.Path == "/auth/logout" {
 		if r.Method != "POST" {
 			w.Header().Set("Allow", "POST")
@@ -228,7 +232,7 @@ func (s *Service) Handle(w http.ResponseWriter, r *http.Request) bool {
 func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	if v := r.URL.Query().Get("ticket"); v != "" {
 		var d destination
-		if !s.isControl(r.Host) || !s.open("destination", v, &d) || !s.destOK(d) || !s.isSite(d.Host) {
+		if !s.isControl(r.Host) || !s.open("destination", v, &d) || !s.destOK(d) {
 			deny(w, 400)
 			return
 		}
@@ -264,6 +268,10 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 func (s *Service) authorize(w http.ResponseWriter, r *http.Request, d destination) {
 	if v, ok := s.liveSession(r); ok {
 		s.returnTo(w, r, d, v.Who, v.Family, v.Exp)
+		return
+	}
+	if s.cfg.LocalWorkspace != "" && r.URL.Query().Get("provider") != "oidc" {
+		s.passwordForm(w, r, d, false, http.StatusOK, "")
 		return
 	}
 	if s.cfg.Dev {
@@ -360,6 +368,20 @@ func (s *Service) completeLogin(w http.ResponseWriter, r *http.Request, d destin
 		deny(w, 401)
 		return
 	}
+	if r.Method == http.MethodPost && s.isSite(d.Host) {
+		// A cross-origin redirect after submitting a password form is blocked
+		// by form-action 'self'. End that submission on the control origin;
+		// the next GET uses the host-bound session for the normal site handoff.
+		t, err := s.seal("destination", d)
+		if err != nil {
+			deny(w, 500)
+			return
+		}
+		next := "/auth/login?ticket=" + url.QueryEscape(t)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = passwordContinue.Execute(w, next)
+		return
+	}
 	s.returnTo(w, r, d, who, family, exp)
 }
 func (s *Service) returnTo(w http.ResponseWriter, r *http.Request, d destination, who Identity, family string, exp int64) {
@@ -388,7 +410,7 @@ func (s *Service) finish(w http.ResponseWriter, r *http.Request) {
 	}
 	name := flowKind("binding", h.Dest.Binding)
 	c, e := r.Cookie(s.name(name))
-	if e != nil || !equal(h.Dest.Binding, hash(c.Value)) || !s.familyActive(r.Context(), h.Family) || !s.consume(r.Context(), "handoff", h.Once, h.Exp) {
+	if e != nil || !equal(h.Dest.Binding, hash(c.Value)) || !s.familyActive(r.Context(), h.Family) || !s.identityActive(r.Context(), h.Who) || !s.consume(r.Context(), "handoff", h.Once, h.Exp) {
 		deny(w, 400)
 		return
 	}

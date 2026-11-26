@@ -15,7 +15,7 @@ import (
 // Keep denied actions observable without allowing a single actor to flood a
 // tenant's permanent journal. Limits are per minute per process.
 func (a *App) auditDenied(ctx context.Context, who sites.Actor, op string) {
-	if !a.rate.allow("audit-denied-user:"+who.Workspace+"\x00"+who.Subject, 6) || !a.rate.allow("audit-denied-workspace:"+who.Workspace, 60) {
+	if !a.rate.Allow("audit-denied-user:"+who.Workspace+"\x00"+who.Subject, 6) || !a.rate.Allow("audit-denied-workspace:"+who.Workspace, 60) {
 		return
 	}
 	if err := a.store.RecordDenied(ctx, who, op); err != nil {

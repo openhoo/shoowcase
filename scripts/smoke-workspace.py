@@ -371,6 +371,75 @@ async def check_group_budget(page, control, media):
     await expect(page.get_by_text("Group limits changed", exact=True)).to_be_visible()
 
 
+async def password_accounts(binary, browser):
+    async def signin(page, control, password):
+        await page.goto(control + "/auth/login?next=/account")
+        await page.get_by_label("Username", exact=True).fill("studio-member")
+        await page.get_by_label("Password", exact=True).fill(password)
+        await page.get_by_role("button", name="Sign in with password").click()
+
+    first, second = "starting example password", "updated example password"
+    async with browser_smoke.local_server(binary, password_registration=False) as (endpoint, token, _):
+        control = endpoint.removesuffix("/mcp")
+        admin, member, other = [await browser.new_page() for _ in range(3)]
+        await admin.goto(control)
+        await expect(admin.get_by_role("link", name="Create an account")).to_have_count(0)
+        for method in ("get", "post"):
+            response = await getattr(admin.request, method)(control + "/auth/register")
+            check(response.status == 404, "closed registration accepted a direct request")
+        await admin.goto(control + "/admin")
+        await admin.get_by_role("link", name="Continue with single sign-on").click()
+        await admin.get_by_role("button", name="Create account").click()
+        await admin.goto(control + "/admin")
+        await admin.get_by_text("Create a password account", exact=True).click()
+        await admin.get_by_label("Username", exact=True).fill("studio-member")
+        await admin.get_by_label("Starting password").fill(first)
+        await admin.get_by_label("Sign-in role").select_option("editor")
+        await admin.get_by_role("button", name="Create password account").click()
+        await expect(admin.get_by_role("status")).to_contain_text("Password account created")
+        for page in (member, other):
+            await signin(page, control, first)
+            await expect(page.get_by_role("heading", name="Your account")).to_be_visible()
+            await expect(page.get_by_role("link", name="Admin", exact=True)).to_have_count(0)
+        # A new browser that starts on a private site returns to the exact
+        # destination through the password flow. Its site cookie must expire too.
+        async with browser_smoke.connect(endpoint, token) as agent:
+            site = await browser_smoke.call(agent, "create_site", name="Private guide", request_id=browser_smoke.rid())
+            draft = await browser_smoke.call(agent, "upload_files", site_id=site["site_id"],
+                expected_revision=site["revision"], files=[{"path":"index.html", "text":"<h1>Private guide</h1>"}],
+                request_id=browser_smoke.rid())
+        private = await browser.new_page()
+        await private.goto(draft["preview_url"])
+        await private.get_by_label("Username", exact=True).fill("studio-member")
+        await private.get_by_label("Password", exact=True).fill(first)
+        await private.get_by_role("button", name="Sign in with password").click()
+        await expect(private.get_by_role("heading", name="Private guide")).to_be_visible()
+        await member.get_by_label("Current password").fill(first)
+        await member.get_by_label("New password").fill(second)
+        await member.get_by_role("button", name="Change password").click()
+        await expect(member.get_by_role("heading", name="Password changed")).to_be_visible()
+        await private.reload()
+        await expect(private.get_by_role("button", name="Sign in with password")).to_be_visible()
+        await other.reload()
+        await expect(other.get_by_role("button", name="Sign in with password")).to_be_visible()
+        await signin(member, control, first)
+        await expect(member.get_by_role("alert")).to_contain_text("incorrect")
+        await signin(member, control, second)
+        await expect(member.get_by_role("heading", name="Your account")).to_be_visible()
+        for page in (admin, member, other, private):
+            await page.context.close()
+    async with browser_smoke.local_server(binary, password_registration=True) as (endpoint, _, _):
+        page = await browser.new_page()
+        await page.goto(endpoint.removesuffix("/mcp"))
+        await page.get_by_role("link", name="Create an account").click()
+        await page.get_by_label("Username", exact=True).fill("new-viewer")
+        await page.get_by_label("Password", exact=True).fill(first)
+        await page.get_by_role("button", name="Create account").click()
+        await page.get_by_role("link", name="Account", exact=True).click()
+        await expect(page.get_by_text("Viewer", exact=True)).to_be_visible()
+        await page.context.close()
+
+
 async def workspace(binary, channel, screenshot, admin_media):
     async with browser_smoke.local_server(binary) as (endpoint, _, http), async_playwright() as pw:
         control = endpoint.removesuffix("/mcp")
@@ -397,6 +466,7 @@ async def workspace(binary, channel, screenshot, admin_media):
                 await page.screenshot(path=screenshot, animations="disabled")
                 await page.set_viewport_size({"width": 320, "height": 780})
             await check_group_budget(page, control, admin_media)
+            await password_accounts(binary, browser)
         finally:
             await browser.close()
 
@@ -409,4 +479,4 @@ if __name__ == "__main__":
     parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access, audit and quota screenshots")
     args = parser.parse_args()
     asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot, args.admin_media))
-    print("PASS: tenant administration, group site and storage quotas, audit export, filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")
+    print("PASS: password provisioning, closed/open registration, password change and private-session invalidation, tenant administration, group site and storage quotas, audit export, filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")

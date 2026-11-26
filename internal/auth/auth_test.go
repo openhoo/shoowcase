@@ -668,3 +668,31 @@ func TestSessionDomainAndAuditFailure(t *testing.T) {
 		t.Fatalf("unexpected committed events after retry: %v", records)
 	}
 }
+
+func TestPinnedOIDCAdministrator(t *testing.T) {
+	for _, tc := range []struct {
+		subject string
+		want    int
+	}{{"owner-id", 303}, {"another-user", 403}, {"local:owner-id", 403}} {
+		t.Run(tc.subject, func(t *testing.T) {
+			f := newIssuer(t, issuerProfile{idClaims: func(m map[string]any) {
+				delete(m, "workspace")
+				delete(m, "roles")
+				m["sub"] = tc.subject
+				m["email"] = "owner@example.com"
+			}})
+			cfg := config(f)
+			cfg.OIDCAdminSubject = "owner-id"
+			cfg.OIDCAdminWorkspace = "team"
+			s := service(t, cfg)
+			callback, flow := pendingLogin(t, f, s)
+			res := hit(t, s, req("GET", callback.String(), flow), tc.want)
+			if tc.want == 303 {
+				i, ok := s.Browser(req("GET", cfg.ControlURL+"/admin", getCookie(t, res, s.name("session"))))
+				if !ok || i.Role != Admin || i.Subject != "owner-id" || i.Workspace != "team" || i.LocalGeneration != 0 {
+					t.Fatalf("wrong pinned identity: %+v", i)
+				}
+			}
+		})
+	}
+}

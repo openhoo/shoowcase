@@ -172,7 +172,7 @@ func migrate(ctx context.Context, tx *sql.Tx) error {
 	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version),0) FROM sc_schema_migrations").Scan(&version); err != nil {
 		return err
 	}
-	if version > 4 {
+	if version > 5 {
 		return errors.New("unsupported newer schema version")
 	}
 	if version < 1 {
@@ -212,6 +212,14 @@ func migrate(ctx context.Context, tx *sql.Tx) error {
 			}
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(4)"); err != nil {
+			return err
+		}
+	}
+	if version < 5 {
+		if _, err := tx.ExecContext(ctx, localCredentialSchema); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(5)"); err != nil {
 			return err
 		}
 	}

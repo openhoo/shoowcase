@@ -46,6 +46,9 @@ func (a *App) ticketActor(ctx context.Context, t ticket, browser *auth.Identity)
 		if who.Subject != b.Subject || who.Workspace != b.Workspace {
 			return ctx, sites.Actor{}, problem("forbidden", "Use the account that requested this action.")
 		}
+		if browser.LocalGeneration > 0 {
+			ctx = sites.WithLocalSession(ctx, browser.LocalGeneration)
+		}
 		effective, err := a.store.LimitActor(verified(ctx, *browser), b)
 		if err != nil {
 			return ctx, sites.Actor{}, err

@@ -43,6 +43,12 @@ ID tokens need exactly the browser client's audience and one of the supported si
 
 The MCP endpoint is a separate resource. Configure `SHOOWCASE_AUDIENCE` with an audience distinct from the browser client ID. MCP OAuth clients use JWT access tokens with an access-token type (`at+jwt`), that audience and any required scope. Register those clients with the provider separately. Browser ID tokens are not MCP credentials. See [tenant access](tenant-access.md) for supported roles and local restrictions.
 
+## Use OIDC alongside password accounts
+
+To offer both methods on the same sign-in page, set `SHOOWCASE_LOCAL_WORKSPACE` to the workspace that will own the password accounts. Leave `SHOOWCASE_PUBLIC_REGISTRATION=false` for an invitation-only password directory. An administrator can still create accounts under **Workspace admin**. See [tenant access](tenant-access.md#manage-password-accounts) for the member workflow.
+
+Optionally set both `SHOOWCASE_OIDC_ADMIN_SUBJECT` and `SHOOWCASE_OIDC_ADMIN_WORKSPACE`. The former is the immutable `sub` for this client at the configured issuer. After normal OIDC token verification, this one subject maps to admin in the specified workspace even when the issuer omits Shoowcase-specific role or workspace claims. Its first successful browser sign-in creates its membership. Other subjects still need the configured claims. The `local:` subject prefix is reserved for generated password-account IDs. A matching email address, display name or password login never links to an OIDC identity.
+
 ## Sessions and rollout
 
 Every replica needs the same session key and database. Cookie encryption binds a browser session, sign-in and handoff to its issuer, client, claim mapping and hosts. After this upgrade, or after changing the issuer, client ID, claim mapping, API audience, scope or hosts, users must sign in again and request new action links. Stop old replicas before the migration. Verify a synthetic account can reach a private site through two replicas, then sign out in the control workspace and retry the site.

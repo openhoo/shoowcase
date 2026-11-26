@@ -5,6 +5,11 @@
 <nav class="toolbar" aria-label="Administration views"><a href="/admin"{{if eq .View "members"}} aria-current="page"{{end}}>Members</a><a href="/admin?view=groups"{{if eq .View "groups"}} aria-current="page"{{end}}>Groups</a><a href="/admin?view=quotas"{{if eq .View "quotas"}} aria-current="page"{{end}}>Quotas</a><a href="/admin?view=settings"{{if eq .View "settings"}} aria-current="page"{{end}}>Workspace settings</a><a href="/admin?view=keys"{{if eq .View "keys"}} aria-current="page"{{end}}>Workspace keys</a><a href="/admin?view=activity"{{if eq .View "activity"}} aria-current="page"{{end}}>Activity</a></nav>
 {{if eq .View "members"}}
 <section class="panel stack" aria-labelledby="members"><h2 id="members">Members</h2>
+{{if .LocalAdmin}}<details><summary>Create a password account</summary><form class="stack" method="post" action="/admin">
+<input type="hidden" name="action" value="create-local"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<label class="field">Username<input required name="username" autocomplete="off" spellcheck="false" minlength="3" maxlength="64"></label><small>Use 3–64 letters, numbers, periods, underscores or hyphens. Start with a letter or number.</small>
+<label class="field">Starting password<input type="password" name="password" required minlength="12" autocomplete="new-password"></label><small>Use at least 12 characters. Share the password privately. The member can change it under Account.</small>
+<label class="field">Sign-in role<select name="role"><option value="reader">Viewer</option><option value="editor">Editor</option><option value="publisher">Publisher</option></select></label><div><button>Create password account</button></div></form></details>{{end}}
 <details><summary>Add a member</summary><form class="stack" method="post" action="/admin"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="provision">
 <p>Use the person’s exact subject ID from your identity provider. They must sign in to this workspace to use the account.</p>
 <div class="field"><label for="member-subject">Sign-in ID</label><input id="member-subject" name="subject" required maxlength="255"></div>
