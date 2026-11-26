@@ -96,3 +96,9 @@ The feature was exercised locally with synthetic accounts and data on November 2
 The [Grafana guide](grafana.md) includes three dashboards. `python3 scripts/check-grafana.py` evaluates their queries using Prometheus. The [browser capture](../scripts/capture-grafana.py) exercises the service against the local monitoring stack, checks the dashboard panels against actual Grafana data-source responses, and writes the three images. Follow the [local quickstart](grafana.md#open-the-dashboards-locally) to repeat it.
 
 To refresh the [workspace access](tenant-access.md) and [audit](audit.md) screenshots, run `make build`, `npm ci --prefix runtime --ignore-scripts`, then `uv run scripts/smoke-workspace.py --binary ./bin/shoowcase --admin-media docs/media/admin`. The fixture uses its own SQLite database and synthetic members.
+
+## Workspace and group quotas (schema 4)
+
+The store race suite exercises concurrent writers against SQLite and PostgreSQL: only one can claim the last site or storage allowance. It also checks that moving a site transfers the sizes of all its revisions, failed writes leave usage unchanged, and pre-upgrade mutations can be replayed. The HTTP tests lower a group limit after an agent has obtained a signed upload link, verify that redeeming the link is refused, then retry after restoring capacity.
+
+The workspace browser smoke creates a group limited to one site and 18 bytes, fills both limits, and checks that excess writes leave the original file intact. It then moves the site and verifies the updated usage and audit events. The [upgrade drill](restore-drill.md) also covers migration from v0.2.0 to schema 4 on both backends, including a PostgreSQL dump and restore.

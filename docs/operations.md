@@ -36,12 +36,13 @@ Workspaces use their signed identity-provider claim as the tenant ID. In the def
 
 An existing personal key does not contact the identity provider on every request. A newer verified identity assertion updates the recorded provider role, but removing someone at the provider alone does not notify Shoowcase. For immediate offboarding, **suspend the member or revoke their keys in Shoowcase and remove access at the provider**. Another active workspace administrator can suspend an administrator immediately. No one can suspend themselves. Only the identity provider can change an administrator’s role; suspension and restoration are recorded in workspace activity. Limit OAuth token lifetimes and rotate the session signing key for emergency invalidation of existing sessions and signed links.
 
-## Upgrade to schema 3
+## Upgrade to schema 4
 
 1. Rehearse against a backup, then close ingress, drain all older writers and take a consistent database backup. Record the previous binary or image digest, issuer and deployment configuration.
-2. Start with the same identity provider that issued existing workspace and subject IDs. Older databases did not record their issuer; the first startup pins it. Schema 3 retains sites, release pointers, memberships, role limits and keys. It adds groups, tenant settings and the workspace audit ledger. Every existing workspace starts in identity mode.
-3. Verify a private release, a preview and an existing member's effective rights. Issue a reader key, access a site via MCP, revoke it and confirm the same key is refused. Check audit history and public visibility before reopening ingress. Roll out managed mode separately to prepared tenants.
-4. To downgrade, stop all new writers and restore the pre-upgrade backup before starting the old binary. An older binary refuses schema 3. Reconcile writes made since the snapshot, especially revocations and group changes.
+2. Start with the same identity provider that issued existing workspace and subject IDs. Databases older than schema 3 pin their issuer on first startup and start in identity mode. Existing schema 3 tenants keep their settings, group grants and audit history.
+3. Schema 4 sums all retained revisions per site. Allow time for this migration on larger databases. Check **Workspace admin → Quotas**: existing sites are unassigned, and workspace usage is subject to the previous limits. Assign sites to projects before enabling group limits.
+4. Verify a private release, a preview and an existing member's effective rights. Issue a reader key, access a site via MCP, revoke it and confirm the same key is refused. Check audit history and public visibility before reopening ingress.
+5. To downgrade, stop all new writers and restore the pre-upgrade backup before starting the old binary. Older binaries refuse schema 4. Reconcile subsequent writes, revocations, group assignments and quota changes.
 
 ## Upgrading from v0.1.0
 
@@ -59,7 +60,7 @@ After a disaster restore, keep the ingress private while reviewing publication a
 
 Control-host `/healthz` checks liveness and `/readyz` checks database connectivity. Both may be probed without a token using the configured Host. The legacy `/metrics` route returns process-wide counters. In production it is disabled (404) unless `SHOOWCASE_METRICS_WORKSPACE` names the operator workspace. Supply an IdP API token with effective admin rights in that exact workspace. Other tenant admins and personal keys cannot read these counters. OTLP export is configured independently. Monitor database storage/latency, request/error rates and memory at the proxy and process. Record site deliveries and transferred bytes without collecting URLs, tokens or document content. Use the authenticated [workspace audit export](audit.md) for access reviews and external retention. Set an OTLP/HTTP endpoint to enable [OpenTelemetry traces, metrics and logs](telemetry.md); outbound telemetry is disabled by default.
 
-Each site can hold 100 files or 8 MiB per revision. A file is at most 2 MiB; HTML, CSS and JavaScript are capped at 256 KiB. Workspaces have 100 sites, 500 revisions per site, 2 GiB of cumulative manifest sizes, and 50,000 mutations. Identical file bytes are deduplicated while quota charging counts retained revision sizes. At a limit, inspect usage and archive records under your retention policy; this release does not automatically prune history. Do not remove individual SQL rows to free space. Taking a site offline affects delivery without destroying history.
+Each site can hold 100 files or 8 MiB per revision. A file is at most 2 MiB; HTML, CSS and JavaScript are capped at 256 KiB. Each site supports 500 revisions; the workspace supports 50,000 mutations. Administrators can set [site and storage quotas](tenant-access.md#set-project-budgets) within the service ceilings of 100 sites and 2 GiB per workspace. Quotas count all retained revisions, including unchanged files, even when the database deduplicates identical content. Taking a site offline does not free storage. History is not automatically pruned; do not remove individual SQL rows to free space.
 
 ## Supported operating envelope
 

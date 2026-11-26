@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import hashlib
 import io
+import re
 import zipfile
 from functools import cache
 from importlib import import_module
@@ -306,6 +307,70 @@ async def filter_directory(page):
     await expect(rows).to_have_text(["Field handbook", "Onboarding notes", "Workshop tally"])
 
 
+async def check_group_budget(page, control, media):
+    await page.goto(control + "/admin")
+    nav = page.get_by_role("navigation", name="Administration views")
+    await nav.get_by_role("link", name="Groups").click()
+    group = "Field team"
+    await page.get_by_label("Group name", exact=True).fill(group)
+    await page.get_by_label("Group role", exact=True).select_option("editor")
+    await page.get_by_role("button", name="Create group").click()
+    await expect(page.get_by_role("heading", name=group)).to_be_visible()
+    await nav.get_by_role("link", name="Quotas").click()
+
+    first = "<p>Field guide</p>"
+    size = str(len(first.encode()))
+    summary = f"Edit limits for {group}"
+    await page.get_by_text(summary, exact=True).click()
+    form = page.locator("details").filter(has=page.get_by_text(summary, exact=True))
+    await form.get_by_label("Maximum sites").fill("1")
+    await form.get_by_label("Storage unit").select_option("B")
+    await form.get_by_label("Maximum storage").fill(size)
+    await fits(page, "group quota form")
+    await form.get_by_role("button", name="Save limits").click()
+
+    async def create_site(name, slug):
+        await page.goto(control + "/sites/new")
+        await page.get_by_label("Site name").fill(name)
+        await page.get_by_label("Site address").fill(slug)
+        await page.get_by_label("Budget group").select_option(label=group)
+        async with page.expect_response(lambda resp: resp.request.method == "POST") as submitted:
+            await page.get_by_role("button", name="Create site").click()
+        return (await submitted.value).status
+
+    name, slug = "Field notes", "quota-field-notes"
+    check(await create_site(name, slug) == 303, "group could not create its first site")
+    await expect(page.get_by_role("heading", name=name, exact=True)).to_be_visible()
+    await page.get_by_role("link", name="New file").click()
+    await page.get_by_label("File path").fill("index.html")
+    await page.get_by_label("File contents").fill(first)
+    await page.get_by_role("button", name="Save file").click()
+    await expect(page.get_by_role("status")).to_have_text("File saved to the draft.")
+    await page.get_by_role("link", name="index.html", exact=True).click()
+    await page.get_by_label("File contents").fill("<p>Updated</p>")
+    await page.get_by_role("button", name="Save file").click()
+    await expect(page.get_by_role("alert")).to_contain_text(re.compile(r"group.*(storage|bytes)", re.I))
+    await page.goto(control + f"/sites/{slug}")
+    await page.get_by_role("link", name="index.html", exact=True).click()
+    await expect(page.get_by_label("File contents")).to_have_value(first)
+
+    check(await create_site("Over budget", "quota-over-budget") == 429, "group created a second site")
+    await expect(page.get_by_role("alert")).to_contain_text(re.compile(r"group.*site", re.I))
+    await page.goto(control + "/admin?view=quotas")
+    budget = page.get_by_role("listitem").filter(has=page.get_by_role("heading", name=group, exact=True))
+    usage = budget.get_by_role("definition")
+    await expect(usage).to_have_text([re.compile(r"^1 of 1\b.*At limit"), re.compile(rf"^{size} B of {size} B\b.*At limit")])
+    await fits(page, "budget usage at the group limits")
+    await admin_image(page, media, "quotas")
+    await page.get_by_role("link", name=f"Change group for {name}", exact=True).click()
+    await page.get_by_label(f"Group for {name}", exact=True).select_option("")
+    await page.get_by_role("button", name="Save assignment").click()
+    await expect(usage).to_have_text([re.compile(r"^0 of 1\b"), re.compile(rf"^0 B of {size} B\b")])
+    await nav.get_by_role("link", name="Activity").click()
+    await expect(page.get_by_text("Site group changed", exact=True)).to_be_visible()
+    await expect(page.get_by_text("Group limits changed", exact=True)).to_be_visible()
+
+
 async def workspace(binary, channel, screenshot, admin_media):
     async with browser_smoke.local_server(binary) as (endpoint, _, http), async_playwright() as pw:
         control = endpoint.removesuffix("/mcp")
@@ -330,6 +395,8 @@ async def workspace(binary, channel, screenshot, admin_media):
                 await page.set_viewport_size({"width": 1200, "height": 810})
                 await page.evaluate("document.activeElement.blur()")
                 await page.screenshot(path=screenshot, animations="disabled")
+                await page.set_viewport_size({"width": 320, "height": 780})
+            await check_group_budget(page, control, admin_media)
         finally:
             await browser.close()
 
@@ -339,7 +406,7 @@ if __name__ == "__main__":
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--browser-channel", default="chrome")
     parser.add_argument("--screenshot", type=Path, help="optional desktop PNG of the synthetic workspace")
-    parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access settings and audit screenshots")
+    parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access, audit and quota screenshots")
     args = parser.parse_args()
     asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot, args.admin_media))
-    print("PASS: tenant administration, groups, audit export, filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")
+    print("PASS: tenant administration, group site and storage quotas, audit export, filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")

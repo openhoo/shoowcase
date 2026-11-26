@@ -26,7 +26,7 @@ Shoowcase is a **self-hosted website platform** for onboarding guides, project u
 1. Open your team’s Shoowcase address and choose **Create an account**. Sign in through your organization and choose a display name. Your work identity determines which workspace you join. If you see **Workspace access required**, give your workspace administrator the sign-in ID shown there, then reload after they add you.
 2. Open **Agent keys → Create a key**. Choose **Editor** for creating and updating drafts, or **Publisher** if the agent should also publish releases. A new key defaults to read-only access and expires after the period you choose.
 3. In your agent’s settings, add the **Streamable HTTP** MCP server URL shown on the receipt. Store the key as a bearer token in the client’s credential settings. Copy it before leaving the page; never paste it into your chat or site. If your client uses your organization’s configured OAuth sign-in, you can connect without a personal key.
-4. Ask your agent to list your sites. It can discover all eight tools from the server. The optional [publishing skill](skills/shoowcase-publish/SKILL.md) teaches it when to use each one.
+4. Ask your agent to list your sites. It can discover the publishing tools from the server. The optional [publishing skill](skills/shoowcase-publish/SKILL.md) teaches it when to use each one.
 
 Try: **“Create a site called Team Fieldnotes. Make a welcome page and a checklist, publish them for my workspace, and give me the URL.”** To try it with ready-made files, use the [onboarding example](examples/onboarding/).
 
@@ -55,7 +55,7 @@ Development mode uses SQLite in `.shoowcase/`, signs local browsers in as one te
 
 Open **Sites** to see your workspace’s publishing desk. Search by site name or address, filter by status and audience, and sort by last update or name. Each row shows the file count, when the site changed, and whether the draft differs from the published release.
 
-Choose **New site**, give it a name, and select **Create site**. Then choose how to add your first draft:
+Choose **New site**, give it a name, choose its budget group if prompted, and select **Create site**. Then choose how to add your first draft:
 
 | In the workspace | What it does |
 | --- | --- |
@@ -69,6 +69,10 @@ Choose **Preview draft**. When you’re ready, choose **Publish draft**. Use **A
   <source media="(max-width: 520px)" srcset="docs/media/workspace-mobile.png">
   <img src="docs/media/workspace.png" alt="Shoowcase publishing desk with search and filters, showing site names, release status, audience, file counts and recent changes." width="1120">
 </picture>
+
+### Give a project a budget
+
+Open **Workspace admin → Quotas** to see how many sites each group owns and how much storage its saved revisions use. For example, give the **Onboarding** group **5 sites and 250 MiB**. Its sixth site or an edit that would exceed 250 MiB is refused in both the browser and MCP. All groups also share the workspace limit. You can assign an existing site to a group with its full history. See [Set project budgets](docs/tenant-access.md#set-project-budgets) for setup and upgrade behavior.
 
 ### A small interactive app
 
@@ -89,6 +93,7 @@ Public sharing is disabled by default. If an operator enables it, making a site 
 | MCP tool | Use it to… |
 | --- | --- |
 | `create_site` | Reserve an address and start an unpublished workspace site. |
+| `list_site_groups` | Find the groups this credential can charge when creating a site; pass the chosen ID as `group_id` to `create_site`. |
 | `list_sites` | Find sites the workspace can access, including ones made in another chat. |
 | `get_site` | Inspect the draft, a selected revision, a single file or paginated release history. |
 | `upload_files` | Add, replace or explicitly delete draft files against an expected revision. |

@@ -61,6 +61,8 @@ var siteParts = template.Must(template.New("sites").Funcs(template.FuncMap{
 type siteData struct {
 	C                                                                   consoleContext
 	Directory                                                           directoryData
+	Creation                                                            sites.CreationGroupOptions
+	GroupID                                                             string
 	S, History                                                          map[string]any
 	Base, Name, Slug, Path, Source, Rev, Request, Action, Notice, Error string
 	CanEdit, CanPublish, AllowPublic, Existing, HasIndex                bool
@@ -87,6 +89,9 @@ func siteProblem(e error) (int, string) {
 	case "invalid_argument":
 		return 400, e.Error()
 	case "forbidden", "unauthorized":
+		if domain, ok := e.(*sites.Error); ok && domain.Message != "" {
+			return 403, domain.Message
+		}
 		return 403, "Your account does not have permission for this change."
 	case "not_found":
 		return 404, "This site, release, or file is unavailable in your workspace."
@@ -108,6 +113,19 @@ func siteMethod(w http.ResponseWriter, c consoleContext, allowed string) {
 }
 func siteRead(r *http.Request) bool { return r.Method == http.MethodGet || r.Method == http.MethodHead }
 
+func (a *App) newSiteView(w http.ResponseWriter, r *http.Request, d siteData, status int) {
+	options, err := a.store.CreationGroups(r.Context(), d.C.Actor)
+	if err != nil {
+		siteFailure(w, d.C, err)
+		return
+	}
+	d.Creation = options
+	if !options.AllowUnassigned && len(options.Groups) == 1 {
+		d.GroupID = options.Groups[0].ID
+	}
+	siteView(w, d, status, "New site", "new-site")
+}
+
 func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleContext) {
 	d := makeSiteData(c)
 	d.AllowPublic = a.config.Public
@@ -120,7 +138,7 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 			siteFailure(w, c, problem("forbidden", ""))
 			return
 		}
-		siteView(w, d, 200, "New site", "new-site")
+		a.newSiteView(w, r, d, 200)
 		return
 	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/sites"), "/")
@@ -135,6 +153,10 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 			if d.Slug != "" {
 				args["slug"] = d.Slug
 			}
+			d.GroupID = r.PostForm.Get("group_id")
+			if d.GroupID != "" {
+				args["group_id"] = d.GroupID
+			}
 			out, e := siteCall(a, r.Context(), "create_site", args)
 			if e == nil {
 				http.Redirect(w, r, directoryHref(out["site_id"].(string))+"?notice=created", 303)
@@ -142,7 +164,7 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 			}
 			status, msg := siteProblem(e)
 			d.Error = msg
-			siteView(w, d, status, "New site", "new-site")
+			a.newSiteView(w, r, d, status)
 			return
 		}
 		if !siteRead(r) {
@@ -210,6 +232,13 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 		return
 	}
 	d.Rev = d.S["revision"].(string)
+	if reason, restricted := d.S["storage_restriction"].(string); restricted && d.S["group_id"] != "" {
+		d.CanEdit = false
+		if action != "" && action != "rollback" {
+			consoleError(w, c, 403, "Draft editing unavailable", reason)
+			return
+		}
+	}
 	d.Action = action
 	switch action {
 	case "edit":
@@ -370,7 +399,7 @@ func (a *App) sitePost(w http.ResponseWriter, r *http.Request, d siteData, id, a
 	}
 	status, msg := siteProblem(e)
 	d.Error = msg
-	if status == 400 || status == 409 || status == 429 || (status == 503 && action == "edit") {
+	if status == 400 || status == 409 || status == 429 || ((status == 403 || status == 503) && action == "edit") {
 		// Preserve the user’s draft text and old edit token on a conflict. Never
 		// silently resubmit against a newer revision. The user can compare and
 		// copy their work before opening the current file.

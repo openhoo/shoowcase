@@ -6,7 +6,7 @@ Shoowcase helps a team turn a brief into a hosted site using the agent it alread
 
 | Stage | What the author or visitor sees |
 | --- | --- |
-| Connect | The agent discovers eight tools through the organization's MCP endpoint. The production identity provider supplies the workspace and role. |
+| Connect | The agent discovers the publishing tools through the organization's MCP endpoint. The production identity provider supplies the workspace and role. |
 | Draft | The agent creates a workspace site, uploads HTML, CSS and raster images, and gets an immutable revision with a private preview. Another authorized agent can recover the files from the server without access to the original chat. |
 | Publish | A publisher names a reviewed revision. A workspace member can sign in to the stable site URL. Public sharing is disabled by default; if enabled, the publisher must approve initial public access and subsequent public releases in a browser. |
 | Maintain | A draft upload leaves the live version untouched. Conflicting edits return an error so a second author can reconcile them. Rolling back changes the live pointer while preserving the draft, address and audience. Taking a site offline preserves history. |

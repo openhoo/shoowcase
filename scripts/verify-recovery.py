@@ -100,6 +100,7 @@ def audit_export(reader, port, after=0):
 
 
 SUPPORTED_PRIORS = {"0.1.1": 1, "0.2.0": 2}
+CURRENT_SCHEMA = 4
 MEMBER_NAME = "Restore rehearsal member"
 
 
@@ -286,10 +287,10 @@ def sqlite_upgrade(previous, candidate, previous_schema):
         before = get_audit()
         check(len(before) == 5, "expected five audit rows before migration")
         verify_restored(candidate, "", token, state, specimen, before, get_audit)
-        check(sql("SELECT max(version) FROM sc_schema_migrations") == [(3,)], "wrong migrated SQLite schema")
+        check(sql("SELECT max(version) FROM sc_schema_migrations") == [(CURRENT_SCHEMA,)], "wrong migrated SQLite schema")
         reject_downgrade(previous, "", token, state)
         verify_recovery_target(previous, "", token, backup, specimen)
-        print(f"PASS: SQLite schema {previous_schema}→3; preserved two releases, private content, workspace audit revisions, cursor and replay; release rollback, old-binary rejection and restoring the prior snapshot verified.")
+        print(f"PASS: SQLite schema {previous_schema}→{CURRENT_SCHEMA}; preserved two releases, private content, workspace audit revisions, cursor and replay; release rollback, old-binary rejection and restoring the prior snapshot verified.")
 
 
 def rehearse(pg, binary, previous_binary=None, previous_schema=None):
@@ -335,10 +336,10 @@ def rehearse(pg, binary, previous_binary=None, previous_schema=None):
                       "restored tenant ledger differs from source rows or checkpoints")
             verify_restored(binary, dsn(restored), token, state, specimen, original_audit, lambda: audit(pg, restored))
             if previous_binary:
-                check(pg.sql(restored, "SELECT MAX(version) FROM sc_schema_migrations").strip() == b"3", "wrong migrated PostgreSQL schema")
+                check(int(pg.sql(restored, "SELECT MAX(version) FROM sc_schema_migrations")) == CURRENT_SCHEMA, "wrong migrated PostgreSQL schema")
                 reject_downgrade(previous_binary, dsn(restored), token, state)
                 verify_recovery_target(previous_binary, dsn(rollback_db), token, state, specimen)
-                print(f"PASS: PostgreSQL schema {previous_schema}→3; older binary rejected schema 3 and served the private site from a separately restored snapshot.")
+                print(f"PASS: PostgreSQL schema {previous_schema}→{CURRENT_SCHEMA}; older binary rejected schema {CURRENT_SCHEMA} and served the private site from a separately restored snapshot.")
             rows = audit(pg, restored)
             check(len(rows) == 6 and sum(r["action"] == "rollback_site" for r in rows) == 1, "restored DB did not audit rollback")
             version = pg.sql("postgres", "SHOW server_version;").decode().strip()
