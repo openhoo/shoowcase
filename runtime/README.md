@@ -60,7 +60,7 @@ Supported input types: text, search, number, range, checkbox and radio. The exac
 
 - Program: 256 KiB UTF-8. QuickJS heap: 4 MiB. Stack: 128 KiB.
 - Each page exposes up to 128 named elements. No single text field can exceed 4,096 UTF-16 code units; their combined size is limited to 65,536.
-- Up to 256 event registrations, 128 operations per turn and 32 queued events. Consecutive input events for the same control can coalesce.
+- Up to 256 event registrations, 128 operations per turn and 32 queued events. Consecutive input events for the same control can coalesce. While the interpreter starts, the bridge buffers trusted events using these same limits. Once the program registers its listeners, matching events replay in order with the input values captured at the time.
 - A guest has 75 ms at startup and up to 50 ms per event. Events share a 250 ms CPU budget that replenishes at 100 ms per second. The bridge also enforces independent wall-clock timeouts, an input burst limit of 60 events per second and a lifetime limit of 4,000 events.
 - These are application limits, not measurements of total browser memory or deployment capacity. The browser, worker, Wasm engine and libraries have their own overhead. The interpreter is a third-party dependency; the containment tests are not a security audit.
 

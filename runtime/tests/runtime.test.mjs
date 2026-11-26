@@ -9,6 +9,7 @@ const cases = {
   counter: `let n=0; const out=document.querySelector('#count'), b=document.getElementById('add'); out.textContent='Ready'; b.addEventListener('click',()=>out.textContent=String(++n)); const name=document.getElementById('name');name.addEventListener('input',(e)=>{document.getElementById('echo').textContent=e.target.value;});`,
   globals: `document.getElementById('count').textContent=[typeof fetch,typeof XMLHttpRequest,typeof WebSocket,typeof process,typeof self,typeof window,typeof localStorage,typeof document.cookie,typeof Function,typeof eval,typeof WebAssembly,typeof ArrayBuffer,typeof Uint8Array,typeof Promise,typeof (function*(){}).constructor,typeof (async function(){}).constructor].join(',');`,
   empty: "",
+  pending: `const out=document.getElementById("echo"), field=document.getElementById("name");document.getElementById("add").addEventListener("click",()=>{out.textContent+=field.value+";"});`,
   cross: `document.getElementById("add").addEventListener("click",()=>document.getElementById("echo").textContent=document.getElementById("name").value);`,
   bad: `throw Error('fixture')`,
   busy: `while(true){}`,
@@ -41,6 +42,7 @@ test(
   { timeout: 60000 },
   async (t) => {
     const observed = new Set();
+    let delayedWorker;
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, "http://localhost");
       observed.add(url.pathname);
@@ -48,6 +50,10 @@ test(
         /^\/auth\/runtime\/(bridge|worker)\.js$/,
       );
       if (asset) {
+        if (asset[1] === "worker" && delayedWorker) {
+          delayedWorker.requested.resolve();
+          await delayedWorker.release.promise;
+        }
         res.writeHead(200, {
           "Content-Type": "text/javascript",
           "X-Content-Type-Options": "nosniff",
@@ -119,6 +125,45 @@ test(
       await page.getByLabel("Name").fill("Team North");
       await page.locator("#echo").filter({ hasText: "Team North" }).waitFor();
     });
+    await t.test(
+      "first trusted clicks during startup are delivered once, in order, with their original inputs",
+      async () => {
+        delayedWorker = {
+          requested: Promise.withResolvers(),
+          release: Promise.withResolvers(),
+        };
+        try {
+          await page.goto(base + "/?case=pending", {
+            waitUntil: "domcontentloaded",
+          });
+          await delayedWorker.requested.promise;
+          const name = page.getByLabel("Name"),
+            add = page.getByRole("button", { name: "Add" });
+          await name.fill("First");
+          await add.click();
+          // A synthetic event and a real click on an unregistered node are ignored.
+          await add.evaluate((el) => el.click());
+          await page.locator("#count").click();
+          await name.fill("Second");
+          await add.press("Enter");
+          await name.fill("After");
+          assert.equal(await page.locator("#echo").textContent(), "");
+          delayedWorker.release.resolve();
+          await page
+            .locator("#echo")
+            .filter({ hasText: /^First;Second;$/ })
+            .waitFor({ timeout: 3000 });
+          await add.click();
+          await page
+            .locator("#echo")
+            .filter({ hasText: /^First;Second;After;$/ })
+            .waitFor({ timeout: 3000 });
+        } finally {
+          delayedWorker.release.resolve();
+          delayedWorker = undefined;
+        }
+      },
+    );
     await t.test(
       "click handler reads the current value of a different field",
       async () => {

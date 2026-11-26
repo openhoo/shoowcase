@@ -43,10 +43,12 @@ function start() {
     pending = [],
     eventTimes = [];
   const controller = new AbortController();
+  const startup = new AbortController();
   function stop(report = true) {
     if (ended) return;
     ended = true;
     clearTimeout(timer);
+    startup.abort();
     controller.abort();
     worker?.terminate();
     pending.length = 0;
@@ -187,6 +189,24 @@ function start() {
     }
   }
   worker = new Worker("/auth/runtime/worker.js");
+  // A visible button can be used while the worker is loading or compiling.
+  // Native bubbling order matches the listeners we will install per element.
+  // Capture only eligible nodes and trusted events, using the same queue,
+  // event budgets and input snapshots as normal delivery.
+  for (const type of events) {
+    document.body.addEventListener(
+      type,
+      (event) => {
+        if (!event.isTrusted) return;
+        for (const el of event.composedPath()) {
+          const entry = nodes.get(el.id);
+          if (entry && entry.el === el) enqueue(entry, type);
+          if (ended || el === document.body) break;
+        }
+      },
+      { signal: startup.signal },
+    );
+  }
   worker.onerror = () => stop();
   worker.onmessageerror = () => stop();
   worker.onmessage = ({ data }) => {
@@ -200,6 +220,15 @@ function start() {
       )
         throw Error();
       for (const cmd of data.messages) apply(cmd);
+      if (!startup.signal.aborted) {
+        // The first registration batch is complete. This synchronous handoff
+        // leaves no interval in which temporary and permanent handlers overlap.
+        startup.abort();
+        for (let i = pending.length - 1; i >= 0; i--) {
+          const { id, event } = pending[i];
+          if (!nodes.get(id).on.has(event)) pending.splice(i, 1);
+        }
+      }
       clearTimeout(timer);
       busy = false;
       if (pending.length) send(pending.shift());
