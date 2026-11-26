@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/openhoo/shoowcase/internal/telemetry"
 )
 
 // Execute receives the authenticated request context from the outer HTTP middleware.
@@ -61,16 +62,21 @@ func newHandler(execute Execute, exactHost, version string) http.Handler {
 			Name: def.name, Description: def.description, InputSchema: def.input,
 			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: def.read, IdempotentHint: true, DestructiveHint: &destructive, OpenWorldHint: &closedWorld},
 		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			ctx, finish := telemetry.StartTool(ctx, def.name)
+			outcome := "internal"
+			defer func() { finish(outcome) }()
 			raw := req.Params.Arguments
 			if len(raw) == 0 {
 				raw = json.RawMessage("{}")
 			}
 			var args map[string]any
 			if json.Unmarshal(raw, &args) != nil || args == nil {
-				return failure(nil, "invalid_argument", "Arguments must be a JSON object."), nil
+				outcome = "invalid_argument"
+				return failure(nil, outcome, "Arguments must be a JSON object."), nil
 			}
 			if err := schema.Validate(args); err != nil {
-				return failure(nil, "invalid_argument", fmt.Sprintf("Arguments do not match the %s input schema. %s", def.name, def.hint)), nil
+				outcome = "invalid_argument"
+				return failure(nil, outcome, fmt.Sprintf("Arguments do not match the %s input schema. %s", def.name, def.hint)), nil
 			}
 			out, err := execute(ctx, def.name, raw)
 			if err != nil {
@@ -78,15 +84,26 @@ func newHandler(execute Execute, exactHost, version string) http.Handler {
 					error
 					ErrorCode() string
 				}
-				if errors.As(err, &e) && e.ErrorCode() != "internal" {
-					if _, ok := actions[e.ErrorCode()]; ok {
-						return failure(out, e.ErrorCode(), e.Error()), nil
+				if errors.As(err, &e) {
+					code := e.ErrorCode()
+					// Use the published MCP categories for both the response and
+					// observability. The HTTP adapter also recognizes this alias.
+					if code == "revision_conflict" {
+						code = "conflict"
+					}
+					if _, ok := actions[code]; ok && code != "internal" {
+						outcome = code
+						return failure(out, outcome, e.Error()), nil
 					}
 				}
 				// Storage and infrastructure errors can contain private paths and connection strings.
 				return failure(nil, "internal", "Shoowcase could not complete this request."), nil
 			}
-			return result(out, false), nil
+			response := result(out, false)
+			if !response.IsError {
+				outcome = "ok"
+			}
+			return response, nil
 		})
 	}
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{

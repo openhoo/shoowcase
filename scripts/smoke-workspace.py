@@ -191,6 +191,69 @@ async def revoke_pending(page, pending_review, control, endpoint, secret, agent,
     check(await page.get_by_text("extra.css", exact=True).count() == 0, "revoked ticket changed draft")
 
 
+async def manage_workspace_access(page, control):
+    await page.goto(control + "/admin")
+    nav = page.get_by_role("navigation", name="Administration views")
+    subject = "workshop-editor"
+    await page.get_by_text("Add a member", exact=True).click()
+    await page.get_by_label("Sign-in ID", exact=True).fill(subject)
+    await page.get_by_label("Display name", exact=True).fill("Sam Editor")
+    await fits(page, "provision member")
+    await page.get_by_role("button", name="Add member").click()
+    await expect(page.get_by_text("Sam Editor", exact=True)).to_be_visible()
+
+    await nav.get_by_role("link", name="Groups").click()
+    await page.get_by_label("Group name", exact=True).fill("Authors")
+    await page.get_by_label("Group role", exact=True).select_option("editor")
+    await fits(page, "create group")
+    await page.get_by_role("button", name="Create group").click()
+    await expect(page.get_by_role("heading", name="Authors")).to_be_visible()
+    await page.get_by_label("Member sign-in ID").fill(subject)
+    await page.get_by_role("button", name="Add to group").click()
+    await expect(page.get_by_role("button", name=f"Remove {subject} from group")).to_be_visible()
+    await page.get_by_text("Edit group", exact=True).click()
+    await page.get_by_label("Current group name").fill("Releases")
+    await page.get_by_label("Current group role").select_option("publisher")
+    await fits(page, "edit populated group")
+    await page.get_by_role("button", name="Save group").click()
+    await expect(page.get_by_role("heading", name="Releases")).to_be_visible()
+
+    await nav.get_by_role("link", name="Workspace settings").click()
+    await page.get_by_label("Access mode").select_option("managed")
+    await fits(page, "workspace access settings")
+    await page.get_by_role("button", name="Save workspace settings").click()
+    await expect(page.get_by_label("Access mode")).to_have_value("managed")
+    await nav.get_by_role("link", name="Groups").click()
+    await page.get_by_role("link", name="Releases").click()
+    await page.get_by_role("button", name=f"Remove {subject} from group").click()
+    await expect(page.get_by_text("This group has no members.")).to_be_visible()
+    await page.get_by_text("Delete group", exact=True).first.click()
+    await page.get_by_label("Remove this group and all its grants.").check()
+    await page.get_by_role("button", name="Delete group").click()
+    await expect(page.get_by_text("No groups yet.")).to_be_visible()
+    await nav.get_by_role("link", name="Workspace settings").click()
+    await page.get_by_label("Access mode").select_option("identity")
+    await page.get_by_role("button", name="Save workspace settings").click()
+    await expect(page.get_by_label("Access mode")).to_have_value("identity")
+
+    await nav.get_by_role("link", name="Activity").click()
+    await expect(page.get_by_role("heading", name="Audit log")).to_be_visible()
+    await expect(page.get_by_text("Group deleted", exact=True)).to_be_visible()
+    await fits(page, "tenant audit log")
+    export = await page.get_by_role("link", name="Open JSON export").get_attribute("href")
+    response = await page.context.request.get(control + export)
+    check(response.status == 200, "audit export unavailable")
+    report = await response.json()
+    events = report["events"]
+    steps = [e["action"] for e in events]
+    expected = ["member_provisioned", "group_created", "group_member_added", "group_updated",
+                "workspace_access_changed", "group_member_removed", "group_deleted", "workspace_access_changed"]
+    check([step for step in steps if step in expected] == expected, "missing or unordered tenant audit records")
+    check(report["next_after"] == events[-1]["sequence"], "audit export checkpoint differs from last event")
+    tail = await page.context.request.get(control + export, params={"after": str(report["next_after"])})
+    check(tail.status == 200 and (await tail.json())["events"] == [], "audit export repeated checkpointed events")
+
+
 async def filter_directory(page):
     async def open_filters():
         toggle = page.get_by_role("button", name="Filter and sort")
@@ -229,6 +292,7 @@ async def workspace(binary, channel, screenshot):
             page = await ctx.new_page()
             anon = await browser.new_page(viewport={"width": 320, "height": 780})
             await enroll(page, control)
+            await manage_workspace_access(page, control)
             secret = await create_key(page, endpoint)
             async with browser_smoke.connect(endpoint, secret) as agent:
                 await add_sample_sites(agent)
@@ -254,4 +318,4 @@ if __name__ == "__main__":
     parser.add_argument("--screenshot", type=Path, help="optional desktop PNG of the synthetic workspace")
     args = parser.parse_args()
     asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot))
-    print("PASS: filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")
+    print("PASS: tenant administration, groups, audit export, filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")

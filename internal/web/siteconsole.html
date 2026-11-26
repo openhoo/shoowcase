@@ -9,7 +9,7 @@
 
 {{define "list"}}
 <header class="desk-head">
-  <div><p class="eyebrow">Publishing desk <span aria-hidden="true">/</span> {{.C.Actor.Workspace}}</p><h1>Sites</h1></div>
+  <div><p class="eyebrow">Publishing desk <span aria-hidden="true">/</span> {{.C.WorkspaceLabel}}</p><h1>Sites</h1></div>
   {{if .CanEdit}}<a class="button new-site-action" href="/sites/new">{{template "plus-icon"}} New site</a>{{end}}
 </header>
 <div class="desk-stats" aria-label="Workspace totals">

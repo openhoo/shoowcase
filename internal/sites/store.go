@@ -65,6 +65,7 @@ type Store struct {
 	driver string
 }
 
+func (s *Store) PoolStats() sql.DBStats         { return s.db.Stats() }
 func (s *Store) Close() error                   { return s.db.Close() }
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
@@ -171,7 +172,7 @@ func migrate(ctx context.Context, tx *sql.Tx) error {
 	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version),0) FROM sc_schema_migrations").Scan(&version); err != nil {
 		return err
 	}
-	if version > 2 {
+	if version > 3 {
 		return errors.New("unsupported newer schema version")
 	}
 	if version < 1 {
@@ -189,6 +190,18 @@ func migrate(ctx context.Context, tx *sql.Tx) error {
 			}
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(2)"); err != nil {
+			return err
+		}
+	}
+	if version < 3 {
+		for _, statements := range [][]string{tenantSchema, {issuerBindingSchema}, auditSchema} {
+			for _, stmt := range statements {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(3)"); err != nil {
 			return err
 		}
 	}
@@ -258,9 +271,10 @@ func readSite(ctx context.Context, tx *sql.Tx, a Actor, site string) (record, er
 
 // Embed this predicate in the selection of the resource itself. A cached
 // browser identity cannot outlive a member suspension, even on HEAD or 304.
-// Identities verified by the IdP may read without first enrolling locally.
-const memberAudience = `s.workspace=$1 AND NOT EXISTS (
-    SELECT 1 FROM sc_members m WHERE m.workspace=s.workspace AND m.subject=$2 AND m.disabled)
+// Only identity-mode tenants permit IdP readers without local membership.
+const memberAudience = `s.workspace=$1 AND EXISTS (
+    SELECT 1 FROM sc_workspace w LEFT JOIN sc_members m ON m.workspace=w.id AND m.subject=$2
+    WHERE w.id=s.workspace AND (m.disabled=FALSE OR (m.subject IS NULL AND w.access_mode='identity')))
     AND ($3='' OR EXISTS (SELECT 1 FROM sc_agent_keys k WHERE k.workspace=s.workspace
       AND k.subject=$2 AND k.id=$3 AND NOT k.revoked AND k.expires_at>$4))`
 
@@ -367,6 +381,9 @@ func defaultSlug(name string) string {
 	return base + "-" + id()[:10]
 }
 func audit(ctx context.Context, tx *sql.Tx, a Actor, r record, tool, req string) error {
+	if e := appendAudit(ctx, tx, a, AuditEvent{Action: tool, Target: r.site, Value: r.visibility, DraftRevision: r.draft, LiveRevision: r.live, ReleaseID: r.release}); e != nil {
+		return e
+	}
 	_, e := tx.ExecContext(ctx, "INSERT INTO sc_audit(id,workspace,site,subject,action,revision,release_id,live_revision,visibility,request_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", id(), a.Workspace, r.site, a.Subject, tool, r.draft, r.release, r.live, r.visibility, req, time.Now().UnixMilli())
 	return e
 }

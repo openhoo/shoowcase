@@ -78,3 +78,14 @@ The release candidate was reviewed in separate passes for identity and storage, 
 To repeat the browser and machine checks, see the [operator skill](../skills/shoowcase-operate/SKILL.md), [runtime test commands](../runtime/README.md#rebuild-and-test) and [restore drill](restore-drill.md). To regenerate the README images from synthetic workspace data, run `uv run scripts/capture-workspace.py --binary ./bin/shoowcase --output docs/media` after building the binary and installing the locked runtime test dependencies.
 
 On a trusted checkout, verify a published v0.2 or later release with `python3 scripts/verify-published.py TAG TRUSTED_COMMIT --out NEW_DIRECTORY`. This checks the public downloads, corresponding Git source, archives, dependency inventories, image contents on both Linux architectures and GitHub build provenance. It requires Python, Git, Go and an authenticated GitHub CLI for the provenance check; downloads use anonymous reads.
+
+## Managed access, audit and telemetry (schema 3)
+
+The feature was exercised locally with synthetic accounts and data on November 26, 2026.
+
+| Area | What was verified |
+| --- | --- |
+| OIDC | A real Chrome session signed in to Keycloak 26.8.2 using required S256 and a confidential client. Shoowcase ran in production mode with HTTPS OIDC endpoints and PostgreSQL certificate verification. The signed workspace and role allowed the user to enroll and open the admin console. After sign-out the previous session could no longer read the audit export. The ledger contained one sign-in and one sign-out for the Keycloak subject. |
+| Tenant access | The race suite ran against SQLite and PostgreSQL. It exercised tenant isolation, managed membership, group changes and stale forms, personal keys, private reads and the signed upload and approval paths. The workspace browser smoke exercised the administration views and audit export, including keyboard, axe and narrow-screen checks. |
+| Recovery | The upgrade drill used binaries built from the v0.1.1 and v0.2.0 Git tags. Both SQLite and PostgreSQL 16.16 preserved private data and history. A v0.2.0 member’s existing reader key stayed read-only after upgrade and after restoring the pre-upgrade snapshot. The audit export resumed at its checkpoint and distinguished draft and live revisions after rollback. |
+| OpenTelemetry | The OTLP tests decoded trace, metric and log payloads, checked correlation and rejected a synthetic private identifier in all three signals. A separate loopback run with the official OpenTelemetry Collector 0.166.0 accepted all three signals from the service. |

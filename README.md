@@ -23,7 +23,7 @@ Shoowcase is a **self-hosted website platform** for onboarding guides, project u
 
 ### My team already runs Shoowcase
 
-1. Open your team’s Shoowcase address and choose **Create an account**. Sign in through your organization and choose a display name. Your work identity determines which workspace you join.
+1. Open your team’s Shoowcase address and choose **Create an account**. Sign in through your organization and choose a display name. Your work identity determines which workspace you join. If you see **Workspace access required**, give your workspace administrator the sign-in ID shown there, then reload after they add you.
 2. Open **Agent keys → Create a key**. Choose **Editor** for creating and updating drafts, or **Publisher** if the agent should also publish releases. A new key defaults to read-only access and expires after the period you choose.
 3. In your agent’s settings, add the **Streamable HTTP** MCP server URL shown on the receipt. Store the key as a bearer token in the client’s credential settings. Copy it before leaving the page; never paste it into your chat or site. If your client uses your organization’s configured OAuth sign-in, you can connect without a personal key.
 4. Ask your agent to list your sites. It can discover all eight tools from the server. The optional [publishing skill](skills/shoowcase-publish/SKILL.md) teaches it when to use each one.
@@ -103,16 +103,18 @@ Agents reuse the same request ID and arguments when retrying a mutation. A stale
 
 ## Run it for an organization
 
-The **control host** handles MCP, sign-in, uploads and human approvals. **Site and preview hosts** live on a separate registrable domain with wildcard DNS and TLS. **PostgreSQL** stores file bytes, manifests, releases, audit events and retry records. Replicas share the database and signing key. Workspaces and roles come from your identity provider.
+The **control host** handles MCP, sign-in, uploads and human approvals. **Site and preview hosts** live on a separate registrable domain with wildcard DNS and TLS. **PostgreSQL** stores file bytes, manifests, releases, audit events and retry records. Replicas share the database and signing key. A signed claim selects the workspace. The identity provider sets the maximum role; the workspace can further restrict access.
 
 | Role | Permissions |
 | --- | --- |
 | Viewer | Read workspace sites and private previews. |
 | Editor | Also create sites and edit drafts. |
 | Publisher | Also publish, roll back, change the audience and approve public releases. |
-| Admin | Also manage enrolled workspace members and their agent keys, review account activity and read instance metrics with an admin OAuth token. |
+| Admin | Also manage enrolled workspace members and their agent keys, review workspace audit history and manage groups. Process metrics are available only to administrators of an explicitly configured operator workspace. |
 
-In **Admin**, a workspace admin can lower a member’s role limit, suspend access, restore membership, or revoke a key. Suspension revokes the member’s keys; restoring the member does not reactivate them. Administrators are assigned through the identity provider.
+In **Admin**, a workspace administrator can add members, manage groups, set role limits, suspend members and revoke keys. In [managed mode](docs/tenant-access.md), members start as viewers and receive editor or publisher rights through group membership. Suspension revokes the member’s keys; restoring the member does not reactivate them. Administrators are assigned through the identity provider.
+
+See [OIDC and PKCE configuration](docs/oidc.md), [audit export and retention](docs/audit.md) and [OpenTelemetry collector setup](docs/telemetry.md).
 
 Start with [deployment and identity setup](docs/operations.md) and the [container configuration](deploy/compose.yaml). Before accepting company traffic, test your real identity provider and agent client, cross-workspace access, withdrawal and a [restore into a separate database](docs/restore-drill.md). The [verification report](docs/verification.md) and [HTTP measurements](docs/http-benchmark.md) show what was tested and under what conditions.
 

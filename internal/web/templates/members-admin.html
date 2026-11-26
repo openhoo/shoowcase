@@ -2,9 +2,13 @@
 <header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Workspace admin</h1><p>Manage access for people and agents in this workspace.</p></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 <dl class="grid" aria-label="Workspace totals"><div class="panel"><dt>Members</dt><dd><strong>{{.Stats.Members}}</strong></dd></div><div class="panel"><dt>Sites</dt><dd><strong>{{.Stats.Sites}}</strong></dd></div><div class="panel"><dt>Active keys</dt><dd><strong>{{.Stats.ActiveKeys}}</strong></dd></div></dl>
-<nav class="toolbar" aria-label="Administration views"><a href="/admin"{{if eq .View "members"}} aria-current="page"{{end}}>Members</a><a href="/admin?view=keys"{{if eq .View "keys"}} aria-current="page"{{end}}>Workspace keys</a><a href="/admin?view=activity"{{if eq .View "activity"}} aria-current="page"{{end}}>Activity</a></nav>
+<nav class="toolbar" aria-label="Administration views"><a href="/admin"{{if eq .View "members"}} aria-current="page"{{end}}>Members</a><a href="/admin?view=groups"{{if eq .View "groups"}} aria-current="page"{{end}}>Groups</a><a href="/admin?view=settings"{{if eq .View "settings"}} aria-current="page"{{end}}>Workspace settings</a><a href="/admin?view=keys"{{if eq .View "keys"}} aria-current="page"{{end}}>Workspace keys</a><a href="/admin?view=activity"{{if eq .View "activity"}} aria-current="page"{{end}}>Activity</a></nav>
 {{if eq .View "members"}}
 <section class="panel stack" aria-labelledby="members"><h2 id="members">Members</h2>
+<details><summary>Add a member</summary><form class="stack" method="post" action="/admin"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="provision">
+<p>Use the person’s exact subject ID from your identity provider. They must sign in to this workspace to use the account.</p>
+<div class="field"><label for="member-subject">Sign-in ID</label><input id="member-subject" name="subject" required maxlength="255"></div>
+<div class="field"><label for="member-name">Display name</label><input id="member-name" name="display_name" required maxlength="80"></div><div><button>Add member</button></div></form></details>
 {{if .Members}}<ul class="list">{{range $i, $member := .Members}}<li class="stack"><div class="row"><strong>{{.DisplayName}}</strong> <span class="badge">{{if .Disabled}}Suspended{{else}}{{role .Role}}{{end}}</span></div>
 <div class="muted"><code>{{.Subject}}</code>{{if eq $.Subject .Subject}} · Your account{{end}}</div>
 {{if .Manage}}<details><summary>Manage {{.DisplayName}}</summary><div class="stack"><p>Sign-in role: {{role .IdentityRole}}. {{if eq .IdentityRole "admin"}}Your identity provider manages this role.{{else}}Role limit: {{role .Ceiling}}.{{end}}</p>
@@ -16,7 +20,9 @@
 {{else}}<input type="hidden" name="action" value="suspend"><label><input type="checkbox" name="confirm" value="yes" required> Suspend this member and revoke all their keys.</label><div><button class="danger" type="submit">Suspend member</button></div>{{end}}</form>
 </div></details>{{end}}</li>{{end}}</ul>{{else}}<p class="muted">No members on this page.</p>{{end}}
 {{if .Next}}<a href="{{.Next}}">Next members →</a>{{end}}</section>
+{{else if eq .View "settings"}}{{template "workspace-settings" .}}
+{{else if eq .View "groups"}}{{template "groups" .}}
 {{else if eq .View "keys"}}<section class="panel stack" aria-labelledby="workspace-keys"><h2 id="workspace-keys">Workspace keys</h2><p class="muted">Revoking a key disconnects every agent using it.</p>{{template "key-list" .}}</section>
-{{else}}<section class="panel stack" aria-labelledby="activity"><h2 id="activity">Account activity</h2><p class="muted">The 25 most recent account and key changes.</p>
-{{if .Events}}<ol class="list">{{range .Events}}<li class="stack"><strong>{{eventName .Action}}</strong><span><time datetime="{{isoDate .At}}">{{longDate .At}}</time></span><span class="muted">By <code>{{.Subject}}</code>{{if .Target}} · For <code>{{.Target}}</code>{{end}}</span></li>{{end}}</ol>{{else}}<p class="muted">No activity yet.</p>{{end}}</section>
+{{else}}<section class="panel stack" aria-labelledby="activity"><h2 id="activity">Audit log</h2><p class="muted">Sign-ins and changes to workspace access, keys, drafts and releases. Most recent first.</p><a href="/api/audit">Open JSON export</a>
+{{if .Events}}<ol class="list">{{range .Events}}<li class="stack"><strong>{{eventName .Action}}</strong> <span class="muted">#{{.Sequence}}</span><span><time datetime="{{isoDate .At}}">{{longDate .At}}</time></span><span class="muted">By <code>{{.Subject}}</code>{{if .Target}} · For <code>{{.Target}}</code>{{end}}{{if .Previous}} · From <code>{{.Previous}}</code>{{end}}{{if .Value}} · To <code>{{.Value}}</code>{{end}}</span></li>{{end}}</ol>{{else}}<p class="muted">No activity yet.</p>{{end}}{{if .Next}}<a href="{{.Next}}">Older events →</a>{{end}}</section>
 {{end}}{{end}}

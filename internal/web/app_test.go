@@ -38,7 +38,7 @@ func handlerIdentityFixture(t *testing.T, storePath, subject, workspace string, 
 	if e != nil {
 		t.Fatal(e)
 	}
-	app, e := New(Config{ControlURL: testControl, SitesDomain: testZone, Key: testKey, Public: public}, s, a)
+	app, e := New(Config{ControlURL: testControl, SitesDomain: testZone, Key: testKey, Public: public, MetricsWorkspace: workspace}, s, a)
 	if e != nil {
 		t.Fatal(e)
 	}

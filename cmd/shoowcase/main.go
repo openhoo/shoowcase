@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/openhoo/shoowcase/internal/auth"
 	"github.com/openhoo/shoowcase/internal/sites"
+	"github.com/openhoo/shoowcase/internal/telemetry"
 	"github.com/openhoo/shoowcase/internal/web"
 )
 
@@ -38,6 +38,15 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+func sessionActor(i auth.Identity) sites.Actor {
+	role := string(i.Role)
+	if i.Role == auth.Viewer {
+		role = "reader"
+	}
+	return sites.Actor{Workspace: i.Workspace, Subject: i.Subject, Role: role}
+}
+
 func run() error {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
 		fmt.Println(version)
@@ -139,24 +148,51 @@ func run() error {
 		return errors.New("cannot initialize database (check connection, migration permissions and server logs)")
 	}
 	defer s.Close()
-	authn, e := auth.New(ready, auth.Config{ControlURL: control, SitesDomain: zone, Issuer: env("ISSUER", ""), ClientID: env("CLIENT_ID", ""), ClientSecret: env("CLIENT_SECRET", ""), Audience: env("AUDIENCE", ""), SessionKey: key, WorkspaceClaim: env("WORKSPACE_CLAIM", "workspace"), RolesClaim: env("ROLES_CLAIM", "roles"), RequiredScope: env("REQUIRED_SCOPE", ""), Dev: *dev, DevWorkspace: env("DEV_WORKSPACE", "local"), DevSubject: env("DEV_SUBJECT", "local-user"), DevToken: token, Consume: s.Consume})
+	issuer := env("ISSUER", "")
+	authn, e := auth.New(ready, auth.Config{
+		ControlURL: control, SitesDomain: zone, Issuer: issuer,
+		ClientID: env("CLIENT_ID", ""), ClientSecret: env("CLIENT_SECRET", ""), ClientAuthMethod: env("CLIENT_AUTH_METHOD", ""),
+		Audience: env("AUDIENCE", ""), SessionKey: key,
+		WorkspaceClaim: env("WORKSPACE_CLAIM", "workspace"), RolesClaim: env("ROLES_CLAIM", "roles"), RequiredScope: env("REQUIRED_SCOPE", ""),
+		Dev: *dev, DevWorkspace: env("DEV_WORKSPACE", "local"), DevSubject: env("DEV_SUBJECT", "local-user"), DevToken: token,
+		Consume: s.Consume, IsConsumed: s.IsConsumed,
+		Audit: func(ctx context.Context, i auth.Identity, action string) error {
+			return s.RecordSession(ctx, sessionActor(i), action)
+		},
+		RevokeSession: func(ctx context.Context, key string, expires time.Time, i auth.Identity) error {
+			return s.RevokeSessionAndAudit(ctx, key, expires, sessionActor(i))
+		},
+	})
 	if e != nil {
 		return fmt.Errorf("identity configuration: %w", e)
 	}
-	raw, e := base64.RawURLEncoding.DecodeString(key)
-	if e != nil || len(raw) != 32 {
-		return errors.New("invalid session key")
+	if err := s.RequireIssuer(ready, authn.IdentityRealm()); err != nil {
+		return errors.New("cannot bind identity realm: verify the database, development mode and original issuer before starting")
 	}
-	signing := sha256.Sum256(append([]byte("shoowcase:ticket-key:v1\x00"), raw...))
-	app, e := web.New(web.Config{DisableApps: apps == "false", SignupURL: os.Getenv("SHOOWCASE_SIGNUP_URL"), Version: version, ControlURL: strings.TrimSuffix(control, "/"), SitesDomain: zone, Key: signing[:], Public: public == "true"}, s, authn)
+	metricsWorkspace := env("METRICS_WORKSPACE", "")
+	if *dev && metricsWorkspace == "" {
+		metricsWorkspace = env("DEV_WORKSPACE", "local")
+	}
+	app, e := web.New(web.Config{MetricsWorkspace: metricsWorkspace, DisableApps: apps == "false", SignupURL: os.Getenv("SHOOWCASE_SIGNUP_URL"), Version: version, ControlURL: strings.TrimSuffix(control, "/"), SitesDomain: zone, Key: authn.ActionKey(), Public: public == "true"}, s, authn)
 	if e != nil {
 		return e
 	}
+	obs, e := telemetry.New(ready, version, control, s.PoolStats)
+	if e != nil {
+		return e
+	}
+	defer func() {
+		d, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := obs.Shutdown(d); err != nil {
+			slog.Warn("telemetry shutdown did not finish cleanly")
+		}
+	}()
 	listener, e := net.Listen("tcp", listen)
 	if e != nil {
 		return e
 	}
-	server := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Handler: obs.Handler(app), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32 << 10}
 	drained := make(chan error, 1)
 	go func() {
 		<-ctx.Done()
