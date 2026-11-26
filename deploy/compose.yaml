@@ -1,0 +1,27 @@
+# External TLS ingress and PostgreSQL are prerequisites. Supply IMAGE by digest.
+services:
+  shoowcase:
+    image: ${SHOOWCASE_IMAGE:?set a verified ghcr.io/openhoo/shoowcase@sha256 digest}
+    restart: unless-stopped
+    user: '65532:65532'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    ports: ['127.0.0.1:7878:7878']
+    environment:
+      SHOOWCASE_LISTEN: ':7878'
+      SHOOWCASE_CONTROL_URL: ${SHOOWCASE_CONTROL_URL:?set the public HTTPS control origin}
+      SHOOWCASE_SITES_DOMAIN: ${SHOOWCASE_SITES_DOMAIN:?set the dedicated content DNS domain}
+      SHOOWCASE_DATABASE_URL: ${SHOOWCASE_DATABASE_URL:?set a PostgreSQL connection using TLS}
+      SHOOWCASE_ISSUER: ${SHOOWCASE_ISSUER:?set your HTTPS issuer}
+      SHOOWCASE_CLIENT_ID: ${SHOOWCASE_CLIENT_ID:?set the browser client ID}
+      SHOOWCASE_CLIENT_SECRET: ${SHOOWCASE_CLIENT_SECRET:?provide the browser client secret}
+      SHOOWCASE_AUDIENCE: ${SHOOWCASE_AUDIENCE:?set the access token audience}
+      SHOOWCASE_SESSION_KEY: ${SHOOWCASE_SESSION_KEY:?provide one random 32-byte base64url key}
+      SHOOWCASE_WORKSPACE_CLAIM: ${SHOOWCASE_WORKSPACE_CLAIM:-workspace}
+      SHOOWCASE_ROLES_CLAIM: ${SHOOWCASE_ROLES_CLAIM:-roles}
+      SHOOWCASE_REQUIRED_SCOPE: ${SHOOWCASE_REQUIRED_SCOPE:-}
+      SHOOWCASE_PUBLIC: ${SHOOWCASE_PUBLIC:-false}

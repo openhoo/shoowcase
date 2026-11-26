@@ -1,0 +1,11 @@
+/.shoowcase/
+/bin/
+/dist/
+/coverage.out
+/.env
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+__pycache__/
+*.py[cod]

@@ -1,0 +1,56 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-bookworm@sha256:1eff563f6c868b9b433566e9f3cf6e5c79fbd3b95bf70ec7277d376cdbfc50d7
+        env:
+          POSTGRES_USER: shoowcase_ci
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: shoowcase_test
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd="pg_isready -U shoowcase_ci -d shoowcase_test"
+          --health-interval=3s --health-timeout=2s --health-retries=20
+    env:
+      GOTOOLCHAIN: local
+      SHOOWCASE_TEST_POSTGRES_DSN: postgres://shoowcase_ci:disposable_ci_only@127.0.0.1:5432/shoowcase_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.27.4'
+      - name: Verify modules and formatting
+        run: |
+          go mod verify
+          git diff --exit-code
+          test -z "$(gofmt -l cmd internal)"
+      - name: Vet and run race tests against SQLite and PostgreSQL
+        run: make vet test
+      - name: Scan reachable Go vulnerabilities
+        run: make vuln
+      - name: Real browser HTTP and MCP smoke
+        run: make smoke
+      - name: Restore production-format backup into a separate database
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: python3 scripts/verify-recovery.py --binary ./bin/shoowcase --engine docker --container "$PG_CONTAINER"
+      - name: Build and run the production OCI image
+        run: |
+          docker build --build-arg VERSION=ci -t shoowcase:ci .
+          test "$(docker image inspect --format '{{.Config.User}}' shoowcase:ci)" = '65532:65532'
+          test "$(docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges --network=none shoowcase:ci version)" = ci

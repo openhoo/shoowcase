@@ -1,0 +1,42 @@
+# Run Shoowcase
+
+## Production prerequisites
+
+Provision a PostgreSQL database, a work identity provider, a control hostname and a separate registrable domain for uploaded content. Example: `publish.example.com` for control and `*.example-sites.net` for sites and previews. Configure wildcard DNS and wildcard TLS including preview hostnames. Send both to Shoowcase, preserving the original Host. Place TLS at the ingress and keep the Go listener and PostgreSQL off the public network. Do not serve site files from a public storage endpoint.
+
+1. Create a browser OIDC client with the **exact** redirect URI `https://publish.example.com/auth/callback`. Configure the issuer to include a nonempty workspace ID and one or more of `viewer`, `editor`, `publisher`, `admin` in signed claims. The browser client ID and the resource audience must be different.
+2. Register/authorize the desired MCP clients with the issuer (or use an issuer with compatible client registration). The MCP resource URL is `https://publish.example.com/mcp`. Configure the issuer to return a signed JWT access token with an access-token type (`at+jwt`), matching audience and claims. Opaque access tokens and using an ID token as a bearer are unsupported. Shoowcase advertises protected-resource metadata; client registration and user assignments belong to the identity provider.
+3. Supply a random session key using `shoowcase keygen` directly into a secret manager. All replicas share this key and the PostgreSQL database. Treat database credentials and the OIDC client secret as deployment secrets. Production startup requires TLS with PostgreSQL server identity verification on every connection target. Use `sslmode=verify-full`; use a restricted service account with access to its own database/schema and the DDL rights needed for first initialization. Keep a backup and rehearse restore before upgrades.
+4. Use [the Compose definition](../deploy/compose.yaml) with a pinned image digest or run the release binary behind your ingress. Set resource limits and disable unneeded capabilities. Disable shared caching for all paths; do not configure a “cache everything” rule. Do not rewrite Origin headers to skip validation. Send no request query strings or headers to access logs.
+5. Give an authorized agent the control URL ending in `/mcp`. Test OAuth discovery, create a team site, verify it in a different coworker's browser, then verify an unrelated workspace cannot read its HTML, styles or images. Public sharing must remain off unless you intend to offer it.
+
+## Configuration
+
+All names below have the prefix `SHOOWCASE_`.
+
+| Name | Meaning |
+| --- | --- |
+| `CONTROL_URL` | Canonical HTTPS control origin, no path or trailing slash. |
+| `SITES_DOMAIN` | Bare DNS suffix on a distinct registrable domain. Uses the control URL's scheme and port. |
+| `DATABASE_URL` | PostgreSQL connection string. Use transport verification, e.g. `sslmode=verify-full`, with the appropriate trusted CA. |
+| `ISSUER`, `CLIENT_ID`, `CLIENT_SECRET` | HTTPS OIDC issuer, browser client and secret. |
+| `AUDIENCE` | API token audience; defaults to control URL plus `/mcp`. |
+| `SESSION_KEY` | 32 random bytes encoded with URL-safe base64, no padding. Rotate across replicas together. |
+| `WORKSPACE_CLAIM`, `ROLES_CLAIM`, `REQUIRED_SCOPE` | Defaults: `workspace`, `roles`, optional scope. For deployments with multiple APIs, set a dedicated publishing scope as well as the audience. |
+| `LISTEN` | Defaults to `127.0.0.1:7878`. For containers use `:7878` behind the boundary described above. |
+| `PUBLIC` | Exactly `true` or `false`; default false. False disables anonymous site delivery, including formerly public sites. Change every replica and drain replicas with the old setting before considering the change complete. |
+| `STATE_DIR`, `DEV_TOKEN`, `DEV_SUBJECT`, `DEV_WORKSPACE` | For explicit `-dev` only. The default local state directory is `.shoowcase/`. |
+
+## Recovery, retention and monitoring
+
+Back up PostgreSQL as a single unit. It contains content, active release pointers, history, audit events and auth replay records. Protect backups as private site content. Use managed point-in-time recovery if your organization has an RPO. Choose an RPO/RTO, measure both on your deployment and record the results. An isolated, executable [restore drill](restore-drill.md) verifies a restored release with the application. Never run validation against a production restore destination.
+
+After a disaster restore, keep the ingress private while reviewing publication and access changes since the snapshot. Set `PUBLIC=false` and rotate the session key before restoring traffic. Verify a private site denies a signed-out visitor and ensure no revoked public site is automatically re-exposed. Reconcile restored roles with the identity provider. Back up deployment configuration and externally managed secrets separately.
+
+Control-host `/healthz` checks liveness and `/readyz` checks database connectivity. Both may be probed without a token using the configured Host. `/metrics` requires an admin API token. Monitor database storage/latency, request/error rates and memory at the proxy and process. Record site deliveries and transferred bytes without collecting URLs, tokens or document content. Read the workspace audit feed directly from `sc_audit` with a separate read-only reporting role; limit each report to the intended workspace. The release includes no outbound telemetry.
+
+Each site can hold 100 files or 8 MiB per revision. A file is at most 2 MiB; HTML and CSS are capped at 256 KiB. Workspaces have 100 sites, 500 revisions per site, 2 GiB of cumulative manifest sizes, and 50,000 mutations. Identical file bytes are deduplicated while quota charging counts retained revision sizes. At a limit, inspect usage and archive records under your retention policy; this release does not automatically prune history. Do not remove individual SQL rows to free space. Taking a site offline affects delivery without destroying history.
+
+## Supported operating envelope
+
+Keep PostgreSQL close to the service. Production replicas share the database; replay, authorization and publication state do not depend on a sticky server session. The binary combines the management and delivery endpoints; a model outage does not affect hosting, but losing every binary or the database does. Use multiple replicas, a monitored HA database and load testing if you require higher availability. Confirm recoverability and SLOs on your own infrastructure before contracting them.
