@@ -45,6 +45,20 @@ def only(manifests, kind):
     return matches[0]
 
 
+class SmokeFixtureTest(unittest.TestCase):
+    def test_pods_can_be_admitted_before_namespace_controllers_run(self):
+        # kubectl apply submits each document in order. A fresh namespace can
+        # still have no ServiceAccounts when the first Pod request arrives.
+        accounts = set()
+        fixture = ROOT / "scripts/fixtures/helm-backends.yaml"
+        for doc in yaml.safe_load_all(fixture.read_text()):
+            if doc["kind"] == "ServiceAccount":
+                accounts.add(doc["metadata"]["name"])
+            elif doc["kind"] == "Pod":
+                account = doc["spec"].get("serviceAccountName", "default")
+                self.assertIn(account, accounts, f'{doc["metadata"]["name"]} needs ServiceAccount {account}')
+
+
 class ChartTest(unittest.TestCase):
     def test_private_install(self):
         docs = render()

@@ -9,12 +9,20 @@ spec:
     - {name: postgres, port: 5432, targetPort: 5432}
     - {name: issuer, port: 443, targetPort: 8443}
 ---
+# Namespace creation does not wait for the default ServiceAccount controller.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backends
+automountServiceAccountToken: false
+---
 apiVersion: v1
 kind: Pod
 metadata:
   name: backends
   labels: {fixture: backends}
 spec:
+  serviceAccountName: backends
   automountServiceAccountToken: false
   securityContext: {fsGroup: 999}
   containers:
