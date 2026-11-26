@@ -148,7 +148,9 @@ def check_traefik(kube, tmp, fixtures_k, service):
     run([*ctl, "wait", "--for=create", "deployment/traefik", "--timeout=140s"], timeout=150)
     run([*ctl, "rollout", "status", "deployment/traefik", "--timeout=140s"], timeout=150)
     with forward(ctl, "svc/traefik", 443) as port:
-        tls = ssl.create_default_context(cafile=str(tmp / "ca.crt"))
+        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls.minimum_version = ssl.TLSVersion.TLSv1_2
+        tls.load_verify_locations(cafile=str(tmp / "ca.crt"))
         # Wait for the controller's asynchronous routing and certificate configuration.
         deadline = time.monotonic() + 90
         while True:

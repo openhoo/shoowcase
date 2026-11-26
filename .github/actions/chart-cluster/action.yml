@@ -46,6 +46,10 @@ runs:
           registry_args=(--registry-config "$registry_config")
         fi
         unset GHCR_PULL_TOKEN
-        k3d cluster create "$CLUSTER" --wait --timeout 3m --no-lb --no-image-volume \
-          --image rancher/k3s:v1.35.5-k3s1@sha256:2074403abe1bded11ef3dde09d457e13be8e0b64c218b1c4f8269b4565cfbc65 \
+        # Pull by digest; give k3d a local tag, as its Docker client expects a tag for node creation.
+        node_image=rancher/k3s@sha256:2074403abe1bded11ef3dde09d457e13be8e0b64c218b1c4f8269b4565cfbc65
+        docker pull "$node_image"
+        docker tag "$node_image" shoowcase-ci-k3s:v1.35.5
+        k3d cluster create "$CLUSTER" --wait --timeout 3m --no-lb \
+          --image shoowcase-ci-k3s:v1.35.5 \
           --k3s-arg '--disable=servicelb@server:*' "${registry_args[@]}"
