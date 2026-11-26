@@ -1,0 +1,13 @@
+{{define "account"}}{{if .Enrolled}}
+<header><p class="eyebrow">Workspace</p><h1>Your account</h1></header>
+<section class="panel stack" aria-labelledby="account-details"><h2 id="account-details">Account details</h2>
+<dl><dt>Display name</dt><dd>{{.Name}}</dd><dt>Workspace</dt><dd>{{.Workspace}}</dd><dt>Role</dt><dd>{{role .Role}}</dd><dt>Sign-in ID</dt><dd><code>{{.Subject}}</code></dd></dl>
+<div class="toolbar"><a class="button" href="/sites">Open sites</a><a class="button secondary" href="/keys">Manage agent keys</a><form method="post" action="/auth/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" class="secondary">Sign out</button></form></div></section>
+{{else}}
+<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Create your account</h1><p>Choose how your name appears to your workspace admin.</p></header>
+<form class="panel stack" method="post" action="/account"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="enroll">
+{{if .Err}}<p class="notice" id="account-error" role="alert">{{.Err}}</p>{{end}}
+<div class="field"><label for="display-name">Display name <span class="muted">(optional)</span></label><input id="display-name" name="display_name" value="{{.NameValue}}" maxlength="80" autocomplete="nickname" aria-describedby="name-help{{if .Err}} account-error{{end}}"{{if .Err}} aria-invalid="true"{{end}}><small id="name-help">Leave this blank to use your sign-in ID.</small></div>
+<dl><dt>Sign-in ID</dt><dd><code>{{.Subject}}</code></dd><dt>Role</dt><dd>{{role .Role}}</dd></dl>
+<div><button type="submit">Create account</button></div></form>
+{{end}}{{end}}

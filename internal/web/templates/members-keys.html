@@ -1,0 +1,36 @@
+{{define "endpoint"}}
+<div class="field"><label for="mcp-endpoint">MCP server URL</label><input id="mcp-endpoint" type="url" readonly value="{{.Endpoint}}" spellcheck="false"><button type="button" class="secondary" data-copy-target="mcp-endpoint" hidden>Copy URL</button></div>
+{{end}}
+
+{{define "key-receipt"}}
+<header><p class="eyebrow">Agent keys · {{.Workspace}}</p><h1>Connect your agent</h1><p>Your key for <strong>{{.NameValue}}</strong> is ready. Copy it before leaving this page.</p></header>
+<section class="panel stack" aria-labelledby="connection"><h2 id="connection">Connection details</h2>
+{{template "endpoint" .}}
+<div class="field"><label for="agent-secret">Secret key</label><input id="agent-secret" data-secret-receipt readonly value="{{.Secret}}" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="secret-help"><small id="secret-help">You can only see this key here. Keep it in your agent’s credential settings.</small><button type="button" data-copy-target="agent-secret" hidden>Copy key</button></div>
+<ol><li>In your agent’s MCP settings, add a <strong>Streamable HTTP</strong> server using the URL above.</li><li>Choose bearer token authentication and paste the secret key. If your agent uses HTTP headers, set <code>Authorization</code> to <code>Bearer </code> followed by the key.</li><li>Connect the server and ask your agent to list your sites.</li></ol>
+<div><a class="button secondary" href="/keys">Back to agent keys</a></div></section>
+{{end}}
+
+{{define "keys"}}
+<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Agent keys</h1><p>Give an agent access to your sites. Use a separate key for each connection.</p></header>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+<section class="panel stack" aria-labelledby="new-key"><h2 id="new-key">Create a key</h2>
+<form method="post" action="/keys" class="stack"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="create"><input type="hidden" name="creation_token" value="{{.Creation}}">
+{{if .Err}}<p class="notice" id="key-error" role="alert">{{.Err}}</p>{{end}}
+<div class="field"><label for="key-name">Key name</label><input id="key-name" name="name" type="text" value="{{.NameValue}}" required maxlength="80" placeholder="e.g. Design team agent"{{if .Err}} aria-describedby="key-error"{{end}}></div>
+<div class="grid"><div class="field"><label for="key-scope">Access</label><select id="key-scope" name="scope" required>{{range .Scopes}}<option value="{{.}}"{{if eq $.Scope .}} selected{{end}}>{{if eq . "reader"}}Viewer · Read sites{{else if eq . "editor"}}Editor · Create and edit{{else}}Publisher · Edit and publish{{end}}</option>{{end}}</select></div>
+<div class="field"><label for="key-days">Expires in</label><select id="key-days" name="days"><option value="7"{{if eq .Days "7"}} selected{{end}}>7 days</option><option value="30"{{if eq .Days "30"}} selected{{end}}>30 days</option><option value="90"{{if eq .Days "90"}} selected{{end}}>90 days</option></select></div></div>
+<div><button type="submit">Create key</button></div></form></section>
+<section class="panel stack" aria-labelledby="your-keys"><h2 id="your-keys">Your keys</h2>{{template "key-list" .}}</section>
+<details class="panel"><summary>Connect an existing key</summary><div class="stack"><p>In your agent’s MCP settings, choose Streamable HTTP. Enter the server URL and use your key as the bearer token.</p>{{template "endpoint" .}}</div></details>
+{{end}}
+
+{{define "key-list"}}
+{{if .Keys}}<ul class="list">{{range .Keys}}<li class="stack"><div class="row"><strong>{{.Name}}</strong> <span class="badge">{{.State}}</span></div>
+<div class="muted">{{role .Scope}}{{if $.Admin}} · Owner: <code>{{.Subject}}</code>{{end}} · Created <time datetime="{{isoDate .CreatedAt}}">{{shortDate .CreatedAt}}</time> · {{if eq .State "Expired"}}Expired{{else}}Expires{{end}} <time datetime="{{isoDate .ExpiresAt}}" title="{{longDate .ExpiresAt}}">{{shortDate .ExpiresAt}}</time></div>
+{{if eq .State "Active"}}<details><summary>Revoke <span>{{.Name}}</span></summary><form class="stack" action="{{if $.Admin}}/admin{{else}}/keys{{end}}" method="post"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{.ID}}">
+<label><input type="checkbox" name="confirm" value="yes" required> Disconnect agents using this key.</label>
+<div><button type="submit" class="danger">Revoke key</button></div></form></details>{{end}}</li>{{end}}</ul>
+{{else}}<p class="muted">{{if .Admin}}No keys on this page.{{else}}No keys on this page. Create a key to connect an agent.{{end}}</p>{{end}}
+{{if .Next}}<a href="{{.Next}}">Next keys →</a>{{end}}
+{{end}}

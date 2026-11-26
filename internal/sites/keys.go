@@ -1,0 +1,237 @@
+package sites
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"database/sql"
+	"encoding/base64"
+	"errors"
+	"strings"
+	"time"
+)
+
+const MCPKeyPrefix = "sc_key_"
+const maxActiveKeys = 10
+
+type AgentKey struct {
+	ID, Name, Subject, Scope string
+	CreatedAt, ExpiresAt     time.Time
+	Revoked                  bool
+}
+
+func (s *Store) CreateKey(ctx context.Context, a Actor, name, scope string, days int) (AgentKey, string, error) {
+	var zero AgentKey
+	name = strings.TrimSpace(name)
+	if !labelOK(name) {
+		return zero, "", bad("Enter a key name of 1–80 characters.")
+	}
+	if scope == "" {
+		scope = "reader"
+	}
+	if roleLevel(scope) < 1 || roleLevel(scope) > 3 || days < 1 || days > 90 {
+		return zero, "", bad("Choose a viewer, editor or publisher key and an expiry of 1–90 days.")
+	}
+	tx, e := s.accountWrite(ctx, a)
+	if e != nil {
+		return zero, "", e
+	}
+	defer tx.Rollback()
+	allowed, e := authorizeMember(ctx, tx, a, 1)
+	if e != nil {
+		return zero, "", e
+	}
+	if roleLevel(scope) > rank(allowed) {
+		return zero, "", fail("forbidden", "The key cannot have more access than your account.")
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	var n int
+	if e = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM sc_agent_keys WHERE workspace=$1 AND subject=$2 AND NOT revoked AND expires_at>$3", a.Workspace, a.Subject, now.Unix()).Scan(&n); e != nil {
+		return zero, "", e
+	}
+	if n >= maxActiveKeys {
+		return zero, "", fail("quota_exceeded", "Revoke an existing key before creating another. You can have 10 active keys.")
+	}
+	// Keep 25 inactive keys per account for the UI; audit has separate retention.
+	// The LIMIT idiom differs between databases, so use exclusion by a bounded subquery.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM sc_agent_keys WHERE workspace=$1 AND subject=$2 AND (revoked OR expires_at<=$3)
+	AND id NOT IN (SELECT id FROM sc_agent_keys WHERE workspace=$1 AND subject=$2 AND (revoked OR expires_at<=$3) ORDER BY created_at DESC,id DESC LIMIT 25)`, a.Workspace, a.Subject, now.Unix()); e != nil {
+		return zero, "", e
+	}
+	key := AgentKey{ID: id(), Name: name, Subject: a.Subject, Scope: scope, CreatedAt: now, ExpiresAt: now.Add(time.Duration(days) * 24 * time.Hour)}
+	var random [32]byte
+	if _, e = rand.Read(random[:]); e != nil {
+		return zero, "", e
+	}
+	secret := MCPKeyPrefix + key.ID + "." + base64.RawURLEncoding.EncodeToString(random[:])
+	if _, e = tx.ExecContext(ctx, "INSERT INTO sc_agent_keys(id,workspace,subject,name,scope,digest,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", key.ID, a.Workspace, a.Subject, name, scope, sum([]byte(secret)), now.Unix(), key.ExpiresAt.Unix()); e != nil {
+		return zero, "", e
+	}
+	if e = recordAccountEvent(ctx, tx, a, "key_created", key.ID); e != nil {
+		return zero, "", e
+	}
+	if e = tx.Commit(); e != nil {
+		return zero, "", e
+	}
+	return key, secret, nil
+}
+
+// KeyID returns the nonsecret reference embedded in a well-formed credential.
+// It does not authenticate a request.
+func KeyID(secret string) string {
+	if len(secret) != len(MCPKeyPrefix)+32+1+43 || !strings.HasPrefix(secret, MCPKeyPrefix) {
+		return ""
+	}
+	id, token, ok := strings.Cut(secret[len(MCPKeyPrefix):], ".")
+	if !ok || !idRE.MatchString(id) {
+		return ""
+	}
+	_, e := base64.RawURLEncoding.Strict().DecodeString(token)
+	if e != nil {
+		return ""
+	}
+	return id
+}
+func invalidKey() error { return fail("unauthorized", "This agent key is not valid.") }
+
+const keyPrincipal = `SELECT k.workspace,k.subject,k.scope,k.digest,m.identity_role,m.ceiling
+	FROM sc_agent_keys k JOIN sc_members m ON m.workspace=k.workspace AND m.subject=k.subject
+	WHERE k.id=$1 AND NOT k.revoked AND NOT m.disabled AND k.expires_at>$2`
+
+func readKey(ctx context.Context, q queryer, id string) (a Actor, digest string, err error) {
+	var scope, idp, ceiling string
+	err = q.QueryRowContext(ctx, keyPrincipal, id, time.Now().Unix()).Scan(&a.Workspace, &a.Subject, &scope, &digest, &idp, &ceiling)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Actor{}, "", invalidKey()
+	}
+	if err != nil {
+		return Actor{}, "", err
+	}
+	if roleLevel(scope) < 1 || roleLevel(scope) > 3 || roleLevel(idp) < 1 {
+		return Actor{}, "", invalidKey()
+	}
+	a.Role = minGrant(scope, idp)
+	if ceiling != "" {
+		a.Role = minGrant(a.Role, ceiling)
+	}
+	if rank(a) < 1 {
+		return Actor{}, "", invalidKey()
+	}
+	return a, digest, nil
+}
+func (s *Store) ResolveKey(ctx context.Context, secret string) (Actor, error) {
+	id := KeyID(secret)
+	if id == "" {
+		return Actor{}, invalidKey()
+	}
+	a, digest, e := readKey(ctx, s.db, id)
+	if e != nil {
+		return Actor{}, e
+	}
+	if subtle.ConstantTimeCompare([]byte(digest), []byte(sum([]byte(secret)))) != 1 {
+		return Actor{}, invalidKey()
+	}
+	return a, nil
+}
+func resolveKeyID(ctx context.Context, q queryer, owner Actor, id string) (Actor, error) {
+	if !idRE.MatchString(id) {
+		return Actor{}, invalidKey()
+	}
+	a, _, e := readKey(ctx, q, id)
+	if e != nil {
+		return Actor{}, e
+	}
+	if owner.Workspace != a.Workspace || owner.Subject != a.Subject || rank(owner) < 1 {
+		return Actor{}, invalidKey()
+	}
+	a.Role = minGrant(a.Role, owner.Role)
+	return a, nil
+}
+
+// ResolveKeyID is only for trusted signed tickets and already-authenticated
+// request contexts. A public key ID is never a bearer credential.
+func (s *Store) ResolveKeyID(ctx context.Context, owner Actor, id string) (Actor, error) {
+	return resolveKeyID(ctx, s.db, owner, id)
+}
+
+func (s *Store) ListKeys(ctx context.Context, a Actor, workspaceWide bool, after string) ([]AgentKey, string, error) {
+	if after != "" && !idRE.MatchString(after) {
+		return nil, "", bad("Invalid key cursor.")
+	}
+	level := 1
+	if workspaceWide {
+		level = 4
+	}
+	tx, e := s.readSnapshot(ctx)
+	if e != nil {
+		return nil, "", e
+	}
+	defer tx.Rollback()
+	if _, e = authorizeMember(ctx, tx, a, level); e != nil {
+		return nil, "", e
+	}
+	query := "SELECT id,name,subject,scope,created_at,expires_at,revoked FROM sc_agent_keys WHERE workspace=$1 AND id>$2"
+	args := []any{a.Workspace, after}
+	if !workspaceWide {
+		query += " AND subject=$3"
+		args = append(args, a.Subject)
+	}
+	rows, e := tx.QueryContext(ctx, query+" ORDER BY id LIMIT 26", args...)
+	if e != nil {
+		return nil, "", e
+	}
+	defer rows.Close()
+	out := []AgentKey{}
+	for rows.Next() {
+		if len(out) == accountPage {
+			return out, out[accountPage-1].ID, nil
+		}
+		var k AgentKey
+		var c, x int64
+		if e = rows.Scan(&k.ID, &k.Name, &k.Subject, &k.Scope, &c, &x, &k.Revoked); e != nil {
+			return nil, "", e
+		}
+		k.CreatedAt = time.Unix(c, 0).UTC()
+		k.ExpiresAt = time.Unix(x, 0).UTC()
+		out = append(out, k)
+	}
+	return out, "", rows.Err()
+}
+func (s *Store) RevokeKey(ctx context.Context, a Actor, id string) error {
+	if !idRE.MatchString(id) {
+		return bad("Invalid key ID.")
+	}
+	tx, e := s.accountWrite(ctx, a)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	allowed, e := authorizeMember(ctx, tx, a, 1)
+	if e != nil {
+		return e
+	}
+	query := "SELECT revoked FROM sc_agent_keys WHERE workspace=$1 AND id=$2"
+	args := []any{a.Workspace, id}
+	if allowed.Role != "admin" {
+		query += " AND subject=$3"
+		args = append(args, a.Subject)
+	}
+	var revoked bool
+	e = tx.QueryRowContext(ctx, query, args...).Scan(&revoked)
+	if errors.Is(e, sql.ErrNoRows) {
+		return fail("not_found", "Agent key not found.")
+	}
+	if e != nil {
+		return e
+	}
+	if revoked {
+		return nil
+	}
+	if _, e = tx.ExecContext(ctx, "UPDATE sc_agent_keys SET revoked=TRUE WHERE id=$1 AND workspace=$2", id, a.Workspace); e != nil {
+		return e
+	}
+	if e = recordAccountEvent(ctx, tx, a, "key_revoked", id); e != nil {
+		return e
+	}
+	return tx.Commit()
+}

@@ -25,11 +25,14 @@ import (
 )
 
 type Config struct {
-	ControlURL, SitesDomain, Version string
-	Key                              []byte
-	Public                           bool
+	DisableApps                                 bool
+	ControlURL, SitesDomain, Version, SignupURL string
+	Key                                         []byte
+	Public                                      bool
 }
 type App struct {
+	archiveGate                     chan struct{}
+	passive                         passiveDigests
 	config                          Config
 	origin                          *url.URL
 	store                           *sites.Store
@@ -69,11 +72,17 @@ func New(c Config, db *sites.Store, a *auth.Service) (*App, error) {
 		return nil, e
 	}
 	c.ControlURL, c.SitesDomain = origin, zone
+	if c.SignupURL != "" {
+		signup, err := url.Parse(c.SignupURL)
+		if err != nil || signup.Scheme != "https" || signup.Hostname() == "" || signup.User != nil || signup.Fragment != "" {
+			return nil, errors.New("signup URL must be an absolute HTTPS URL without credentials or fragment")
+		}
+	}
 	u, _ := url.Parse(origin)
 	if len(c.Key) < 32 {
 		return nil, errors.New("invalid control origin or signing key")
 	}
-	x := &App{config: c, origin: u, store: db, auth: a, heavy: make(chan struct{}, 8)}
+	x := &App{config: c, origin: u, store: db, auth: a, heavy: make(chan struct{}, 8), archiveGate: make(chan struct{}, 2)}
 	x.mcp = mcpserver.NewForHost(x.execute, u.Host, c.Version)
 	return x, nil
 }
@@ -148,7 +157,7 @@ func (a *App) execute(ctx context.Context, tool string, args json.RawMessage) (m
 	}
 	r, e := a.store.Execute(ctx, who, tool, args)
 	if generation, ok := sites.ApprovalGeneration(e); ok && a.config.Public {
-		token := a.sign(ticket{Kind: "approval", Generation: generation, Who: who, Tool: tool, Args: args, Expires: time.Now().Add(5 * time.Minute).Unix()})
+		token := a.sign(ticket{Kind: "approval", KeyID: sourceKey(ctx), Generation: generation, Who: who, Tool: tool, Args: args, Expires: time.Now().Add(5 * time.Minute).Unix()})
 		return map[string]any{"approval_url": a.config.ControlURL + "/approve?t=" + url.QueryEscape(token), "status": "approval_required"}, e
 	}
 	return a.decorate(r), e
@@ -160,7 +169,9 @@ type ticket struct {
 	Tool       string
 	Args       json.RawMessage
 	Expires    int64
-	Generation int64 `json:",omitempty"`
+	Generation int64  `json:",omitempty"`
+	KeyID      string `json:",omitempty"`
+	Nonce      string `json:",omitempty"`
 }
 
 func (a *App) sign(t ticket) string {
@@ -171,8 +182,10 @@ func (a *App) sign(t ticket) string {
 	return base64.RawURLEncoding.EncodeToString(b) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 func (a *App) ticket(r *http.Request, kind string) (ticket, bool) {
+	return a.ticketValue(r.URL.Query().Get("t"), kind)
+}
+func (a *App) ticketValue(s, kind string) (ticket, bool) {
 	var t ticket
-	s := r.URL.Query().Get("t")
 	if len(s) > 16384 {
 		return t, false
 	}
@@ -237,7 +250,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if a.auth.Handle(w, r) {
 		return
 	}
-	if host == a.origin.Host && (r.URL.Path == "/mcp" || r.URL.Path == "/upload") && (r.Method == "POST" || r.Method == "PUT") {
+	if host == a.origin.Host && (r.URL.Path == "/mcp" || r.URL.Path == "/upload" || strings.HasPrefix(r.URL.Path, "/sites/")) && (r.Method == "POST" || r.Method == "PUT") {
 		select {
 		case a.heavy <- struct{}{}:
 			defer func() { <-a.heavy }()
@@ -248,6 +261,14 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if host != a.origin.Host {
+		if strings.HasPrefix(r.URL.Path, "/auth/runtime/") {
+			if a.config.DisableApps {
+				http.NotFound(w, r)
+				return
+			}
+			serveRuntime(w, r)
+			return
+		}
 		a.deliver(w, r)
 		return
 	}
@@ -258,15 +279,14 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Origin denied", 403)
 			return
 		}
-		who, e := a.auth.Bearer(r)
+		who, ctx, e := a.agent(r)
 		if e != nil {
 			a.denied.Add(1)
-			a.auth.Challenge(w)
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			a.agentError(w, e)
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
-		a.mcp.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), whoKey{}, actor(who))))
+		a.mcp.ServeHTTP(w, r.WithContext(context.WithValue(ctx, whoKey{}, who)))
 	case "/approve":
 		// Browsers derive the Origin of a form POST from the page referrer policy.
 		// Send only the control origin, never the signed query or path.
@@ -291,18 +311,26 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Authentication required", http.StatusUnauthorized)
 			return
 		}
-		if string(i.Role) != "admin" {
+		principal, err := a.store.LimitActor(verified(r.Context(), i), actor(i))
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if principal.Role != "admin" {
 			http.Error(w, "Forbidden", 403)
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		fmt.Fprintf(w, "shoowcase_requests_total %d\nshoowcase_site_responses_total %d\nshoowcase_site_bytes_total %d\nshoowcase_denials_total %d\n", a.requests.Load(), a.visits.Load(), a.bytes.Load(), a.denied.Load())
-	case "/":
-		if !readMethod(w, r) {
+	case "/", "/sites", "/keys", "/account", "/admin":
+		a.console(w, r)
+	case "/console.js":
+		a.controlScript(w, r)
+	default:
+		if strings.HasPrefix(r.URL.Path, "/sites/") {
+			a.console(w, r)
 			return
 		}
-		render(w, homePage, map[string]string{"MCP": a.config.ControlURL + "/mcp"})
-	default:
 		http.NotFound(w, r)
 	}
 }
@@ -312,8 +340,6 @@ func render(w http.ResponseWriter, t *template.Template, data any) {
 		slog.Error("template rendering failed")
 	}
 }
-
-var homePage = template.Must(template.New("home").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/ui.css"><title>Shoowcase</title><main><h1>Shoowcase</h1><p>Build a team website from a conversation. Add this address to your agent as a Streamable HTTP MCP server:</p><p><code>{{.MCP}}</code></p><blockquote>“Create an onboarding site for my team. Give me a private preview.”</blockquote><p>New sites are private to your workspace. Ask your agent to publish the draft when you are ready to share the link with teammates.</p></main></html>`))
 
 // Long signed actions can exceed a safe OIDC state-cookie size. Leave the
 // exact request in this tab and authenticate separately; no opaque action is
@@ -345,7 +371,12 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 	who, logged := a.auth.Browser(r)
 	var user sites.Actor
 	if logged {
-		user = actor(who)
+		var err error
+		user, err = a.store.LimitActor(verified(r.Context(), who), actor(who))
+		if err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	revision := ""
 	var e error
@@ -378,11 +409,7 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 	if !a.config.Public {
 		ctx = sites.WithPrivateDelivery(ctx)
 	}
-	fetch := a.store.FetchConditional
-	if r.Method == http.MethodHead {
-		fetch = a.store.FetchMetadata
-	}
-	f, e := fetch(ctx, slug, revision, path, user, digest)
+	f, policy, e := a.representation(ctx, r.Method, slug, revision, path, user, digest)
 	if e != nil {
 		if !logged && (errorCode(e) == "not_found" || errorCode(e) == "unauthorized" || errorCode(e) == "authentication_required" || errorCode(e) == "forbidden") {
 			a.login(w, r)
@@ -397,11 +424,14 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h := w.Header()
-	h.Set("Content-Security-Policy", "sandbox allow-same-origin; default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'")
+	h.Set("Content-Security-Policy", policy)
+	h.Set("X-DNS-Prefetch-Control", "off")
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
 	h.Set("X-Robots-Tag", "noindex, nofollow")
 	h.Set("Content-Type", f.ContentType)
-	h.Set("ETag", fmt.Sprintf("%q", f.Digest))
+	if f.Digest != "" {
+		h.Set("ETag", fmt.Sprintf("%q", f.Digest))
+	}
 	a.visits.Add(1)
 	if f.NotModified {
 		w.WriteHeader(304)
@@ -436,6 +466,15 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Wrong account for this approval", 403)
 		return
 	}
+	ctx, who, err := a.ticketActor(r.Context(), t, &i)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if who.Role != "publisher" && who.Role != "admin" {
+		http.Error(w, "Publisher access is required for this approval", 403)
+		return
+	}
 	var v struct {
 		Site     string `json:"site_id"`
 		Revision string `json:"revision"`
@@ -449,7 +488,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 		review := v.Revision
 		if review == "" && v.Release != "" {
 			var e error
-			review, e = a.store.ReleaseRevision(r.Context(), who, v.Site, v.Release)
+			review, e = a.store.ReleaseRevision(ctx, who, v.Site, v.Release)
 			if e != nil {
 				writeError(w, e)
 				return
@@ -472,7 +511,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid form", 403)
 		return
 	}
-	res, e := a.store.Execute(sites.WithApproval(r.Context(), t.Generation), who, t.Tool, t.Args)
+	res, e := a.store.Execute(sites.WithApproval(ctx, t.Generation), who, t.Tool, t.Args)
 	if e != nil {
 		writeError(w, e)
 		return

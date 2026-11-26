@@ -50,7 +50,7 @@ func (a *App) prepare(ctx context.Context, who sites.Actor, args json.RawMessage
 		return nil, problem("conflict", "Draft changed. Read the current revision and reapply.")
 	}
 	expiry := time.Now().Add(5 * time.Minute)
-	t := a.sign(ticket{Kind: "upload", Who: who, Args: args, Expires: expiry.Unix()})
+	t := a.sign(ticket{Kind: "upload", KeyID: sourceKey(ctx), Who: who, Args: args, Expires: expiry.Unix()})
 	link := a.config.ControlURL + "/upload?t=" + url.QueryEscape(t)
 	return map[string]any{"upload_url": link, "browser_upload_url": link, "method": "PUT", "expires_at": expiry.UTC().Format(time.RFC3339), "size": spec.Size, "site_id": spec.Site}, nil
 }
@@ -72,7 +72,9 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid upload", 400)
 		return
 	}
+	ctx := r.Context()
 	who := t.Who
+	var err error
 	var src io.Reader
 	switch r.Method {
 	case "GET", "POST":
@@ -84,6 +86,15 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 		who = actor(i)
 		if who.Subject != t.Who.Subject || who.Workspace != t.Who.Workspace {
 			http.Error(w, "Wrong account", 403)
+			return
+		}
+		ctx, who, err = a.ticketActor(ctx, t, &i)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if who.Role != "publisher" && who.Role != "editor" && who.Role != "admin" {
+			http.Error(w, "Editor access is required for this upload", 403)
 			return
 		}
 		if r.Method == "GET" {
@@ -114,6 +125,11 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Origin denied", 403)
 			return
 		}
+		ctx, who, err = a.ticketActor(ctx, t, nil)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
 		src = http.MaxBytesReader(w, r.Body, spec.Size)
 	default:
 		w.Header().Set("Allow", "GET, POST, PUT")
@@ -128,7 +144,6 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	change, _ := json.Marshal(map[string]any{"site_id": spec.Site, "expected_revision": spec.Revision, "request_id": spec.Request, "files": []map[string]string{{"path": spec.Path, "base64": base64.StdEncoding.EncodeToString(b)}}})
-	ctx := r.Context()
 	if !a.config.Public {
 		ctx = sites.WithPrivateDelivery(ctx)
 	}

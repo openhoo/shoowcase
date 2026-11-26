@@ -52,7 +52,7 @@ def rid():
 
 
 @asynccontextmanager
-async def local_server(binary):
+async def local_server(binary, *, fixture_workspace=None, fixture_paths=False):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -62,6 +62,8 @@ async def local_server(binary):
         # The trial must never touch an existing database or inherit a production token.
         env = {k: v for k, v in os.environ.items() if not k.startswith("SHOOWCASE_")}
         env.update(SHOOWCASE_LISTEN=f"127.0.0.1:{port}", SHOOWCASE_PUBLIC="true", SHOOWCASE_STATE_DIR=state)
+        if fixture_workspace:
+            env["SHOOWCASE_DEV_WORKSPACE"] = fixture_workspace
         with subprocess.Popen([binary, "-dev"], cwd=state, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as server:
             try:
                 for _ in range(200):
@@ -75,7 +77,8 @@ async def local_server(binary):
                 else:
                     raise RuntimeError("Shoowcase did not become ready")
                 token = (Path(state) / "agent-token").read_text().strip()
-                yield control + "/mcp", token, http
+                values = (control + "/mcp", token, http)
+                yield (*values, Path(state)) if fixture_paths else values
             finally:
                 server.terminate()
                 try:

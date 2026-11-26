@@ -34,6 +34,19 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.27.4'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '26.13.1'
+          package-manager-cache: false
+      - name: Rebuild and verify the isolated browser runtime
+        working-directory: runtime
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit
+          npm run format:check
+          npm run build
+          git diff --exit-code -- ../internal/web/runtimeassets THIRD-PARTY-LICENSES.txt
+          npm test
       - name: Verify modules and formatting
         run: |
           go mod verify
@@ -50,6 +63,8 @@ jobs:
           python3.12 -m venv "$RUNNER_TEMP/shoowcase-browser"
           "$RUNNER_TEMP/shoowcase-browser/bin/python" -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r scripts/browser-requirements.txt
           "$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-browser.py --binary ./bin/shoowcase --browser-channel chrome
+      - name: Create and share an interactive site from the workspace
+        run: '"$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-workspace.py --binary ./bin/shoowcase --browser-channel chrome'
       - name: Restore production-format backup into a separate database
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}

@@ -246,7 +246,7 @@ func TestPublicationLifecycle(t *testing.T) {
 func TestValidation(t *testing.T) {
 	invalid := []fileInput{}
 	add := func(p, s string) { invalid = append(invalid, fileInput{Path: p, Text: &s}) }
-	for _, p := range []string{"../escape.html", "auth/callback.html", "dir//a.html", ".secret.html", "a%2ehtml", "dir/../a.html", "test.js", "a.html/../../bad.html"} {
+	for _, p := range []string{"../escape.html", "auth/callback.html", "dir//a.html", ".secret.html", "a%2ehtml", "dir/../a.html", "test.mjs", "a.html/../../bad.html"} {
 		add(p, "<p>safe</p>")
 	}
 	for _, s := range []string{"<script>alert(1)</script>", "<img src='https://outside.invalid/a.png'>", "<p onclick=x>Hello</p>", "<iframe src='/'>", "<form method='post'>", "<meta http-equiv=refresh content='0;url=/'>", "<a href='j&#97;vascript:foo'>link</a>", "<svg><title>hi</title></svg>", "<a href='//outside.invalid'>link</a>", "<img src='&#92;&#92;outside.invalid'>", "<link rel=preload href='/'>", "<style>body{background:image-set('https://outside.invalid/x.png')}</style>"} {

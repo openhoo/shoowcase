@@ -2,7 +2,7 @@
 
 Shoowcase helps a team turn a brief into a hosted site using the agent it already has. The first use case is a small onboarding site: publish a welcome page, checklist, and team image for coworkers, then change a start time from a fresh chat without changing the URL.
 
-## What v0.1 implements
+## Publishing workflow
 
 | Stage | What the author or visitor sees |
 | --- | --- |
@@ -13,7 +13,9 @@ Shoowcase helps a team turn a brief into a hosted site using the agent it alread
 
 The host runs one Go service with two kinds of origins: a control hostname for authenticated agent and approval requests, and a wildcard content domain for previews and live sites. In production, PostgreSQL holds file bytes, manifests, site visibility, release pointers and audit events; the identity provider owns membership and roles. A release changes a database pointer in a transaction. The visitor's request never invokes a model or a tenant build process. The tradeoff is that delivery depends on the service and database, even for a public image.
 
-The browser is a viewer and approval surface. The agent writes the files; there is no built-in chat model, drag-and-drop editor or site-specific application runtime. Start with the [onboarding example](../examples/onboarding/) and [publisher workflow](../skills/shoowcase-publish/SKILL.md). Site limits are 100 files and 8 MiB per revision. The [operations guide](operations.md) covers the remaining limits and the infrastructure the operator supplies.
+People can also create, edit, import and publish sites from the browser. Both interfaces go through the same draft and release operations. The identity provider authenticates people; a local account links a verified identity to workspace settings, scoped agent keys, role limits and suspension. Start with the [browser walkthrough](../README.md#publish-from-your-browser).
+
+HTML and CSS need no page runtime. For interactive pages, the server binds the local script from the same authorized revision to a nonce-bearing first-party bridge. A separate interpreter inside a dedicated browser worker executes that source. Guests can update text and controls through a bounded message interface; the host supplies no network primitive. See [the runtime contract](../runtime/README.md) and [workshop tally](../examples/counter/).
 
 ## What to build next
 
@@ -25,5 +27,3 @@ These are proposed milestones, not release promises:
 | Make branded pages easier | If people repeatedly correct typography or layout, add versioned brand assets and a small template catalog. If they struggle to target one edit, pilot a click-to-select section in preview that passes a scoped edit back to their agent. Keep templates exportable as ordinary HTML and CSS. |
 | Qualify the enterprise deployment | Test a real work identity provider and supported agent clients on staging, role revocation, cross-workspace access, multiple replicas, and withdrawal after public access. Rehearse a private restore and measure recovery time and tolerated data loss on a representative dataset. Agree operating targets before offering an SLA. |
 | Extend hosting where measured | Review file sizes, database load and access needs with pilot teams. Add an object store or an edge cache only if measurements justify another dependency; test access withdrawal and stale caches before enabling it. Add custom domains or directory provisioning when a team has a concrete rollout need. |
-
-Forms, user scripts and dynamic data would require a separate execution and permissions design. They should not be slipped into the static publishing path to satisfy a single demo.
