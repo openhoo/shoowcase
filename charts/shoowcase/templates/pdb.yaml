@@ -1,0 +1,11 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "shoowcase.fullname" . | quote }}
+  labels: {{- include "shoowcase.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.pdb.maxUnavailable | toJson }}
+  selector:
+    matchLabels: {{- include "shoowcase.selectorLabels" . | nindent 6 }}
+{{- end }}

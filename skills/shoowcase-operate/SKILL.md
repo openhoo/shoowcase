@@ -23,6 +23,7 @@ Run the commands below from the Shoowcase repository. For authoring a site on an
 
 - Run `go mod verify` and `make vet test vuln smoke`. Set `SHOOWCASE_TEST_POSTGRES_DSN` to a **disposable** PostgreSQL database for the race suite; otherwise it skips that backend.
 - With Chrome installed, run `uv run scripts/smoke-browser.py --binary ./bin/shoowcase` after `make smoke`. This separate test uses two Python MCP SDK clients and a real browser to exercise the file picker, preview, public approval and rollback.
+- For Kubernetes hosting, follow [the chart guide](../../charts/shoowcase/README.md) in the matching checkout. Run `make test-chart` and exercise the packaged chart in a disposable cluster with `scripts/smoke-helm.py`. Keep database and TLS credentials in external Secrets.
 - Record the exact commit, backends, commands and results. Verify the downloaded binary archive's checksum and provenance or the OCI digest and provenance using `deploy/README.md`. Keep local fixture results distinct from deployment evidence: qualify the actual agent, IdP roles, wildcard DNS/TLS, replica failover and restore before declaring that deployment ready.
 
 

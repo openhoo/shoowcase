@@ -1,0 +1,46 @@
+# Disposable chart smoke only. The harness creates the certificates and credentials.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backends
+spec:
+  selector: {fixture: backends}
+  ports:
+    - {name: postgres, port: 5432, targetPort: 5432}
+    - {name: issuer, port: 443, targetPort: 8443}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backends
+  labels: {fixture: backends}
+spec:
+  automountServiceAccountToken: false
+  securityContext: {fsGroup: 999}
+  containers:
+    - name: postgres
+      image: docker.io/library/postgres:17-bookworm@sha256:1eff563f6c868b9b433566e9f3cf6e5c79fbd3b95bf70ec7277d376cdbfc50d7
+      args: [postgres, -c, ssl=on, -c, ssl_cert_file=/tls/tls.crt, -c, ssl_key_file=/tls/tls.key]
+      env:
+        - {name: POSTGRES_DB, value: shoowcase}
+        - name: POSTGRES_PASSWORD
+          valueFrom: {secretKeyRef: {name: fixture-password, key: password}}
+      volumeMounts:
+        - {name: tls, mountPath: /tls, readOnly: true}
+      readinessProbe:
+        exec: {command: [pg_isready, -h, 127.0.0.1, -d, shoowcase, -U, postgres]}
+        periodSeconds: 2
+    - name: issuer
+      image: docker.io/library/nginx:stable-alpine@sha256:8eb04fe3b385090e9aa02961f77398ad09b6bf33ab07f6669a5bb7acce22c0d3
+      command: [nginx, -g, "daemon off;"]
+      volumeMounts:
+        - {name: tls, mountPath: /tls, readOnly: true}
+        - {name: discovery, mountPath: /etc/nginx/conf.d, readOnly: true}
+      readinessProbe:
+        tcpSocket: {port: 8443}
+        periodSeconds: 2
+  volumes:
+    - name: tls
+      secret: {secretName: fixture-tls, defaultMode: 0440}
+    - name: discovery
+      configMap: {name: fixture-discovery}

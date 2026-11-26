@@ -1,0 +1,45 @@
+# Copy this file and replace every example address, name, selector and CIDR.
+# No credentials belong here: these values are recorded in Helm release history.
+config:
+  controlHost: studio.example.com
+  sitesDomain: sites.example.net
+  oidc:
+    issuer: https://login.example.org
+    clientId: shoowcase-browser
+    audience: https://studio.example.com/mcp
+  publicSharing: false
+
+existingSecret:
+  name: shoowcase-credentials
+
+ingress:
+  enabled: true
+  className: enterprise
+  controlTLSSecret: studio-tls
+  sitesTLSSecret: sites-wildcard-tls
+
+# These selectors and documentation-only IP addresses are examples, not defaults.
+# Match the pods that actually connect to Shoowcase and all required TLS endpoints.
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: edge}
+      podSelector:
+        matchLabels: {app.kubernetes.io/name: gateway}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to: [{ipBlock: {cidr: 192.0.2.10/32}}]   # PostgreSQL
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{ipBlock: {cidr: 198.51.100.20/32}}] # OIDC discovery, signing keys and token exchange
+      ports: [{protocol: TCP, port: 443}]
+
+# For a private CA, create this ConfigMap and set sslrootcert in the DSN as documented.
+# caBundle: {configMapName: shoowcase-trust, key: ca-bundle.pem}

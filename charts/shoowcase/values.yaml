@@ -1,0 +1,102 @@
+# Provide your installation's DNS, OIDC settings and existing Secret before rendering.
+config:
+  controlHost: ""
+  # Bare DNS suffix on a separate registrable domain; the chart adds "*." for ingress.
+  sitesDomain: ""
+  oidc:
+    issuer: ""
+    clientId: ""
+    # Empty: discover the confidential method. Use "none" for a registered public client.
+    clientAuthMethod: ""
+    audience: ""
+    workspaceClaim: workspace
+    rolesClaim: roles
+    requiredScope: ""
+  # Empty disables legacy /metrics. Otherwise only this operator workspace's IdP admins can scrape it.
+  metricsWorkspace: ""
+  publicSharing: false
+  interactive: true
+  signupUrl: ""
+
+# This Secret must exist in the release namespace. Values are key names, not credentials.
+existingSecret:
+  name: ""
+  keys:
+    databaseUrl: database-url
+    clientSecret: client-secret
+    sessionKey: session-key
+
+# Optional OTLP/HTTP export of traces, metrics and logs. Supply authentication only by Secret reference.
+telemetry:
+  endpoint: ""
+  headersSecret:
+    name: ""
+    key: otlp-headers
+
+image:
+  repository: ghcr.io/openhoo/shoowcase
+  digest: sha256:831f3a34875545da581bfa1288ad42350a9fb8fa5b3ca767fdae7eb0204daa33
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Applies when the optional HorizontalPodAutoscaler is disabled.
+replicaCount: 2
+# Requires the Kubernetes resource metrics API and a nonzero CPU request.
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+# Recreate drains old writers before migrations. Use RollingUpdate only with compatible versions.
+updateStrategy: Recreate
+terminationGracePeriodSeconds: 30
+pdb:
+  enabled: true
+  maxUnavailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  port: 7878
+  annotations: {}
+
+# Both host rules preserve the original Host, pointing at the same ClusterIP.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  controlTLSSecret: ""
+  sitesTLSSecret: ""
+
+# When enabled, empty lists deny ingress and egress. Supply the actual ingress
+# controller peers, DNS, database and issuer routes supported by your CNI.
+networkPolicy:
+  enabled: false
+  ingressFrom: []
+  egress: []
+
+# Optional existing ConfigMap with the complete PEM trust bundle for outbound TLS.
+# For PostgreSQL use sslrootcert=/etc/shoowcase/ca/ca-bundle.pem in the DSN.
+caBundle:
+  configMapName: ""
+  key: ca-bundle.pem
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+# Without a labelSelector the chart inserts this release's pod selector.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway

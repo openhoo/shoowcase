@@ -1,0 +1,348 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Shoowcase values",
+  "definitions": {
+    "httpsEndpoint": {"type": "string", "pattern": "^https://([A-Za-z0-9.-]+|\\[[A-Fa-f0-9:]+\\])(:[0-9]{1,5})?(/[^\\s?#]*)?$"},
+    "dnsName": {
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
+    },
+    "host": {
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$",
+      "not": {"pattern": "\\.localhost$"}
+    },
+    "key": {"type": "string", "maxLength": 253, "pattern": "^[-._a-zA-Z0-9]+$"},
+    "annotations": {"type": "object", "additionalProperties": {"type": "string"}},
+    "peer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "podSelector": {"$ref": "#/definitions/selector"},
+        "namespaceSelector": {"$ref": "#/definitions/selector"},
+        "ipBlock": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cidr": {"type": "string", "pattern": "\\S"},
+            "except": {"type": "array", "items": {"type": "string", "pattern": "\\S"}}
+          },
+          "required": ["cidr"]
+        }
+      },
+      "required": [],
+      "minProperties": 1,
+      "not": {
+        "anyOf": [{"required": ["ipBlock", "podSelector"]}, {"required": ["ipBlock", "namespaceSelector"]}]
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {"type": "string", "enum": ["TCP", "UDP", "SCTP"]},
+        "port": {
+          "oneOf": [{"type": "integer", "minimum": 1, "maximum": 65535}, {"type": "string", "pattern": "\\S"}]
+        },
+        "endPort": {"type": "integer", "minimum": 1, "maximum": 65535}
+      },
+      "required": []
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchLabels": {"type": "object", "additionalProperties": {"type": "string"}},
+        "matchExpressions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "operator"],
+            "properties": {
+              "key": {"type": "string", "minLength": 1},
+              "operator": {"enum": ["In", "NotIn", "Exists", "DoesNotExist"]},
+              "values": {"type": "array", "items": {"type": "string"}}
+            },
+            "if": {"properties": {"operator": {"enum": ["In", "NotIn"]}}},
+            "then": {"required": ["values"], "properties": {"values": {"minItems": 1}}},
+            "else": {"properties": {"values": {"maxItems": 0}}}
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "controlHost": {"$ref": "#/definitions/host"},
+        "sitesDomain": {"allOf": [{"$ref": "#/definitions/host"}, {"maxLength": 251}]},
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuer": {"$ref": "#/definitions/httpsEndpoint"},
+            "clientAuthMethod": {"enum": ["", "client_secret_basic", "client_secret_post", "none"]},
+            "clientId": {"type": "string", "pattern": "\\S"},
+            "audience": {"type": "string", "pattern": "\\S"},
+            "workspaceClaim": {"type": "string", "pattern": "\\S"},
+            "rolesClaim": {"type": "string", "pattern": "\\S"},
+            "requiredScope": {"type": "string"}
+          },
+          "required": ["issuer", "clientId", "clientAuthMethod", "audience", "workspaceClaim", "rolesClaim", "requiredScope"]
+        },
+        "metricsWorkspace": {"type": "string"},
+        "publicSharing": {"type": "boolean"},
+        "interactive": {"type": "boolean"},
+        "signupUrl": {
+          "anyOf": [
+            {"const": ""},
+            {
+              "type": "string",
+              "pattern": "^https://([A-Za-z0-9.-]+|\\[[A-Fa-f0-9:]+\\])(:[0-9]{1,5})?([/?][^\\s#]*)?$"
+            }
+          ]
+        }
+      },
+      "required": ["controlHost", "sitesDomain", "oidc", "metricsWorkspace", "publicSharing", "interactive", "signupUrl"]
+    },
+    "existingSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"$ref": "#/definitions/dnsName"},
+        "keys": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "databaseUrl": {"$ref": "#/definitions/key"},
+            "clientSecret": {"$ref": "#/definitions/key"},
+            "sessionKey": {"$ref": "#/definitions/key"}
+          },
+          "required": ["databaseUrl", "clientSecret", "sessionKey"]
+        }
+      },
+      "required": ["name", "keys"]
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint", "headersSecret"],
+      "properties": {
+        "endpoint": {
+          "anyOf": [
+            {"const": ""},
+            {"$ref": "#/definitions/httpsEndpoint"}
+          ]
+        },
+        "headersSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": {"anyOf": [{"const": ""}, {"$ref": "#/definitions/dnsName"}]},
+            "key": {"$ref": "#/definitions/key"}
+          }
+        }
+      },
+      "if": {"properties": {"endpoint": {"const": ""}}},
+      "then": {"properties": {"headersSecret": {"properties": {"name": {"const": ""}}}}}
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^([a-z0-9][a-z0-9.-]*(:[0-9]+)?/)?[a-z0-9]+(([._-]+|/)[a-z0-9]+)*$"
+        },
+        "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "pullPolicy": {"type": "string", "enum": ["IfNotPresent", "Always", "Never"]}
+      },
+      "required": ["repository", "digest", "pullPolicy"]
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {"name": {"$ref": "#/definitions/dnsName"}},
+        "required": ["name"]
+      }
+    },
+    "replicaCount": {"type": "integer", "minimum": 1},
+    "updateStrategy": {"type": "string", "enum": ["Recreate", "RollingUpdate"]},
+    "terminationGracePeriodSeconds": {"type": "integer", "minimum": 18},
+    "pdb": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "maxUnavailable": {
+          "oneOf": [{"type": "integer", "minimum": 0}, {"type": "string", "pattern": "^(100|[1-9]?[0-9])%$"}]
+        }
+      },
+      "required": ["enabled", "maxUnavailable"]
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"anyOf": [{"const": ""}, {"$ref": "#/definitions/dnsName"}]},
+        "annotations": {"$ref": "#/definitions/annotations"}
+      },
+      "required": ["create", "name", "annotations"]
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "annotations": {"$ref": "#/definitions/annotations"}
+      },
+      "required": ["port", "annotations"]
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "className": {"anyOf": [{"const": ""}, {"$ref": "#/definitions/dnsName"}]},
+        "annotations": {"$ref": "#/definitions/annotations"},
+        "controlTLSSecret": {"anyOf": [{"const": ""}, {"$ref": "#/definitions/dnsName"}]},
+        "sitesTLSSecret": {"anyOf": [{"const": ""}, {"$ref": "#/definitions/dnsName"}]}
+      },
+      "required": ["enabled", "className", "annotations", "controlTLSSecret", "sitesTLSSecret"],
+      "if": {"properties": {"enabled": {"const": true}}},
+      "then": {
+        "properties": {
+          "className": {"$ref": "#/definitions/dnsName"},
+          "controlTLSSecret": {"$ref": "#/definitions/dnsName"},
+          "sitesTLSSecret": {"$ref": "#/definitions/dnsName"}
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "ingressFrom": {"type": "array", "items": {"$ref": "#/definitions/peer"}},
+        "egress": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ports": {"type": "array", "items": {"$ref": "#/definitions/port"}},
+              "to": {"type": "array", "items": {"$ref": "#/definitions/peer"}}
+            },
+            "required": []
+          }
+        }
+      },
+      "required": ["enabled", "ingressFrom", "egress"]
+    },
+    "caBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "configMapName": {"anyOf": [{"const": ""}, {"$ref": "#/definitions/dnsName"}]},
+        "key": {"$ref": "#/definitions/key"}
+      },
+      "required": ["configMapName", "key"]
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {"type": "object", "additionalProperties": {"type": ["string", "number"]}},
+        "limits": {"type": "object", "additionalProperties": {"type": ["string", "number"]}}
+      },
+      "required": ["requests", "limits"]
+    },
+    "podAnnotations": {"$ref": "#/definitions/annotations"},
+    "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+    "tolerations": {"type": "array", "items": {"type": "object"}},
+    "affinity": {"type": "object"},
+    "topologySpreadConstraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["maxSkew", "topologyKey", "whenUnsatisfiable"],
+        "properties": {
+          "maxSkew": {"type": "integer", "minimum": 1},
+          "topologyKey": {"type": "string", "pattern": "\\S"},
+          "whenUnsatisfiable": {"type": "string", "enum": ["DoNotSchedule", "ScheduleAnyway"]},
+          "labelSelector": {"type": "object"}
+        }
+      }
+    },
+    "global": {"type": "object"},
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "minReplicas", "maxReplicas", "targetCPUUtilizationPercentage"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "minReplicas": {"type": "integer", "minimum": 1},
+        "maxReplicas": {"type": "integer", "minimum": 1},
+        "targetCPUUtilizationPercentage": {"type": "integer", "minimum": 1, "maximum": 100}
+      }
+    }
+  },
+  "required": [
+    "config",
+    "existingSecret",
+    "telemetry",
+    "image",
+    "imagePullSecrets",
+    "replicaCount",
+    "updateStrategy",
+    "terminationGracePeriodSeconds",
+    "pdb",
+    "serviceAccount",
+    "service",
+    "ingress",
+    "networkPolicy",
+    "caBundle",
+    "resources",
+    "podAnnotations",
+    "nodeSelector",
+    "tolerations",
+    "affinity",
+    "topologySpreadConstraints",
+    "autoscaling"
+  ],
+  "if": {"properties": {"autoscaling": {"properties": {"enabled": {"const": true}}}}},
+  "then": {
+    "properties": {
+      "resources": {
+        "properties": {
+          "requests": {
+            "required": ["cpu"],
+            "properties": {
+              "cpu": {
+                "description": "CPU autoscaling needs a positive CPU request",
+                "oneOf": [
+                  {"type": "number", "exclusiveMinimum": 0},
+                  {
+                    "type": "string",
+                    "pattern": "^([0-9]*[1-9][0-9]*(\\.[0-9]*)?|[0-9]*\\.[0-9]*[1-9][0-9]*)([num]|[eE][+-]?[0-9]+)?$"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

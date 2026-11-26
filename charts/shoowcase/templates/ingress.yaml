@@ -1,0 +1,33 @@
+{{- if .Values.ingress.enabled }}
+{{- $hosts := list .Values.config.controlHost (printf "*.%s" .Values.config.sitesDomain) }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "shoowcase.fullname" . | quote }}
+  labels: {{- include "shoowcase.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  tls:
+    - hosts:
+        - {{ .Values.config.controlHost | quote }}
+      secretName: {{ .Values.ingress.controlTLSSecret | quote }}
+    - hosts:
+        - {{ printf "*.%s" .Values.config.sitesDomain | quote }}
+      secretName: {{ .Values.ingress.sitesTLSSecret | quote }}
+  rules:
+    {{- range $hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "shoowcase.fullname" $ | quote }}
+                port:
+                  name: http
+    {{- end }}
+{{- end }}

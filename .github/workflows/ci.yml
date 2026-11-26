@@ -81,3 +81,27 @@ jobs:
           docker build --build-arg VERSION=ci -t shoowcase:ci .
           test "$(docker image inspect --format '{{.Config.User}}' shoowcase:ci)" = '65532:65532'
           test "$(docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges --network=none shoowcase:ci version)" = ci
+
+  chart:
+    name: chart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/chart-cluster
+        with:
+          name: shoowcase-ci
+      - name: Check the values contract, rendered manifests and release archive
+        run: make test-chart PYTHON=/usr/bin/python3
+      - name: Validate the operator example against the Kubernetes API
+        run: |
+          set -euo pipefail
+          helm template production charts/shoowcase -f charts/shoowcase/examples/production.yaml |
+            kubectl --context k3d-shoowcase-ci apply --dry-run=server --validate=strict -f -
+      - name: Install and upgrade against PostgreSQL and an HTTPS test issuer
+        run: python3 scripts/smoke-helm.py --context k3d-shoowcase-ci --traefik
+      - name: Delete the disposable cluster
+        if: always()
+        run: if command -v k3d >/dev/null; then k3d cluster delete shoowcase-ci; fi

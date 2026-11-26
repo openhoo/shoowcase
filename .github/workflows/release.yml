@@ -57,12 +57,95 @@ jobs:
           subject-name: ${{ steps.publish.outputs.repo }}
           subject-digest: ${{ steps.publish.outputs.digest }}
           create-storage-record: false
-  binaries:
+  chart-test:
     needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      sha256: ${{ steps.accepted.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/chart-cluster
+        with:
+          name: shoowcase-release
+          ghcr-pull-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy the release archive and its exact image before publishing the chart
+        id: accepted
+        env:
+          IMAGE: ${{ needs.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          scripts/package-chart.sh "$GITHUB_REF_NAME" "$IMAGE" "$RUNNER_TEMP/chart"
+          archive="$RUNNER_TEMP/chart/shoowcase-${GITHUB_REF_NAME#v}.tgz"
+          python3 scripts/smoke-helm.py --context k3d-shoowcase-release --chart "$archive" --traefik
+          printf 'sha256=%s\n' "$(sha256sum "$archive" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Delete the disposable release cluster
+        if: always()
+        run: if command -v k3d >/dev/null; then k3d cluster delete shoowcase-release; fi
+  chart:
+    needs: [image, chart-test]
+    runs-on: ubuntu-24.04
+    environment: release
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      ref: ${{ steps.chart.outputs.ref }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Install checksum-pinned Helm
+        run: |
+          scripts/install-chart-helm.sh "$RUNNER_TEMP/chart-tools"
+          echo "$RUNNER_TEMP/chart-tools" >> "$GITHUB_PATH"
+      - name: Publish chart with the released image digest and verify registry bytes
+        id: chart
+        env:
+          IMAGE: ${{ needs.image.outputs.ref }}
+          TESTED_SHA256: ${{ needs.chart-test.outputs.sha256 }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HELM_REGISTRY_CONFIG: ${{ runner.temp }}/chart-credentials.json
+        run: |
+          set -euo pipefail
+          version=${GITHUB_REF_NAME#v}
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          repo="ghcr.io/$owner/charts/shoowcase"
+          scripts/package-chart.sh "$GITHUB_REF_NAME" "$IMAGE" "$RUNNER_TEMP/chart"
+          archive="shoowcase-$version.tgz"
+          # Publish only if the reproducible rebuild matches what the release cluster ran.
+          (cd "$RUNNER_TEMP/chart" && printf '%s  %s\n' "$TESTED_SHA256" "$archive" | sha256sum --check)
+          printf '%s' "$REGISTRY_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          trap 'rm -f "$HELM_REGISTRY_CONFIG"' EXIT
+          helm push "$RUNNER_TEMP/chart/$archive" "oci://${repo%/*}" 2>&1 | tee "$RUNNER_TEMP/chart-push.log"
+          digest=$(sed -n 's/^Digest: //p' "$RUNNER_TEMP/chart-push.log")
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          mkdir "$RUNNER_TEMP/chart-pull"
+          helm pull "oci://$repo" --version "$version" --destination "$RUNNER_TEMP/chart-pull" 2>&1 | tee "$RUNNER_TEMP/chart-pull.log"
+          grep -Fx "Digest: $digest" "$RUNNER_TEMP/chart-pull.log"
+          cmp "$RUNNER_TEMP/chart/$archive" "$RUNNER_TEMP/chart-pull/$archive"
+          printf 'ref=%s@%s\nrepo=%s\ndigest=%s\n' "$repo" "$digest" "$repo" "$digest" >> "$GITHUB_OUTPUT"
+      - name: Attest released Helm OCI manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.chart.outputs.repo }}
+          subject-digest: ${{ steps.chart.outputs.digest }}
+          create-storage-record: false
+  binaries:
+    needs: [image, chart-test, chart]
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
       contents: write
+      packages: read
       id-token: write
       attestations: write
     steps:
@@ -76,6 +159,29 @@ jobs:
         env:
           SHOOWCASE_RELEASE_IMAGE: ${{ needs.image.outputs.ref }}
         run: ./scripts/release.sh "$GITHUB_REF_NAME" "$RUNNER_TEMP/dist"
+      - name: Install checksum-pinned Helm
+        run: |
+          scripts/install-chart-helm.sh "$RUNNER_TEMP/chart-tools"
+          echo "$RUNNER_TEMP/chart-tools" >> "$GITHUB_PATH"
+      - name: Add the same chart bytes and immutable chart reference to the release
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHART_REF: ${{ needs.chart.outputs.ref }}
+          CHART_SHA256: ${{ needs.chart-test.outputs.sha256 }}
+          HELM_REGISTRY_CONFIG: ${{ runner.temp }}/chart-credentials.json
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRY_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          trap 'rm -f "$HELM_REGISTRY_CONFIG"' EXIT
+          mkdir "$RUNNER_TEMP/chart-by-digest"
+          helm pull "oci://$CHART_REF" --destination "$RUNNER_TEMP/chart-by-digest"
+          cd "$RUNNER_TEMP/dist"
+          archive="shoowcase-${GITHUB_REF_NAME#v}.tgz"
+          # A digest pull may name its .tgz after the digest instead of the version.
+          mv "$RUNNER_TEMP/chart-by-digest/"*.tgz "$archive"
+          printf '%s  %s\n' "$CHART_SHA256" "$archive" | sha256sum -c -
+          printf '%s\n' "$CHART_REF" > chart.txt
+          sha256sum "$archive" chart.txt >> SHA256SUMS
       - name: Attest archives, inventories and signed checksum subjects
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
