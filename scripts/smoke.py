@@ -148,7 +148,9 @@ def exercise(port, token, version):
     check(agent.version == version, "MCP advertises a different version than the binary")
     catalog = {t["name"] for t in agent.rpc("tools/list", {})["tools"]}
     check({"create_site", "get_site", "upload_files", "prepare_upload", "list_sites", "publish_site",
-           "set_site_access", "rollback_site"}.issubset(catalog), "incomplete tools/list")
+           "set_site_access", "rollback_site", "list_site_groups"}.issubset(catalog), "incomplete tools/list")
+    choices = agent.call("list_site_groups", {})
+    check(choices["groups"] == [] and choices["allow_unassigned"], "empty workspace budget choices")
     rid = lambda: str(uuid.uuid4())
     site = agent.call("create_site", {"name": "Project Fieldnotes", "slug": "fieldnotes", "request_id": rid()})
     key = {"site_id": site["site_id"]}

@@ -34,6 +34,11 @@ Run the commands below from the Shoowcase repository. For authoring a site on an
 - Run the workspace browser smoke (`uv run scripts/smoke-workspace.py --binary ./bin/shoowcase`) and runtime checks in `runtime/README.md` alongside the existing suite. For schema v3, drain older writers and confirm the issuer before the first upgraded process starts. Restore a pre-upgrade snapshot if rolling back.
 - Follow [tenant access](../../docs/tenant-access.md) before switching a workspace to managed mode. Exercise group removal against active browser, MCP and key sessions, signed approvals and a previously valid private ETag. A member with no groups may still read; an unenrolled identity may no longer read even with a valid workspace claim.
 
+## Quotas
+
+- Before enabling group limits, assign existing project sites and verify that each author has an editor or publisher membership in the group. Under **Workspace admin → Quotas**, compare the workspace total with the group and unassigned totals. Try the last permitted site or revision, an over-limit request, and a retry of an earlier success.
+- Schema 4 starts existing sites unassigned and backfills retained storage. Rehearse the upgrade on a restored database. Check that a site's full history moves when its budget group changes and that the workspace total stays constant.
+
 ## Grafana dashboards
 
 - Start with the [illustrated operator guide](../../docs/grafana.md). Change the versioned dashboard JSON under `deploy/observability/dashboards/`; keep existing UIDs stable.

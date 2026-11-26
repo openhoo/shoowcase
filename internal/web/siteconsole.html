@@ -48,9 +48,15 @@
 
 {{define "new-site"}}<p><a href="/sites">← All sites</a></p><header class="hero"><p class="eyebrow">Publishing desk</p><h1>New site</h1><p>Start with a name. You can add a ZIP, upload files or write your first page next.</p></header>{{template "error" .}}
 <section class="panel stack creation-panel" aria-label="New site details">
+{{if or .Creation.Groups .Creation.AllowUnassigned}}
 <form class="stack" method="post" action="/sites">{{template "write" .}}
 <div class="field"><label for="site-name">Site name</label><input id="site-name" name="name" value="{{.Name}}" required maxlength="100" placeholder="Team handbook"></div>
-<div class="field"><label for="site-slug">Site address <span class="muted">(optional)</span></label><input id="site-slug" name="slug" value="{{.Slug}}" maxlength="48" autocapitalize="none" spellcheck="false" aria-describedby="address-tip" placeholder="team-handbook"><small id="address-tip">Use lowercase letters, numbers and hyphens, or leave blank for an automatic address.</small></div><div class="toolbar"><button type="submit">Create site</button><a href="/sites">Cancel</a></div></form></section>{{end}}
+{{if .Creation.Groups}}<div class="field"><label for="site-group">Budget group</label><div class="select-wrap"><select id="site-group" name="group_id" aria-describedby="group-tip"{{if not .Creation.AllowUnassigned}} required{{end}}>
+{{if .Creation.AllowUnassigned}}<option value="">Workspace only (unassigned)</option>{{else if gt (len .Creation.Groups) 1}}<option value="">Choose a group</option>{{end}}
+{{range .Creation.Groups}}<option value="{{.ID}}"{{if eq .ID $.GroupID}} selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+<small id="group-tip">The site and its saved revisions count toward this budget and the workspace total.</small></div>{{end}}
+<div class="field"><label for="site-slug">Site address <span class="muted">(optional)</span></label><input id="site-slug" name="slug" value="{{.Slug}}" maxlength="48" autocapitalize="none" spellcheck="false" aria-describedby="address-tip" placeholder="team-handbook"><small id="address-tip">Use lowercase letters, numbers and hyphens, or leave blank for an automatic address.</small></div><div class="toolbar"><button type="submit">Create site</button><a href="/sites">Cancel</a></div></form>
+{{else}}<p>Your account has no group available for new sites. Ask a workspace administrator to add you to a group that can create sites.</p>{{end}}</section>{{end}}
 
 {{define "detail"}}
 <p><a href="/sites">← All sites</a></p>
@@ -59,6 +65,7 @@
 <div class="toolbar">{{if .HasIndex}}<a class="button secondary" href="{{.S.preview_url}}">Preview draft</a>{{end}}{{if and .S.release_id (ne .S.visibility "offline")}}<a class="button secondary" href="{{.S.site_url}}">Open live site</a>{{end}}{{if and .CanPublish .HasIndex (ne .S.live_revision .S.revision)}}<form method="post" action="{{.Base}}/publish">{{template "write" .}}<button type="submit">Publish draft</button></form>{{end}}</div></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 <section class="panel stack" aria-labelledby="draft-title"><h2 id="draft-title">Draft files</h2>
+{{with .S.storage_restriction}}<p class="notice">{{.}}</p>{{end}}
 {{if .CanEdit}}<div class="toolbar"><a class="button" href="{{.Base}}/edit">New file</a><a class="button secondary" href="{{.Base}}/upload">Upload file</a><a class="button secondary" href="{{.Base}}/import">Import ZIP</a></div>{{end}}
 {{if .S.files}}<ul class="list">{{range .S.files}}<li class="row"><div>{{if and $.CanEdit (editable .Path)}}<a href="{{$.Base}}/edit?path={{.Path}}"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{humanBytes .Size}}</small></div>{{if $.CanEdit}}<a href="{{$.Base}}/delete?path={{.Path}}" aria-label="Remove {{.Path}}">Remove</a>{{end}}</li>{{end}}</ul>
 {{else}}<p>No files yet. {{if .CanEdit}}Create <code>index.html</code> in the editor or import a ZIP with your site files.{{end}}</p>{{end}}

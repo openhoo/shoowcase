@@ -142,7 +142,7 @@ func TestUpgradeFromInitialRelease(t *testing.T) {
 				t.Fatal(saved)
 			}
 			var version, gen int64
-			if e := db.QueryRow("SELECT (SELECT MAX(version) FROM sc_schema_migrations),publication_generation FROM sc_sites WHERE id='old'").Scan(&version, &gen); e != nil || gen != 1 || version != 3 {
+			if e := db.QueryRow("SELECT (SELECT MAX(version) FROM sc_schema_migrations),publication_generation FROM sc_sites WHERE id='old'").Scan(&version, &gen); e != nil || gen != 1 || version != 4 {
 				t.Fatal(version, gen, e)
 			}
 			public := args{"site_id": "old", "revision": rev, "visibility": "public", "request_id": "share"}

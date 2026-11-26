@@ -70,7 +70,7 @@ func (s *Store) RecordSession(ctx context.Context, a Actor, action string) error
 // identity, but it need not be entitled to the requested operation.
 func (s *Store) RecordDenied(ctx context.Context, a Actor, operation string) error {
 	switch operation {
-	case "admin", "audit", "prepare_upload", "list_sites", "get_site", "create_site", "upload_files", "publish_site", "rollback_site", "set_site_access":
+	case "admin", "audit", "prepare_upload", "list_site_groups", "list_sites", "get_site", "create_site", "upload_files", "publish_site", "rollback_site", "set_site_access":
 	default:
 		return bad("Unknown authorization event.")
 	}

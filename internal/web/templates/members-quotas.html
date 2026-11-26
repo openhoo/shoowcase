@@ -1,0 +1,56 @@
+{{define "quota-error"}}<section class="panel stack"><h1>{{.Title}}</h1><p>{{.Detail}}</p><a href="/admin?view=quotas">Back to quotas</a></section>{{end}}
+
+{{define "quota-budget"}}
+{{$key := "workspace"}}{{if not .Workspace}}{{$key = .ID}}{{end}}
+<dl class="grid" aria-label="Resource usage">
+<div><dt>Sites</dt><dd>{{.Usage.Sites}} of {{.Effective.Sites}}{{if not .Workspace}}{{if lt .Limits.Sites 0}} · Workspace limit{{else if gt .Limits.Sites .Effective.Sites}} · Group limit: {{.Limits.Sites}}{{else}} · Group limit{{end}}{{end}}{{with limitState .Usage.Sites .Effective.Sites}} · <strong>{{.}}</strong>{{end}}</dd></div>
+<div><dt>Revision storage</dt><dd>{{quotaBytes .Usage.Bytes}} of {{quotaBytes .Effective.Bytes}}{{if not .Workspace}}{{if lt .Limits.Bytes 0}} · Workspace limit{{else if gt .Limits.Bytes .Effective.Bytes}} · Group limit: {{quotaBytes .Limits.Bytes}}{{else}} · Group limit{{end}}{{end}}{{with limitState .Usage.Bytes .Effective.Bytes}} · <strong>{{.}}</strong>{{end}}</dd></div>
+</dl>
+<details><summary>{{if .Workspace}}Edit workspace limits{{else}}Edit limits for {{.Name}}{{end}}</summary>
+<form class="stack" action="/admin" method="post">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="version" value="{{.Version}}">
+{{if .Workspace}}<input type="hidden" name="action" value="workspace-quota">
+{{else}}<input type="hidden" name="action" value="group-quota"><input type="hidden" name="group" value="{{.ID}}">
+<p>Leave either limit blank to use the workspace limit for that resource.</p>{{end}}
+<div class="grid">
+<div class="field"><label for="site-limit-{{$key}}">Maximum sites</label><input type="number" min="0" step="1" max="{{maxQuotaSites}}" id="site-limit-{{$key}}" name="site_limit" value="{{.SiteLimit}}"{{if .Workspace}} required{{end}}></div>
+<div class="field"><label for="storage-limit-{{$key}}">Maximum storage</label><input type="number" min="0" step="1" id="storage-limit-{{$key}}" name="storage_limit" value="{{.StorageLimit}}" aria-describedby="storage-help-{{$key}}"{{if .Workspace}} required{{end}}><small id="storage-help-{{$key}}">Enter a whole number and choose its unit.</small></div>
+<div class="field"><label for="storage-unit-{{$key}}">Storage unit</label><div class="select-wrap"><select id="storage-unit-{{$key}}" name="storage_unit"><option value="B"{{if eq .Unit "B"}} selected{{end}}>Bytes</option><option value="KiB"{{if eq .Unit "KiB"}} selected{{end}}>KiB</option><option value="MiB"{{if eq .Unit "MiB"}} selected{{end}}>MiB</option><option value="GiB"{{if eq .Unit "GiB"}} selected{{end}}>GiB</option></select></div></div>
+</div>
+<div><button>Save limits</button></div></form></details>
+{{end}}
+
+{{define "quotas"}}
+<section class="panel stack" aria-labelledby="workspace-quotas">
+<h2 id="workspace-quotas">Workspace quotas</h2>
+<p>Every site counts toward these limits. Storage includes every saved revision: a file kept in two revisions counts twice. Publishing an existing revision uses no extra storage.</p>
+{{template "quota-budget" .Quota.Workspace}}
+<p class="muted">The service allows up to {{maxQuotaSites}} sites and {{maxQuotaStorage}} per workspace. Lowering a limit keeps existing sites and revisions. It blocks further growth for that resource until there is room.</p>
+</section>
+
+<section class="panel stack" aria-labelledby="group-quotas">
+<h2 id="group-quotas">Group quotas</h2>
+<p>Use a group to budget for a project. Each site can count toward one group. All groups share the available workspace capacity.</p>
+<p>Assign existing sites before setting the first group limit. Once a group has an explicit limit, only admins can add storage to unassigned sites.</p>
+{{if .Quota.Groups}}<ul class="list">{{range .Quota.Groups}}<li class="stack" id="budget-{{.ID}}">
+<h3>{{.Name}}</h3>
+{{template "quota-budget" .}}
+</li>{{end}}</ul>{{else}}<p>No groups yet. <a href="/admin?view=groups">Create a group</a> to give a project its own limits.</p>{{end}}
+</section>
+
+<section class="panel stack" aria-labelledby="site-assignments">
+<h2 id="site-assignments">Site assignments</h2>
+<p><strong>Unassigned:</strong> {{.Quota.Unassigned.Sites}} {{if eq .Quota.Unassigned.Sites 1}}site{{else}}sites{{end}} · {{quotaBytes .Quota.Unassigned.Bytes}}. These sites count only toward the workspace limits.</p>
+{{with .Quota.Selected}}
+<form class="stack" id="assignment" action="/admin" method="post">
+<h3>Change group for {{.Name}}</h3>
+<p>Moving this site assigns its full revision history ({{quotaBytes .Bytes}}) to the new group. Its address and audience stay the same. If you choose a group, only its editors, its publishers and workspace admins can edit the draft.</p>
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="site-group"><input type="hidden" name="site" value="{{.ID}}"><input type="hidden" name="version" value="{{.Version}}">
+<div class="field"><label for="site-group">Group for {{.Name}}</label><div class="select-wrap"><select id="site-group" name="group"><option value=""{{if not .GroupID}} selected{{end}}>Unassigned</option>{{range $.Quota.Groups}}<option value="{{.ID}}"{{if eq $.Quota.Selected.GroupID .ID}} selected{{end}}>{{.Name}}</option>{{end}}</select></div></div>
+<div class="toolbar"><button>Save assignment</button><a href="/admin?view=quotas#site-assignments">Cancel</a></div>
+</form>{{end}}
+{{if .Quota.Sites}}<ul class="list">{{range .Quota.Sites}}<li class="row"><div><strong>{{.Name}}</strong> · <code>{{.ID}}</code><p>{{.GroupName}} · {{quotaBytes .Bytes}}</p></div>
+<a href="/admin?view=quotas&amp;site={{.ID}}#assignment" aria-label="Change group for {{.Name}}">Change group</a></li>{{end}}</ul>
+{{else}}<p>No sites in this workspace yet.</p>{{end}}
+</section>{{end}}

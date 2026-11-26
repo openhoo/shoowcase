@@ -49,6 +49,9 @@ func (a *App) prepare(ctx context.Context, who sites.Actor, args json.RawMessage
 	if site["revision"] != spec.Revision {
 		return nil, problem("conflict", "Draft changed. Read the current revision and reapply.")
 	}
+	if reason, ok := site["storage_restriction"].(string); ok {
+		return nil, problem("forbidden", reason)
+	}
 	expiry := time.Now().Add(5 * time.Minute)
 	t := a.sign(ticket{Kind: "upload", KeyID: sourceKey(ctx), Who: who, Args: args, Expires: expiry.Unix()})
 	link := a.config.ControlURL + "/upload?t=" + url.QueryEscape(t)

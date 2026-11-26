@@ -44,7 +44,7 @@ func TestSDKClientsNegotiateAndCall(t *testing.T) {
 				names = append(names, tool.Name)
 			}
 			slices.Sort(names)
-			if want := []string{"create_site", "get_site", "list_sites", "prepare_upload", "publish_site", "rollback_site", "set_site_access", "upload_files"}; !slices.Equal(names, want) {
+			if want := []string{"create_site", "get_site", "list_site_groups", "list_sites", "prepare_upload", "publish_site", "rollback_site", "set_site_access", "upload_files"}; !slices.Equal(names, want) {
 				t.Fatalf("catalog: got %v", names)
 			}
 			out, err := c.CallTool(t.Context(), &mcp.CallToolParams{Name: "list_sites", Arguments: map[string]any{"limit": 1}})
@@ -85,6 +85,8 @@ func TestInputBoundariesAndActionableErrors(t *testing.T) {
 	c := connect(t, server.URL, "2026-07-28")
 	for _, tc := range []struct{ name, args string }{
 		{"list_sites", `{"workspace":"different-tenant"}`},
+		{"list_site_groups", `{"workspace":"different-tenant"}`},
+		{"create_site", `{"name":"Guide","request_id":"123","group_id":"a name instead of an ID"}`},
 		{"list_sites", `{"limit":101}`},
 		{"upload_files", `{"site_id":"a","expected_revision":"r","request_id":"123","files":[{"path":"index.html","text":"","base64":""}]}`},
 		{"upload_files", `{"site_id":"a","expected_revision":"r","request_id":"123","files":[{"path":"../secret","text":"x"}]}`},

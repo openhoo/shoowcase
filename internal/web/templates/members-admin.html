@@ -1,8 +1,8 @@
 {{define "admin"}}
-<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Workspace admin</h1><p>Manage access for people and agents in this workspace.</p></header>
+<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Workspace admin</h1><p>Manage people, agent access and resource limits in this workspace.</p></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 <dl class="grid" aria-label="Workspace totals"><div class="panel"><dt>Members</dt><dd><strong>{{.Stats.Members}}</strong></dd></div><div class="panel"><dt>Sites</dt><dd><strong>{{.Stats.Sites}}</strong></dd></div><div class="panel"><dt>Active keys</dt><dd><strong>{{.Stats.ActiveKeys}}</strong></dd></div></dl>
-<nav class="toolbar" aria-label="Administration views"><a href="/admin"{{if eq .View "members"}} aria-current="page"{{end}}>Members</a><a href="/admin?view=groups"{{if eq .View "groups"}} aria-current="page"{{end}}>Groups</a><a href="/admin?view=settings"{{if eq .View "settings"}} aria-current="page"{{end}}>Workspace settings</a><a href="/admin?view=keys"{{if eq .View "keys"}} aria-current="page"{{end}}>Workspace keys</a><a href="/admin?view=activity"{{if eq .View "activity"}} aria-current="page"{{end}}>Activity</a></nav>
+<nav class="toolbar" aria-label="Administration views"><a href="/admin"{{if eq .View "members"}} aria-current="page"{{end}}>Members</a><a href="/admin?view=groups"{{if eq .View "groups"}} aria-current="page"{{end}}>Groups</a><a href="/admin?view=quotas"{{if eq .View "quotas"}} aria-current="page"{{end}}>Quotas</a><a href="/admin?view=settings"{{if eq .View "settings"}} aria-current="page"{{end}}>Workspace settings</a><a href="/admin?view=keys"{{if eq .View "keys"}} aria-current="page"{{end}}>Workspace keys</a><a href="/admin?view=activity"{{if eq .View "activity"}} aria-current="page"{{end}}>Activity</a></nav>
 {{if eq .View "members"}}
 <section class="panel stack" aria-labelledby="members"><h2 id="members">Members</h2>
 <details><summary>Add a member</summary><form class="stack" method="post" action="/admin"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="provision">
@@ -21,6 +21,7 @@
 </div></details>{{end}}</li>{{end}}</ul>{{else}}<p class="muted">No members on this page.</p>{{end}}
 {{if .Next}}<a href="{{.Next}}">Next members →</a>{{end}}</section>
 {{else if eq .View "settings"}}{{template "workspace-settings" .}}
+{{else if eq .View "quotas"}}{{template "quotas" .}}
 {{else if eq .View "groups"}}{{template "groups" .}}
 {{else if eq .View "keys"}}<section class="panel stack" aria-labelledby="workspace-keys"><h2 id="workspace-keys">Workspace keys</h2><p class="muted">Revoking a key disconnects every agent using it.</p>{{template "key-list" .}}</section>
 {{else}}<section class="panel stack" aria-labelledby="activity"><h2 id="activity">Audit log</h2><p class="muted">Sign-ins and changes to workspace access, keys, drafts and releases. Most recent first.</p><a href="/api/audit">Open JSON export</a>

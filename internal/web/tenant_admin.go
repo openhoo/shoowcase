@@ -73,6 +73,10 @@ func (a *App) tenantMutation(w http.ResponseWriter, r *http.Request, c consoleCo
 		return false
 	}
 	if err != nil {
+		if e, ok := err.(*sites.Error); action == "group-delete" && ok && e.Code == "conflict" {
+			quotaFormError(w, c, http.StatusConflict, "Group could not be deleted", e.Message)
+			return true
+		}
 		memberError(w, c, err)
 		return true
 	}

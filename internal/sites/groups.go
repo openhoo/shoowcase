@@ -173,6 +173,13 @@ func (s *Store) DeleteGroup(ctx context.Context, a Actor, id string, version int
 		return err
 	}
 	defer tx.Rollback()
+	var assigned bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sc_site_groups WHERE workspace=$1 AND group_id=$2)", a.Workspace, id).Scan(&assigned); err != nil {
+		return err
+	}
+	if assigned {
+		return conflict("Reassign this group’s sites before deleting the group.")
+	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM sc_groups WHERE workspace=$1 AND id=$2", a.Workspace, id); err != nil {
 		return err
 	}
