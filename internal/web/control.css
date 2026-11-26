@@ -909,13 +909,15 @@ input:focus-visible {
 .creation-panel {
   max-width: 42rem;
 }
-@media (max-width: 55rem) {
+@media (max-width: 58rem) {
   .directory-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(12.25rem, 1fr);
   }
   .directory-filters .search-field {
     grid-column: span 2;
   }
+}
+@media (max-width: 55rem) {
   .site-table th,
   .site-table td {
     padding-inline: 0.45rem;
