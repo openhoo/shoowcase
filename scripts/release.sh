@@ -82,7 +82,7 @@ if binary.suffix == ".exe":
             note = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0)); note.external_attr = (0o100644 << 16); note.create_system = 3
             out.writestr(note, pathlib.Path(name).read_bytes())
 else:
-    with open(str(target) + ".tar.gz", "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz, tarfile.open(mode="w", fileobj=gz, format=tarfile.USTAR_FORMAT) as tar:
+    with open(str(target) + ".tar.gz", "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=9, mtime=0) as gz, tarfile.open(mode="w", fileobj=gz, format=tarfile.USTAR_FORMAT) as tar:
         entry = tarfile.TarInfo(binary.name); entry.mode = 0o755; entry.size = len(payload); entry.mtime = 0
         tar.addfile(entry, io.BytesIO(payload))
         for name in ("LICENSE", "NOTICE"):

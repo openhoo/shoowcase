@@ -23,6 +23,8 @@ Each release from v0.1.1 includes `shoowcase-vX.Y.Z-skills.zip`, where `vX.Y.Z` 
 
 ## Verify or release
 
+To reproduce the published v0.1.1 tarballs from the tag, use Python 3.12 and Go 1.27.4. Python versions use different default gzip compression levels; the bytes inside the tar archive are the same, but its outer checksum can differ. The release script on main explicitly selects level 9 to match the published v0.1.1 archives across the tested Python versions.
+
 - For development, `make build test vet`, `make smoke`, and `make vuln`. Set `SHOOWCASE_TEST_POSTGRES_DSN` only to an **isolated, disposable** database when running backend integration tests.
 - The `CI` workflow's job is **verify**. It runs vet, race tests with a disposable PostgreSQL 17 service, a pinned govulncheck against the live Go vulnerability database, a smoke test against the binary, a backup/restore test against a separate database, and a read-only nonroot OCI image check. The runner needs access to GitHub, the Go module and checksum services, the Go vulnerability database, and the container registry.
 - Before publishing, protect main, require the `verify` check and code review, restrict updates/deletion of release tags `v*`, and restrict the `release` environment to approved publishers. Where the repository plan permits, enable GitHub immutable releases and disallow mutable release tags. Leave default workflow permissions read-only. The release image job alone needs package write; publishing the binary release needs contents write. The release remains in the repository/package visibility you configure.
