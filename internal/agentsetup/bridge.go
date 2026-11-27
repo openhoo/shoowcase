@@ -72,7 +72,7 @@ func bridge(ctx context.Context, cli *http.Client, c credential, in io.Reader, o
 				JSONRPC string          `json:"jsonrpc"`
 				ID      json.RawMessage `json:"id"`
 				Error   any             `json:"error"`
-			}{"2.0", msg.ID, map[string]any{"code": -32000, "message": "Shoowcase request failed. Check connectivity and reconnect the agent if its key has expired or was revoked."}})
+			}{"2.0", msg.ID, map[string]any{"code": -32000, "message": "Shoowcase request failed. Check your network, proxy and certificate settings. Reconnect the agent if its key has expired or was revoked."}})
 		} else if msg.Method == "initialize" {
 			var init struct {
 				Result struct {

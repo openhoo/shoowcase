@@ -30,6 +30,10 @@ Shoowcase is a **self-hosted website platform** for onboarding guides, project u
 
 The GitHub Copilot desktop app (local sessions), Copilot CLI and the default Copilot agent in VS Code read the same **Copilot Global** settings. If one is already connected on this computer, open a new session in the other; no second key is needed. Reconnecting changes the local key used by all three. For older VS Code setups using the editor-managed Local agent, select **VS Code (legacy Local agent)** to configure the default user profile in VS Code Stable separately. For a named profile, VS Code Insiders or another local client with its own settings, choose **Other local MCP client**.
 
+**On a company network:** Select **Use a company proxy** before creating the key. Run the command on your work computer. It uses the HTTPS proxy configured in your terminal or asks you privately for the proxy URL. If IT supplies a PEM certificate bundle, set `SHOOWCASE_CA_FILE` to its local path first and keep the file there. The command uses the proxy to download the installer and verified release, then connects the agent. The agent starts a local stdio MCP relay; it needs no listening port and keeps working after you close the terminal.
+
+The relay supports HTTP and HTTPS forward proxies, including Basic authentication. Setup reads `HTTPS_PROXY` (or `ALL_PROXY`) and honors `NO_PROXY`; lowercase forms are accepted. The route to this Shoowcase instance and any proxy credentials stay in the local user credential store. To change the proxy, run Quickstart again with the new settings and revoke the old key under **Agent keys**. If your network uses a PAC file or requires NTLM or Kerberos, ask IT for a compatible proxy or approved local gateway.
+
 Try: **“Create a site called Team Fieldnotes. Make a welcome page and a checklist, publish them for my workspace, and give me the URL.”** To try it with ready-made files, use the [onboarding example](examples/onboarding/).
 
 ### I want to try it on my computer

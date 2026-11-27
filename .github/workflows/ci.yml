@@ -86,6 +86,11 @@ jobs:
         run: '"$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-workspace.py --binary ./bin/shoowcase --browser-channel chrome'
       - name: Connect isolated MCP clients through the browser Quickstart
         run: '"$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-quickstart.py --binary ./bin/shoowcase --clients cursor,copilot,copilot-app,vscode,vscode-local,gemini,opencode,stdio --browser-channel chrome'
+      - name: Install and start a new desktop relay behind an authenticated company proxy
+        run: |
+          version=$(sed -n 's/^    version=//p' internal/web/quickstartassets/install.sh)
+          make build VERSION="$version"
+          "$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-proxy.py --binary ./bin/shoowcase
       - name: Restore production-format backup into a separate database
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}

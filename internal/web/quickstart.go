@@ -29,6 +29,7 @@ type quickPage struct {
 	memberPage
 	Client, Platform, ClientName, Command, Prompt string
 	Clients                                       []agentclients.Client
+	CompanyProxy                                  bool
 }
 
 // The browser receives an encrypted, client-bound envelope, not the persistent
@@ -142,6 +143,7 @@ func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContex
 	status := 200
 	if r.Method == http.MethodPost {
 		p.Client, p.Platform = r.PostForm.Get("client"), r.PostForm.Get("platform")
+		p.CompanyProxy = r.PostForm.Get("company_proxy") == "on"
 		p.ClientName = agentclients.Name(p.Client)
 		p.Scope, p.Days = r.PostForm.Get("scope"), r.PostForm.Get("days")
 		p.NameValue = strings.TrimSpace(r.PostForm.Get("name"))
@@ -164,7 +166,11 @@ func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContex
 				memberError(w, c, err)
 				return
 			}
-			p.Command = quickCommand(a.config.ControlURL, p.Client, p.Platform, a.setupCode(secret, p.Client, time.Now().Add(10*time.Minute)))
+			command := quickCommand
+			if p.CompanyProxy {
+				command = quickProxyCommand
+			}
+			p.Command = command(a.config.ControlURL, p.Client, p.Platform, a.setupCode(secret, p.Client, time.Now().Add(10*time.Minute)))
 			p.Prompt = "List the sites I can access in Shoowcase."
 			if p.Scope == "editor" {
 				p.Prompt = "Create a Shoowcase site with a welcome page and give me its private preview."

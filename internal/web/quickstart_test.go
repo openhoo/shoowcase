@@ -140,3 +140,27 @@ func TestSetupCodeExpiryAndRevocation(t *testing.T) {
 		}
 	}
 }
+
+func TestQuickstartKeepsCompanyProxyChoice(t *testing.T) {
+	app, _ := handlerFixture(t, filepath.Join(t.TempDir(), "proxy.sqlite"), "team-a", false)
+	c, csrf := joinMemberConsole(t, app)
+	for _, platform := range []string{"windows", "unix"} {
+		get := hitRoute(t, app, "GET", testControl+"/quickstart", c, nil)
+		form := url.Values{"csrf": {csrf}, "creation_token": {memberControl(t, get.Body.String(), "name", "creation_token")},
+			"company_proxy": {"on"}, "platform": {platform}, "scope": {"reader"}, "days": {"7"}}
+		bad := memberPost(t, app, c, "/quickstart", form)
+		requireMemberStatus(t, bad, 400)
+		if !strings.Contains(bad.Body.String(), `aria-describedby="proxy-help" checked`) {
+			t.Fatal("invalid form lost the company proxy selection")
+		}
+		form.Set("creation_token", memberControl(t, bad.Body.String(), "name", "creation_token"))
+		form.Set("client", "vscode")
+		out := memberPost(t, app, c, "/quickstart", form)
+		requireMemberStatus(t, out, 200)
+		cmd := quickCommandFrom(t, out.Body.String())
+		if !strings.Contains(cmd, "HTTPS_PROXY") || !strings.Contains(cmd, "SHOOWCASE_CA_FILE") ||
+			!strings.Contains(cmd, "/quickstart/install."+map[string]string{"windows": "ps1", "unix": "sh"}[platform]) {
+			t.Fatal("did not render the selected platform’s proxy command")
+		}
+	}
+}
