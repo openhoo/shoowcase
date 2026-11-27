@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -282,6 +283,13 @@ func memberScopes(role string) []string {
 	}
 }
 
+func defaultKeyScope(scopes []string) string {
+	if slices.Contains(scopes, "publisher") {
+		return "publisher"
+	}
+	return "reader"
+}
+
 // Keep a previously configured higher limit visible after an IdP downgrade.
 // The store still caps effective authority at the current identity role.
 func memberCeilings(m sites.Account) []string {
@@ -346,7 +354,7 @@ func (a *App) spendKeyForm(w http.ResponseWriter, r *http.Request, c consoleCont
 
 func (a *App) memberKeys(w http.ResponseWriter, r *http.Request, c consoleContext, p memberPage) {
 	p.Scopes = memberScopes(c.Actor.Role)
-	p.Scope = "reader"
+	p.Scope = defaultKeyScope(p.Scopes)
 	p.Days = "30"
 	status := 200
 	who := actor(c.Identity)

@@ -136,7 +136,7 @@ func quickCommand(base, client, platform, code string) string {
 func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContext, m memberPage) {
 	p := quickPage{memberPage: m, Clients: agentclients.Clients, Client: "", Platform: "unix"}
 	p.Scopes = memberScopes(c.Actor.Role)
-	p.Scope, p.Days = "reader", "30"
+	p.Scope, p.Days = defaultKeyScope(p.Scopes), "30"
 	if strings.Contains(strings.ToLower(r.UserAgent()), "windows") {
 		p.Platform = "windows"
 	}

@@ -87,15 +87,19 @@ async def create_key(page, endpoint):
     try:
         narrow = await native.new_page()
         await narrow.goto(endpoint.removesuffix("/mcp") + "/keys")
-        await expect(narrow.get_by_label("Access", exact=True)).to_be_visible()
+        await expect(narrow.get_by_label("Access", exact=True)).to_have_value("publisher")
         check(await narrow.evaluate("document.documentElement.scrollWidth <= innerWidth"),
               "native agent key form overflows at 320px")
+        await narrow.goto(endpoint.removesuffix("/mcp") + "/quickstart")
+        await expect(narrow.get_by_label("What can this agent do?")).to_have_value("publisher")
     finally:
         await native.close()
+    await page.get_by_role("link", name="Quickstart", exact=True).click()
+    await expect(page.locator("#app > :not(#native-page) #quick-scope")).to_have_value("publisher")
     await page.get_by_role("link", name="Agent keys", exact=True).click()
     await fits(page, "agent keys")
     await page.get_by_label("Key name").fill("Workshop publisher")
-    await page.get_by_label("Access", exact=True).select_option("publisher")
+    await expect(page.locator("#app > :not(#native-page) #key-scope")).to_have_value("publisher")
     await page.get_by_label("Expires in").select_option("7")
     await page.get_by_role("button", name="Create key").click()
     check(await page.get_by_label("MCP server URL").input_value() == endpoint, "wrong MCP URL")
@@ -532,7 +536,7 @@ async def password_accounts(binary, browser):
         await page.goto(control + "/auth/login?next=/account")
         await page.get_by_label("Username", exact=True).fill("studio-member")
         await page.get_by_label("Password", exact=True).fill(password)
-        await page.get_by_role("button", name="Sign in with password").click()
+        await page.get_by_role("button", name="Login", exact=True).click()
 
     first, second = "starting example password", "updated example password"
     account_url = "https://identity.example.test/account/security"
@@ -574,7 +578,7 @@ async def password_accounts(binary, browser):
             await visitor.goto(draft["preview_url"])
             await visitor.get_by_label("Username", exact=True).fill("studio-member")
             await visitor.get_by_label("Password", exact=True).fill(first)
-            await visitor.get_by_role("button", name="Sign in with password").click()
+            await visitor.get_by_role("button", name="Login", exact=True).click()
             await expect(visitor.get_by_role("heading", name="Private guide")).to_be_visible()
         await member.set_viewport_size({"width": 320, "height": 780})
         await member.get_by_role("link", name="Sites", exact=True).click()
@@ -590,9 +594,9 @@ async def password_accounts(binary, browser):
         await expect(member.get_by_role("heading", name="Password changed")).to_be_visible()
         for visitor in (private, native_private):
             await visitor.reload()
-            await expect(visitor.get_by_role("button", name="Sign in with password")).to_be_visible()
+            await expect(visitor.get_by_role("button", name="Login", exact=True)).to_be_visible()
         await other.reload()
-        await expect(other.get_by_role("button", name="Sign in with password")).to_be_visible()
+        await expect(other.get_by_role("button", name="Login", exact=True)).to_be_visible()
         await signin(member, control, first)
         await expect(member.get_by_role("alert")).to_contain_text("incorrect")
         await signin(member, control, second)
