@@ -309,6 +309,7 @@ func create(ctx context.Context, tx *sql.Tx, a Actor, p mutation) (record, error
 	_, e = tx.ExecContext(ctx, "INSERT INTO sc_revisions(id,site,created_at) VALUES($1,$2,$3)", r.draft, r.site, time.Now().UnixMilli())
 	return r, e
 }
+
 // ErrDraftChanged means a mutation targeted a revision that is no longer current.
 var ErrDraftChanged = conflict("Draft changed; read the current revision and retry.")
 

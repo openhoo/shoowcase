@@ -141,8 +141,14 @@ async def manual_site(page, agent):
     stale_editor = await page.context.new_page()
     await stale_editor.goto(page.url)
     await stale_editor.get_by_role("link", name="app.js", exact=True).click()
-    unsaved = "// Notes from the other tab."
-    await stale_editor.get_by_label("File contents").fill(unsaved)
+    # Reuse the signed-in fixture session to compare script-free and React forms.
+    native = await page.context.browser.new_context(java_script_enabled=False,
+        storage_state=await page.context.storage_state())
+    native_editor = await native.new_page()
+    await native_editor.goto(stale_editor.url)
+    unsaved = "\n// Notes from the other tab.\n\n"
+    for editor_tab in (stale_editor, native_editor):
+        await editor_tab.get_by_label("File contents").fill(unsaved)
     await page.get_by_role("link", name="Upload file").click()
     await fits(page, "file upload")
     old = await read()
@@ -155,9 +161,10 @@ async def manual_site(page, agent):
     check((await conflict.value).status == 409, "stale upload response status")
     await expect(page.get_by_role("alert")).to_contain_text("draft changed")
     await expect(page.get_by_role("button", name="Upload to draft")).to_have_count(0)
-    await stale_editor.get_by_role("button", name="Save file").click()
-    await expect(stale_editor.get_by_label("Your unsaved text for app.js")).to_have_value(unsaved)
-    await expect(stale_editor.get_by_role("button", name="Save file")).to_have_count(0)
+    for editor_tab in (stale_editor, native_editor):
+        await editor_tab.get_by_role("button", name="Save file").click()
+        await expect(editor_tab.get_by_label("Your unsaved text for app.js")).to_have_value(unsaved)
+        await expect(editor_tab.get_by_role("button", name="Save file")).to_have_count(0)
     check((await read())["revision"] == current["revision"], "stale forms changed the current draft")
     async with page.expect_popup() as reopened:
         await page.get_by_role("link", name="Open current draft in a new tab").click()
@@ -175,12 +182,16 @@ async def manual_site(page, agent):
     editor = page.get_by_label("File contents")
     code = await editor.input_value()
     check(code == (EXAMPLE / "app.js").read_text(), "editor did not recover the original program")
-    code += "\n// Workshop edition.\n"
+    code = "\n" + code + "\n// Workshop edition.\n"
     await editor.fill(code)
     await fits(page, "source editor")
     await page.get_by_role("button", name="Save file").click()
     await expect(page.locator(".notice[role=status]")).to_have_text("File saved to the draft.")
     await fits(page, "site detail")
+    await native_editor.goto(page.url)
+    await native_editor.get_by_role("link", name="app.js", exact=True).click()
+    await expect(native_editor.get_by_label("File contents")).to_have_value(code)
+    await native.close()
     return code
 
 
