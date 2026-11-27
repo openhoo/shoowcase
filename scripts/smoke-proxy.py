@@ -73,6 +73,11 @@ def proxy(tls, control, backend, assets, secret):
     # it never opens an outbound connection other than the disposable loopback app.
     counts = Counter()
     expected = "Basic " + base64.b64encode(("worker:" + secret).encode()).decode()
+    # This fixture covers one onboarding flow. Forward only literal routes
+    # for that flow; client-controlled request targets never go to the backend.
+    paths = {p: p for p in ("/", "/ui.css", "/console.js", "/account", "/sites", "/quickstart",
+                            "/quickstart/install.sh", "/quickstart/install.ps1", "/quickstart/redeem", "/mcp")}
+    paths["/auth/login"] = "/auth/login?next=%2Faccount"
 
     class Origin(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -90,13 +95,13 @@ def proxy(tls, control, backend, assets, secret):
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
-            elif target == control and self.command in ("GET", "POST"):
-                counts[self.path] += 1
+            elif target == control and self.command in ("GET", "POST") and (path := paths.get(self.path.partition("?")[0])):
+                counts[path] += 1
                 connection = http.client.HTTPConnection("127.0.0.1", backend, timeout=15)
                 try:
                     headers = {k: v for k, v in self.headers.items() if k.lower() != "connection"}
                     data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-                    connection.request(self.command, self.path, data, headers)
+                    connection.request(self.command, path, data, headers)
                     resp = connection.getresponse()
                     self.send_response_only(resp.status)
                     for k, v in resp.getheaders():
