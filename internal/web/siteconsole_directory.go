@@ -20,6 +20,7 @@ type directoryData struct {
 }
 type directoryEntry struct {
 	ID, Name, Address, Href, State, StateLabel, Audience, AudienceLabel string
+	DraftRevision                                                       string
 	FileCount                                                           int
 	Updated                                                             time.Time
 	UpdatedLabel                                                        string
@@ -64,6 +65,7 @@ func (a *App) directory(ctx context.Context, who sites.Actor, q url.Values) (d d
 			d.Published++
 		}
 		if x.Live == "" {
+			e.DraftRevision = x.Draft
 			d.Drafts++
 		}
 		switch {

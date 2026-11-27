@@ -65,6 +65,9 @@ var siteParts = template.Must(template.New("sites").Funcs(template.FuncMap{
 type siteData struct {
 	C                                                                   consoleContext
 	Directory                                                           directoryData
+	Selected                                                            []sites.DraftSelection
+	ReviewProof                                                         string
+	Labels, Paths                                                       []string
 	Creation                                                            sites.CreationGroupOptions
 	GroupID                                                             string
 	S, History                                                          *sites.SiteDetails
@@ -151,6 +154,10 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 	}
 	if route.Page == routes.Directory {
 		if r.Method == http.MethodPost {
+			if r.PostForm.Get("action") != "" {
+				a.deleteSiteSelection(w, r, d)
+				return
+			}
 			if !d.CanEdit {
 				siteFailure(w, c, problem("forbidden", ""))
 				return
@@ -179,6 +186,9 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 		if e != nil {
 			siteFailure(w, c, e)
 			return
+		}
+		if r.URL.Query().Get("notice") == "drafts-deleted" {
+			d.Notice = "Selected draft sites deleted."
 		}
 		siteView(w, d, 200, "Sites", "list")
 		return
@@ -259,12 +269,14 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 			siteFailure(w, c, problem("not_found", ""))
 			return
 		}
+		d.Paths = []string{d.Path}
+		d.ReviewProof = a.selectionProof(c, "remove-files", fileDeletionReview{id, d.Rev, d.Paths})
 		siteView(w, d, 200, "Remove file", "delete")
 	case "upload", "import":
 		siteView(w, d, 200, siteUploadTitle(action), "upload")
 	default:
 		d.HasIndex = d.S.HasFile("index.html")
-		d.Notice = map[string]string{"created": "Site created. Add a homepage to get started.", "saved": "File saved to the draft.", "removed": "File removed from the draft.", "uploaded": "File uploaded to the draft.", "imported": "ZIP imported into the draft.", "published": "Draft published.", "access": "Site access updated.", "restored": "Release restored."}[r.URL.Query().Get("notice")]
+		d.Notice = map[string]string{"created": "Site created. Add a homepage to get started.", "saved": "File saved to the draft.", "removed": "File removed from the draft.", "files-removed": "Selected files removed from the draft.", "uploaded": "File uploaded to the draft.", "imported": "ZIP imported into the draft.", "published": "Draft published.", "access": "Site access updated.", "restored": "Release restored."}[r.URL.Query().Get("notice")]
 		d.History, e = a.getSite(r.Context(), sites.GetSiteQuery{Site: id, View: "releases", Limit: new(10), Cursor: r.URL.Query().Get("releases")})
 		if e != nil {
 			siteFailure(w, c, e)
@@ -316,13 +328,22 @@ func (a *App) sitePost(w http.ResponseWriter, r *http.Request, d siteData, id, a
 		args["expected_revision"] = d.Rev
 		args["files"] = []map[string]string{{"path": d.Path, "text": d.Source}}
 	case "delete":
-		if f.Get("confirm") != "remove" {
-			e = badFile("Confirm the file to remove it.")
+		d.Paths = f["path"]
+		if f.Get("step") == "review" {
+			a.reviewFileDeletion(w, r, d, id)
+			return
+		}
+		d.ReviewProof = f.Get("proof")
+		if f.Get("confirm") != "remove" || !a.validSelectionProof(d.C, "remove-files", fileDeletionReview{id, d.Rev, d.Paths}, d.ReviewProof) {
+			e = badFile("Confirm which files to remove.")
 		}
 		args["expected_revision"] = d.Rev
 		args["files"] = []consoleFile{}
-		args["delete_paths"] = []string{d.Path}
+		args["delete_paths"] = d.Paths
 		notice = "removed"
+		if len(d.Paths) > 1 {
+			notice = "files-removed"
+		}
 	case "upload", "import":
 		var files []consoleFile
 		files, e = consoleUpload(r, action)

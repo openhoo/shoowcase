@@ -109,3 +109,81 @@ func TestQuotaConsoleScopesGroupsAndSitesToWorkspace(t *testing.T) {
 	requireMemberStatus(t, memberPost(t, app, c, "/admin", url.Values{"csrf": {csrf}, "action": {"group-quota"}, "group": {g.ID}, "version": {"1"}, "site_limit": {"0"}, "storage_limit": {"0"}, "storage_unit": {"B"}}), 404)
 	requireMemberStatus(t, memberPost(t, app, c, "/admin", url.Values{"csrf": {csrf}, "action": {"site-group"}, "site": {"field"}, "group": {""}, "version": {"1"}}), 404)
 }
+
+func TestBulkClearQuotasIsScopedReviewedAndAtomic(t *testing.T) {
+	app, store := handlerFixture(t, filepath.Join(t.TempDir(), "clear-quotas.db"), "team-a", false)
+	cookie, csrf := joinMemberConsole(t, app)
+	admin := sites.Actor{Subject: "tester", Workspace: "team-a", Role: "admin"}
+	ctx := t.Context()
+	var ids []string
+	for _, name := range []string{"Design", "Build"} {
+		g, err := store.CreateGroup(ctx, admin, name, "editor")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = store.SetQuota(ctx, admin, g.ID, sites.QuotaLimits{Sites: 1, Bytes: 99}, g.Version); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, g.ID)
+	}
+	current := func() sites.QuotaOverview {
+		q, err := store.Quotas(ctx, admin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return q
+	}
+	f := url.Values{"action": {"clear-group-limits"}, "selected": {ids[0] + ":2", ids[1] + ":2"}}
+	submit := func(want int) string {
+		w := memberPost(t, app, cookie, "/admin", f)
+		requireMemberStatus(t, w, want)
+		return w.Body.String()
+	}
+	submit(403)
+	f.Set("csrf", csrf)
+	body := submit(200)
+	f.Set("review", memberControl(t, body, "name", "review"))
+	if !strings.Contains(body, "Design") || !strings.Contains(body, "Build") {
+		t.Fatal("review omitted a target")
+	}
+	if current().Groups[0].Limits.Sites != 1 {
+		t.Fatal("review modified limits")
+	}
+	f.Set("confirm", "yes")
+	f["selected"][1] = ids[1] + ":1"
+	submit(409)
+	for _, g := range current().Groups {
+		if g.Limits.Sites != 1 || g.Version != 2 {
+			t.Fatal("stale selection changed a group")
+		}
+	}
+	f["selected"][1] = ids[0] + ":2"
+	submit(400)
+	f["selected"][1] = ":1"
+	submit(400)
+	f["selected"][1] = ids[1] + ":2"
+	submit(303)
+	for _, g := range current().Groups {
+		if g.Limits.Sites != -1 || g.Limits.Bytes != -1 || g.Version != 3 {
+			t.Fatal("expected inherited budgets")
+		}
+	}
+	if current().Workspace.Limits.Sites != sites.MaxSitesPerWorkspace {
+		t.Fatal("group reset changed workspace ceiling")
+	}
+	seedSiteFor(t, store, admin)
+	if err := store.AssignSiteGroup(ctx, admin, "field", ids[0], 1); err != nil {
+		t.Fatal(err)
+	}
+	f = url.Values{"action": {"clear-site-assignments"}, "selected": {"field:2"}, "csrf": {csrf}}
+	body = submit(200)
+	f.Set("review", memberControl(t, body, "name", "review"))
+	if !strings.Contains(body, "Field Notes") {
+		t.Fatal("site missing from review")
+	}
+	f.Set("confirm", "yes")
+	submit(303)
+	if current().Sites[0].GroupID != "" {
+		t.Fatal("expected unassigned site")
+	}
+}

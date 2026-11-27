@@ -1134,3 +1134,68 @@ input:focus-visible {
 .quick-choice input[type=radio] { width: 1.1rem; min-height: 0; height: 1.1rem; margin: 0; accent-color: var(--green); }
 .quick-choice:focus-within { outline: 3px solid #a74926; outline-offset: 2px; }
 .app textarea.quick-command { width: 100%; min-height: 6rem; padding: .85rem 1rem; border: 1px solid var(--line); background: #15383b; color: #fffef4; resize: vertical; overflow-wrap: anywhere; font: .92rem/1.6 ui-monospace,monospace; }
+
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  padding: .7rem 1.4rem;
+  background: #f3f6ee;
+  border-top: 1px solid var(--line);
+}
+.selection-toolbar [data-select-all-label] {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+.selection-toolbar [data-selection-count] {
+  font-size: .88rem;
+  color: #38544e;
+  font-variant-numeric: tabular-nums;
+}
+[data-selection] input[type="checkbox"] {
+  accent-color: var(--green);
+  width: 1.5rem;
+  height: 1.5rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.directory-table .selection-cell { width: 4.8rem; white-space: nowrap; }
+.directory-table tr:has([data-select-row]:checked) { background: #eaf2e6; }
+.app .danger-action {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  padding: .4rem .7rem;
+  border: 1px solid #a96351;
+  border-radius: .42rem;
+  color: #802d1f;
+  background: #fffaf5;
+  font: 650 .88rem/1.3 system-ui,sans-serif;
+  cursor: pointer;
+  text-decoration: none;
+}
+.app .danger-action:hover:not(:disabled) { color: #651e14; background: #fbe9df; }
+.app .selection-toolbar button:disabled { color: #526058; background: #e6eae4; border-color: #adb8ad; cursor: default; }
+@media (max-width: 43rem) {
+  .selection-toolbar { padding-inline: .85rem; }
+  /* Put the checkbox beside the row name when the table becomes cards. */
+  .directory-table tbody .selection-cell {
+    width: fit-content;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    z-index: 1;
+  }
+  .directory-table tr:has(.selection-cell) > .entry-name-cell {
+    grid-row: 1;
+    padding-inline-start: 2.4rem;
+    align-self: center;
+  }
+}

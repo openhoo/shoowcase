@@ -6,6 +6,7 @@
 """Exercise the workspace UI, revocable keys and an interactive site in a clean local instance."""
 import argparse
 import asyncio
+import csv
 import hashlib
 import io
 import re
@@ -15,6 +16,8 @@ from importlib import import_module
 from pathlib import Path
 
 from playwright.async_api import async_playwright, expect
+from bulk_admin_smoke import check_bulk_admin
+from bulk_site_smoke import check_bulk_sites
 from smoke import check
 
 browser_smoke = import_module("smoke-browser")
@@ -108,12 +111,12 @@ async def manual_site(page):
             {"name": "workshop.zip", "mimeType": "application/zip", "buffer": buf.getvalue()})
     await fits(page, "ZIP importer")
     await page.get_by_role("button", name="Import files").click()
-    await expect(page.get_by_role("status")).to_have_text("ZIP imported into the draft.")
+    await expect(page.locator(".notice[role=status]")).to_have_text("ZIP imported into the draft.")
     await page.get_by_role("link", name="Upload file").click()
     await fits(page, "file upload")
     await page.get_by_label("Choose a file").set_input_files(EXAMPLE / "style.css")
     await page.get_by_role("button", name="Upload to draft").click()
-    await expect(page.get_by_role("status")).to_have_text("File uploaded to the draft.")
+    await expect(page.locator(".notice[role=status]")).to_have_text("File uploaded to the draft.")
     await page.get_by_role("link", name="app.js", exact=True).click()
     editor = page.get_by_label("File contents")
     code = await editor.input_value()
@@ -122,7 +125,7 @@ async def manual_site(page):
     await editor.fill(code)
     await fits(page, "source editor")
     await page.get_by_role("button", name="Save file").click()
-    await expect(page.get_by_role("status")).to_have_text("File saved to the draft.")
+    await expect(page.locator(".notice[role=status]")).to_have_text("File saved to the draft.")
     await fits(page, "site detail")
     return code
 
@@ -248,7 +251,7 @@ async def check_admin_directory(page, kind, needle, name, role, media):
     await page.get_by_label("Role", exact=True).select_option(role)
     await search.fill(needle.upper())
     await page.get_by_role("button", name="Apply filters").click()
-    await expect(table.get_by_role("link")).to_have_text([name])
+    await expect(table.get_by_role("rowheader").get_by_role("link")).to_have_text([name])
     await search.fill("missing-directory-entry")
     await search.press("Enter")
     await expect(page.get_by_role("heading", name=f"No matching {kind}s")).to_be_visible()
@@ -298,6 +301,7 @@ async def manage_workspace_access(page, control, media=None):
     await check_record_tables(page, "Group members")
     await admin_image(page, media, "groups")
     await page.get_by_role("button", name=f"Remove {subject} from group").click()
+    await page.get_by_role("button", name="Remove from group", exact=True).click()
     await expect(page.get_by_text("This group has no members.")).to_be_visible()
     await page.get_by_text("Delete group", exact=True).first.click()
     await page.get_by_label("Remove this group and all its grants.").check()
@@ -313,6 +317,25 @@ async def manage_workspace_access(page, control, media=None):
     await expect(page.get_by_text("Group deleted", exact=True)).to_be_visible()
     await fits(page, "tenant audit log")
     await admin_image(page, media, "audit-log")
+    journal = page.get_by_role("region", name="Audit log")
+    master = journal.get_by_role("checkbox", name="Select all on this page")
+    boxes = journal.locator("tbody [data-select-row]")
+    await master.check()
+    check(await boxes.count() > 1, "audit export needs multiple fixture events")
+    await boxes.first.uncheck()
+    check(await master.evaluate("el => el.indeterminate"), "partial selection was not shown")
+    await master.check()
+    # Choose exactly one row using the keyboard; the export must contain only it.
+    await master.uncheck()
+    await boxes.first.focus()
+    await boxes.first.press("Space")
+    await expect(journal.locator("[data-selection-count]")).to_have_text("1 selected")
+    async with page.expect_download() as pending:
+        await journal.get_by_role("button", name="Download selected (CSV)").click()
+    with (await (await pending.value).path()).open(encoding="utf-8-sig", newline="") as stream:
+        exported = list(csv.reader(stream))
+    check(len(exported) == 2 and exported[0] == ["Event", "When (UTC)", "By", "Details"], "audit CSV did not limit the export to the selected row")
+
     export = await page.get_by_role("link", name="Open JSON export").get_attribute("href")
     response = await page.context.request.get(control + export)
     check(response.status == 200, "audit export unavailable")
@@ -337,7 +360,7 @@ async def filter_directory(page):
 
     await fits(page, "site directory")
     table = page.get_by_role("table", name="Site directory")
-    rows = table.get_by_role("link")
+    rows = table.get_by_role("rowheader").get_by_role("link")
     await expect(rows).to_have_count(3)
     await page.get_by_label("Search sites").fill("WORKSHOP")
     await open_filters()
@@ -394,7 +417,7 @@ async def check_group_budget(page, control, media):
     await page.get_by_label("File path").fill("index.html")
     await page.get_by_label("File contents").fill(first)
     await page.get_by_role("button", name="Save file").click()
-    await expect(page.get_by_role("status")).to_have_text("File saved to the draft.")
+    await expect(page.locator(".notice[role=status]")).to_have_text("File saved to the draft.")
     await page.get_by_role("link", name="index.html", exact=True).click()
     await page.get_by_label("File contents").fill("<p>Updated</p>")
     await page.get_by_role("button", name="Save file").click()
@@ -411,6 +434,15 @@ async def check_group_budget(page, control, media):
     await expect(budget).to_contain_text(re.compile(r"1 of 1\b.*At limit"))
     await expect(budget).to_contain_text(re.compile(rf"{size} B of {size} B\b.*At limit"))
     await admin_image(page, media, "quotas")
+    limits = page.get_by_role("region", name="Group quotas")
+    assignments = page.get_by_role("region", name="Site assignments")
+    await limits.get_by_role("checkbox", name="Select all on this page").check()
+    await expect(assignments.get_by_role("button", name="Remove selected assignments")).to_be_disabled()
+    await limits.get_by_role("button", name="Clear selected limits").click()
+    await expect(page.get_by_role("heading", name="Clear group limits")).to_be_visible()
+    await page.get_by_role("link", name="Cancel", exact=True).click()
+    await expect(budget).to_contain_text(re.compile(r"1 of 1\b"))
+
     await page.get_by_role("link", name=f"Change group for {name}", exact=True).click()
     await page.get_by_label(f"Group for {name}", exact=True).select_option("")
     await page.get_by_role("button", name="Save assignment").click()
@@ -450,7 +482,7 @@ async def password_accounts(binary, browser):
         await admin.get_by_label("Starting password").fill(first)
         await admin.get_by_label("Sign-in role").select_option("editor")
         await admin.get_by_role("button", name="Create password account").click()
-        await expect(admin.get_by_role("status")).to_contain_text("Password account created")
+        await expect(admin.locator(".notice[role=status]")).to_contain_text("Password account created")
         for page in (member, other):
             await signin(page, control, first)
             await expect(page.get_by_role("heading", name="Your account")).to_be_visible()
@@ -528,6 +560,8 @@ async def workspace(binary, channel, screenshot, admin_media):
                 await page.screenshot(path=screenshot, animations="disabled")
                 await page.set_viewport_size({"width": 320, "height": 780})
             await check_group_budget(page, control, admin_media)
+            await check_bulk_admin(page, control, browser)
+            await check_bulk_sites(page, control, browser)
             await password_accounts(binary, browser)
         finally:
             await browser.close()
@@ -541,4 +575,4 @@ if __name__ == "__main__":
     parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access, audit and quota screenshots")
     args = parser.parse_args()
     asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot, args.admin_media))
-    print("PASS: member, group and site directories; group members, keys, activity, quotas, assignments, draft files and releases; keyboard, axe and 320/1200px layouts; local password change, private-session invalidation and SSO account link; enrollment, MCP, ZIP, editor, publication, revocation and audit export")
+    print("PASS: member, group and site directories; group members, keys, activity, quotas, assignments, draft files and releases; keyboard, axe and 320/1200px layouts; local password change, private-session invalidation and SSO account link; enrollment, MCP, ZIP, editor, publication, revocation, exact selection, confirmation and CSV export")

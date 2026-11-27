@@ -26,22 +26,29 @@
 {{end}}
 
 {{define "key-list"}}
-<section class="directory" aria-labelledby="{{if .Admin}}workspace-keys{{else}}your-keys{{end}}">
+<section class="directory" data-selection aria-labelledby="{{if .Admin}}workspace-keys{{else}}your-keys{{end}}">
   <div class="directory-title">
     <h2 id="{{if .Admin}}workspace-keys{{else}}your-keys{{end}}">{{if .Admin}}Workspace keys{{else}}Your keys{{end}}</h2>
     <span class="directory-count">{{len .Keys}} {{if eq (len .Keys) 1}}key{{else}}keys{{end}} on this page</span>
   </div>
   {{if .Admin}}<div class="directory-body"><p>Revoking a key disconnects every agent using it.</p></div>{{end}}
   {{if .Keys}}
+  {{$canSelect := false}}{{range .Keys}}{{if eq .State "Active"}}{{$canSelect = true}}{{end}}{{end}}
+  {{if $canSelect}}<form id="select-keys" class="selection-toolbar" method="post" action="{{if .Admin}}/admin{{else}}/keys{{end}}">
+    <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="review-key-revocation">
+    {{template "admin-select-all"}}
+    <button class="danger-action" type="submit" data-selection-submit>Revoke selected keys</button>
+  </form>{{end}}
   <table class="directory-table" role="table" aria-labelledby="{{if .Admin}}workspace-keys{{else}}your-keys{{end}}">
-    <thead><tr><th scope="col">Key{{if .Admin}} / owner{{end}}</th><th scope="col">Status</th><th scope="col">Access</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Action</th></tr></thead>
+    <thead><tr>{{if $canSelect}}<th scope="col" class="selection-cell">Select</th>{{end}}<th scope="col">Key{{if .Admin}} / owner{{end}}</th><th scope="col">Status</th><th scope="col">Access</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Action</th></tr></thead>
     <tbody>{{range .Keys}}<tr>
+      {{if $canSelect}}<td class="selection-cell">{{if eq .State "Active"}}<input type="checkbox" data-select-row form="select-keys" name="key_id" value="{{.ID}}" aria-label="Select {{.Name}}{{if $.Admin}}, owner {{.Subject}}{{end}}">{{else}}—{{end}}</td>{{end}}
       <th scope="row" class="entry-name-cell"><span>{{.Name}}</span>{{if $.Admin}}<span class="site-address">{{.Subject}}</span>{{end}}</th>
       <td><span class="mobile-label" aria-hidden="true">Status</span><span class="status-chip {{if eq .State "Active"}}state-published{{else}}state-offline{{end}}"><i class="dot {{if eq .State "Active"}}published{{else}}offline{{end}}" aria-hidden="true"></i>{{.State}}</span></td>
       <td><span class="mobile-label" aria-hidden="true">Access</span>{{role .Scope}}</td>
       <td><span class="mobile-label" aria-hidden="true">Created</span><time datetime="{{isoDate .CreatedAt}}" title="{{longDate .CreatedAt}}">{{shortDate .CreatedAt}}</time></td>
       <td><span class="mobile-label" aria-hidden="true">Expires</span><time datetime="{{isoDate .ExpiresAt}}" title="{{longDate .ExpiresAt}}">{{shortDate .ExpiresAt}}</time></td>
-      <td class="entry-wide"><span class="mobile-label" aria-hidden="true">Action</span>{{if eq .State "Active"}}<details><summary>Revoke {{.Name}}</summary>
+      <td class="entry-wide"><span class="mobile-label" aria-hidden="true">Action</span>{{if eq .State "Active"}}<details><summary class="danger-action">Revoke {{.Name}}</summary>
         <form class="stack" action="{{if $.Admin}}/admin{{else}}/keys{{end}}" method="post">
           <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{.ID}}">
           <label><input type="checkbox" name="confirm" value="yes" required> Disconnect agents using this key.</label>
@@ -52,4 +59,16 @@
   {{else}}<div class="directory-empty"><h3>No keys on this page</h3>{{if not .Admin}}<p>Create a key to connect an agent.</p>{{end}}</div>{{end}}
   {{if .Next}}<nav class="directory-pages" aria-label="Key pages"><a href="{{.Next}}">Next keys →</a></nav>{{end}}
 </section>
+{{end}}
+
+
+{{define "key-revocation-review"}}
+<header><p class="eyebrow">{{if .Admin}}Workspace keys{{else}}Your keys{{end}}</p><h1>Review key revocation</h1></header>
+<section class="panel stack" aria-labelledby="selected-keys"><h2 id="selected-keys">{{len .Keys}} selected {{if eq (len .Keys) 1}}key{{else}}keys{{end}}</h2>
+<p>Agents using these keys will lose access immediately. You cannot restore a revoked key.</p>
+<ul>{{range .Keys}}<li><strong>{{.Name}}</strong>{{if $.Admin}} · Owner: <code>{{.Subject}}</code>{{end}} · ID: <code>{{.ID}}</code></li>{{end}}</ul>
+<form class="toolbar" method="post" action="{{.Path}}">
+  <input type="hidden" name="action" value="revoke-selected"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="review" value="{{.Review}}">
+  <button type="submit" name="confirm" value="yes" class="danger">{{if eq (len .Keys) 1}}Revoke key{{else}}Revoke keys{{end}}</button><a href="{{.Back}}">Cancel</a>
+</form></section>
 {{end}}

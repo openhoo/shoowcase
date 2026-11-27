@@ -155,8 +155,14 @@ func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Ide
 			}
 		case "application/x-www-form-urlencoded":
 			limit := int64(16 << 10)
-			if strings.HasPrefix(r.URL.Path, "/sites/") && strings.HasSuffix(r.URL.Path, "/edit") {
+			if r.URL.Path == "/admin" {
+				// A page of 25 percent-encoded identity-provider subjects plus its review fields.
+				limit = 32 << 10
+			} else if strings.HasPrefix(r.URL.Path, "/sites/") && strings.HasSuffix(r.URL.Path, "/edit") {
 				limit = 2 << 20
+			} else if strings.HasPrefix(r.URL.Path, "/sites/") && strings.HasSuffix(r.URL.Path, "/delete") {
+				// 100 paths of 200 bytes may be percent-encoded.
+				limit = 64 << 10
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, limit)
 			err = r.ParseForm()

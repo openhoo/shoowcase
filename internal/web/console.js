@@ -58,3 +58,71 @@ if (receipt) {
     update();
   }
 }
+
+// Selection belongs to the rows currently shown in this directory. A filter,
+// page change or second table must never silently extend a destructive action.
+for (const directory of document.querySelectorAll("[data-selection]")) {
+  const rows = [...directory.querySelectorAll("input[data-select-row]:not(:disabled)")];
+  const master = directory.querySelector("[data-select-all]");
+  const label = directory.querySelector("[data-select-all-label]");
+  const status = directory.querySelector("[data-selection-count]");
+  const submit = directory.querySelectorAll("[data-selection-submit], [data-selection-export]");
+  const download = directory.querySelector("[data-selection-export]");
+  if (master && rows.length) {
+    master.hidden = false;
+    if (label) label.hidden = false;
+    master.addEventListener("change", () => {
+      for (const row of rows) row.checked = master.checked;
+      update();
+    });
+  }
+  function update() {
+    const chosen = rows.filter(row => row.checked);
+    const n = chosen.length;
+    if (master) {
+      master.checked = n > 0 && n === rows.length;
+      master.indeterminate = n > 0 && n < rows.length;
+    }
+    if (status) {
+      const mixed = new Set(chosen.map(row => row.dataset.selectionKind)).size > 1;
+      status.textContent = n + " selected" + (mixed ? ". Select only active or only suspended members to continue." : "");
+    }
+    for (const button of submit) {
+      const kind = button.dataset.requiresKind;
+      button.disabled = !n || Boolean(kind && chosen.some(row => row.dataset.selectionKind !== kind));
+    }
+  }
+  for (const row of rows) row.addEventListener("change", update);
+  window.addEventListener("pageshow", update);
+  update();
+
+  // Immutable journals can export the visible records without a write endpoint.
+  if (download && rows.length) {
+    download.hidden = false;
+    for (const el of directory.querySelectorAll("[data-export-toolbar], [data-export-cell]")) el.hidden = false;
+    download.addEventListener("click", () => {
+      const chosen = rows.filter(row => row.checked);
+      if (!chosen.length) return;
+      const table = chosen[0].closest("table");
+      const columns = [...table.tHead.rows[0].cells].map((cell, i) =>
+        cell.classList.contains("selection-cell") || cell.textContent.trim() === "Actions" || i === chosen[0].closest("td").cellIndex ? -1 : i
+      ).filter(i => i >= 0);
+      const field = cell => {
+        const copy = cell.cloneNode(true);
+        for (const el of copy.querySelectorAll(".mobile-label, [aria-hidden='true'], form, button")) el.remove();
+        for (const el of copy.querySelectorAll("div, span, code, time, a")) el.append(" ");
+        let v = copy.textContent.replace(/\s+/g, " ").trim();
+        if (/^[=+@-]/.test(v)) v = "'" + v;
+        return '"' + v.replaceAll('"', '""') + '"';
+      };
+      const lines = [table.tHead.rows[0], ...chosen.map(row => row.closest("tr"))]
+        .map(tr => columns.map(i => field(tr.cells[i])).join(","));
+      const url = URL.createObjectURL(new Blob(["\uFEFF", lines.join("\r\n") + "\r\n"], {type:"text/csv;charset=utf-8"}));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = download.dataset.selectionExport + ".csv";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  }
+}

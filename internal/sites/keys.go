@@ -196,41 +196,82 @@ func (s *Store) ListKeys(ctx context.Context, a Actor, workspaceWide bool, after
 	}
 	return out, "", rows.Err()
 }
-func (s *Store) RevokeKey(ctx context.Context, a Actor, id string) error {
-	if !idRE.MatchString(id) {
-		return bad("Invalid key ID.")
-	}
-	tx, e := s.accountWrite(ctx, a)
-	if e != nil {
-		return e
+
+// KeysForRevocation resolves the names from the database for the confirmation
+// page. A personal list never includes another member’s key, even for an admin.
+func (s *Store) KeysForRevocation(ctx context.Context, a Actor, workspaceWide bool, ids []string) ([]AgentKey, error) {
+	tx, err := s.readSnapshot(ctx)
+	if err != nil {
+		return nil, err
 	}
 	defer tx.Rollback()
-	allowed, e := authorizeMember(ctx, tx, a, 1)
-	if e != nil {
-		return e
+	return selectedKeys(ctx, tx, a, workspaceWide, ids)
+}
+
+func selectedKeys(ctx context.Context, tx *sql.Tx, a Actor, workspaceWide bool, ids []string) ([]AgentKey, error) {
+	if len(ids) == 0 || len(ids) > accountPage {
+		return nil, bad("Select between 1 and 25 keys.")
 	}
-	query := "SELECT revoked FROM sc_agent_keys WHERE workspace=$1 AND id=$2"
-	args := []any{a.Workspace, id}
-	if allowed.Role != "admin" {
+	level := 1
+	query := "SELECT id,name,subject,revoked FROM sc_agent_keys WHERE workspace=$1 AND id=$2"
+	if workspaceWide {
+		level = 4
+	} else {
 		query += " AND subject=$3"
-		args = append(args, a.Subject)
 	}
-	var revoked bool
-	e = tx.QueryRowContext(ctx, query, args...).Scan(&revoked)
-	if errors.Is(e, sql.ErrNoRows) {
-		return fail("not_found", "Agent key not found.")
+	if _, err := authorizeMember(ctx, tx, a, level); err != nil {
+		return nil, err
 	}
-	if e != nil {
-		return e
+	keys := make([]AgentKey, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if !idRE.MatchString(id) || seen[id] {
+			return nil, bad("Select each key once.")
+		}
+		seen[id] = true
+		args := []any{a.Workspace, id}
+		if !workspaceWide {
+			args = append(args, a.Subject)
+		}
+		var k AgentKey
+		err := tx.QueryRowContext(ctx, query, args...).Scan(&k.ID, &k.Name, &k.Subject, &k.Revoked)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fail("not_found", "Agent key not found.")
+		}
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
 	}
-	if revoked {
-		return nil
+	return keys, nil
+}
+
+// RevokeKeys rechecks the entire selection under the workspace write lock.
+// A rejected selection revokes nothing. A retried revocation adds no event.
+func (s *Store) RevokeKeys(ctx context.Context, a Actor, workspaceWide bool, ids []string) error {
+	tx, err := s.accountWrite(ctx, a)
+	if err != nil {
+		return err
 	}
-	if _, e = tx.ExecContext(ctx, "UPDATE sc_agent_keys SET revoked=TRUE WHERE id=$1 AND workspace=$2", id, a.Workspace); e != nil {
-		return e
+	defer tx.Rollback()
+	keys, err := selectedKeys(ctx, tx, a, workspaceWide, ids)
+	if err != nil {
+		return err
 	}
-	if e = recordAccountEvent(ctx, tx, a, "key_revoked", id); e != nil {
-		return e
+	for _, k := range keys {
+		if k.Revoked {
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE sc_agent_keys SET revoked=TRUE WHERE workspace=$1 AND id=$2", a.Workspace, k.ID); err != nil {
+			return err
+		}
+		if err = recordAccountEvent(ctx, tx, a, "key_revoked", k.ID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
+}
+
+func (s *Store) RevokeKey(ctx context.Context, a Actor, id string) error {
+	return s.RevokeKeys(ctx, a, false, []string{id})
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/openhoo/shoowcase/internal/sites"
 )
@@ -22,12 +23,13 @@ type quotaSiteRow struct {
 }
 
 type quotaPage struct {
-	Workspace  quotaBudgetForm
-	Groups     []quotaBudgetForm
-	EditBudget *quotaBudgetForm
-	Unassigned sites.QuotaUsage
-	Sites      []quotaSiteRow
-	Selected   *quotaSiteRow
+	HasGroupLimits, HasAssignments bool
+	Workspace                      quotaBudgetForm
+	Groups                         []quotaBudgetForm
+	EditBudget                     *quotaBudgetForm
+	Unassigned                     sites.QuotaUsage
+	Sites                          []quotaSiteRow
+	Selected                       *quotaSiteRow
 }
 
 var quotaUnits = []struct {
@@ -102,6 +104,9 @@ func (a *App) quotaView(w http.ResponseWriter, r *http.Request, c consoleContext
 		names[g.ID] = g.Name
 		b := budgetForm(g, data.Workspace.Limits, p.CSRF, false)
 		q.Groups = append(q.Groups, b)
+		if g.Limits.Sites >= 0 || g.Limits.Bytes >= 0 {
+			q.HasGroupLimits = true
+		}
 		if g.ID == budgetID {
 			q.EditBudget = &b
 		}
@@ -114,6 +119,9 @@ func (a *App) quotaView(w http.ResponseWriter, r *http.Request, c consoleContext
 	for _, site := range data.Sites {
 		row := quotaSiteRow{site, names[site.GroupID]}
 		q.Sites = append(q.Sites, row)
+		if site.GroupID != "" {
+			q.HasAssignments = true
+		}
 		if site.GroupID == "" {
 			q.Unassigned.Sites++
 			q.Unassigned.Bytes += site.Bytes
@@ -170,6 +178,10 @@ func quotaFormError(w http.ResponseWriter, c consoleContext, code int, title, de
 }
 
 func (a *App) quotaMutation(w http.ResponseWriter, r *http.Request, c consoleContext, action string) bool {
+	if action == "clear-group-limits" || action == "clear-site-assignments" {
+		a.clearQuotaAction(w, r, c, action)
+		return true
+	}
 	if action != "workspace-quota" && action != "group-quota" && action != "site-group" {
 		return false
 	}
@@ -218,4 +230,97 @@ func (a *App) quotaMutation(w http.ResponseWriter, r *http.Request, c consoleCon
 	}
 	http.Redirect(w, r, location, http.StatusSeeOther)
 	return true
+}
+
+type clearQuotaRow struct {
+	Name, Value string
+}
+
+func (a *App) clearQuotaAction(w http.ResponseWriter, r *http.Request, c consoleContext, action string) {
+	f := r.PostForm
+	assignments := action == "clear-site-assignments"
+	raw := f["selected"]
+	reject := func() {
+		quotaFormError(w, c, 400, "Check the selection", "Select between 1 and 128 different rows from this directory.")
+	}
+	if len(raw) == 0 || len(raw) > sites.MaxSelection {
+		reject()
+		return
+	}
+	ctx, who := r.Context(), actor(c.Identity)
+	rows := make([]sites.QuotaSelection, 0, len(raw))
+	seen := map[string]bool{}
+	for _, value := range raw {
+		id, ver, found := strings.Cut(value, ":")
+		v, err := strconv.ParseInt(ver, 10, 64)
+		if !found || id == "" || seen[id] || err != nil || v < 1 {
+			reject()
+			return
+		}
+		seen[id] = true
+		rows = append(rows, sites.QuotaSelection{ID: id, Version: v})
+	}
+	if len(f["confirm"]) > 0 {
+		if len(f["confirm"]) != 1 || f.Get("confirm") != "yes" {
+			reject()
+			return
+		}
+		if !a.validSelectionProof(c, action, rows, f.Get("review")) {
+			quotaFormError(w, c, 409, "Review the selection again", "The confirmation has expired or the selected rows have changed.")
+			return
+		}
+		if err := a.store.ClearQuotaSelection(ctx, who, assignments, rows); err != nil {
+			code, title, detail := memberFailure(err)
+			if e, ok := err.(*sites.Error); ok && e.Code == "conflict" {
+				detail = e.Message
+			}
+			quotaFormError(w, c, code, title, detail)
+			return
+		}
+		anchor := "group-quotas"
+		if assignments {
+			anchor = "site-assignments"
+		}
+		http.Redirect(w, r, adminLocation("quotas", "", "quota-cleared")+"#"+anchor, http.StatusSeeOther)
+		return
+	}
+	q, err := a.store.Quotas(ctx, who)
+	if err != nil {
+		memberError(w, c, err)
+		return
+	}
+	current := map[string]clearQuotaRow{}
+	add := func(id, name string, version int64) {
+		current[id] = clearQuotaRow{name, fmt.Sprintf("%s:%d", id, version)}
+	}
+	if assignments {
+		for _, s := range q.Sites {
+			if s.GroupID != "" {
+				add(s.ID, s.Name, s.Version)
+			}
+		}
+	} else {
+		for _, g := range q.Groups {
+			if g.Limits.Sites >= 0 || g.Limits.Bytes >= 0 {
+				add(g.ID, g.Name, g.Version)
+			}
+		}
+	}
+	review := make([]clearQuotaRow, 0, len(raw))
+	for i, row := range rows {
+		item, ok := current[row.ID]
+		if !ok || item.Value != raw[i] {
+			quotaFormError(w, c, 409, "Selection changed", "Reopen Quotas and review the current limits and assignments.")
+			return
+		}
+		review = append(review, item)
+	}
+	title, effect, cancel := "Clear group limits", "These groups will use the workspace limits for sites and storage. Existing sites and revisions stay in place.", "group-quotas"
+	if assignments {
+		title, effect, cancel = "Remove group assignments", "These sites and all their revisions will count only toward the workspace limits. Removing their group changes who can edit them. Their live addresses and audiences stay the same.", "site-assignments"
+	}
+	consoleView(w, c, 200, title, "admin", memberPages.Lookup("confirm-clear-quotas"), struct {
+		Title, Effect, Action, CSRF, Cancel, Review string
+		Rows                                        []clearQuotaRow
+	}{title, effect, action, c.Identity.CSRF, cancel, a.selectionProof(c, action, rows), review})
 }

@@ -1,12 +1,17 @@
 {{define "audit-log"}}
-<section class="directory" aria-labelledby="activity">
+<section class="directory" data-selection aria-labelledby="activity">
   <div class="directory-title"><h2 id="activity">Audit log</h2><span class="directory-count">{{len .Events}} {{if eq (len .Events) 1}}event{{else}}events{{end}} on this page</span></div>
   <div class="directory-body"><p>Sign-ins and changes to workspace access, keys, drafts and releases. Most recent first.</p><a href="/api/audit">Open JSON export</a></div>
   {{if .Events}}
+
+  <div class="selection-toolbar" data-export-toolbar hidden>
+    {{template "admin-select-all"}}<button type="button" class="secondary" data-selection-export="audit-events" hidden>Download selected (CSV)</button>
+  </div>
   <table class="directory-table" role="table" aria-labelledby="activity">
-    <thead><tr><th scope="col">Event</th><th scope="col">When (UTC)</th><th scope="col">By</th><th scope="col">Details</th></tr></thead>
+    <thead><tr><th scope="col" class="selection-cell" data-export-cell hidden>Select</th><th scope="col">Event</th><th scope="col">When (UTC)</th><th scope="col">By</th><th scope="col">Details</th></tr></thead>
     <tbody>{{range .Events}}<tr>
-      <th scope="row" class="entry-name-cell"><span>{{eventName .Action}}</span><span class="site-address">#{{.Sequence}}</span></th>
+      <td class="selection-cell" data-export-cell hidden><input type="checkbox" data-select-row aria-label="Select event {{.Sequence}}"></td>
+    <th scope="row" class="entry-name-cell"><span>{{eventName .Action}}</span><span class="site-address">#{{.Sequence}}</span></th>
       <td><span class="mobile-label" aria-hidden="true">When (UTC)</span><time datetime="{{isoDate .At}}">{{longDate .At}}</time></td>
       <td><span class="mobile-label" aria-hidden="true">By</span><code>{{.Subject}}</code></td>
       <td class="entry-wide"><span class="mobile-label" aria-hidden="true">Details</span>

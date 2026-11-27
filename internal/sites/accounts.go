@@ -344,6 +344,13 @@ func (s *Store) SetMember(ctx context.Context, a Actor, subject, ceiling string,
 	if _, e = authorizeMember(ctx, tx, a, 4); e != nil {
 		return e
 	}
+	if e := changeMember(ctx, tx, a, subject, ceiling, disabled, expectedCeiling, expectedDisabled); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+
+func changeMember(ctx context.Context, tx *sql.Tx, a Actor, subject, ceiling string, disabled bool, expectedCeiling string, expectedDisabled bool) error {
 	if subject == a.Subject {
 		return fail("forbidden", "You cannot change your own membership.")
 	}
@@ -392,7 +399,7 @@ func (s *Store) SetMember(ctx context.Context, a Actor, subject, ceiling string,
 			return e
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // WorkspaceAccounts reads directory metadata in one admin-authorized snapshot.

@@ -1,0 +1,11 @@
+{{define "admin-select-all"}}<label data-select-all-label hidden><input type="checkbox" data-select-all> Select all on this page</label><span data-selection-count role="status"></span>{{end}}
+
+{{define "admin-selection-review"}}
+<p><a href="{{.Back}}">← Back to directory</a></p>
+<section class="panel stack"><header><p class="eyebrow">Review selection</p><h1>{{.Title}}</h1></header>
+<p>{{.Effect}}</p><p><strong>Selected entries ({{len .Names}})</strong></p><ul>{{range .Names}}<li>{{.}}</li>{{end}}</ul>
+<form class="toolbar" method="post" action="/admin">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="apply-selection"><input type="hidden" name="operation" value="{{.Selection.Action}}"><input type="hidden" name="group" value="{{.Selection.Group}}"><input type="hidden" name="review" value="{{.Token}}">{{range .Selection.IDs}}<input type="hidden" name="selected" value="{{.}}">{{end}}
+<button type="submit" name="confirm" value="yes"{{if ne .Selection.Action "restore-members"}} class="danger"{{end}}>{{.Button}}</button><a href="{{.Back}}">Cancel</a>
+</form></section>{{end}}
+{{define "admin-selection-error"}}<section class="panel stack"><h1>{{.Title}}</h1><p>{{.Detail}}</p><a href="{{.Back}}">Back to directory</a></section>{{end}}
