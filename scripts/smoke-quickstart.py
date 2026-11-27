@@ -124,6 +124,18 @@ async def bridge(data, env, home):
         check(not result.isError and result.structuredContent.get("sites") == [], "cannot read fresh workspace")
 
 
+async def revoked_bridge(data, env, home, token):
+    # A fresh local process with the saved key must give the agent the same
+    # recovery advice as a user would see, without logging its credential.
+    msg = {"jsonrpc": "2.0", "id": "revoked-key", "method": "ping"}
+    reply = json.loads(await run([data["command"], *data["args"]], env, home,
+                                 stdin=(json.dumps(msg) + "\n").encode()))
+    err = reply.get("error", {})
+    check(reply.get("id") == msg["id"] and err.get("code") == -32000 and
+          "401" in err.get("message", "") and "reconnect" in err["message"] and
+          token not in json.dumps(reply), "revoked agent did not receive reconnect instructions")
+
+
 async def codex_discovery(env, home):
     # Native app-server exposes MCP discovery without a model turn or a sign-in.
     proc = await asyncio.create_subprocess_exec("codex", "app-server", "--stdio", cwd=home, env=env,
@@ -203,6 +215,7 @@ async def main(args):
                         r = await http.post(endpoint, headers={"Authorization": "Bearer " + token},
                                             json={"jsonrpc": "2.0", "method": "tools/list", "id": 1})
                         check(r.status_code == 401, "revoked agent credential still accepted")
+                    await revoked_bridge(reg, env, home, token)
                     print(f"PASS: {NAMES[client]} – copied command, registration, MCP list_sites, single use and revocation")
         finally:
             await browser.close()

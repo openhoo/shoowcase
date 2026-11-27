@@ -161,6 +161,11 @@ def exercise(port, token, version):
     draft1 = {"path": "index.html", "text": html("Week one")}
     draft2 = {"path": "index.html", "text": html("Week two")}
     write = {**key, "files": [draft1], "expected_revision": rev0, "request_id": rid()}
+    invalid_file = {"path": "notes.html", "text": "private draft text", "base64": ""}
+    rejected = agent.call("upload_files", {**write, "files": [draft1, invalid_file]}, "invalid_argument")["error"]
+    check(rejected.get("field") == "files[1]" and "exactly one" in rejected["message"]
+          and invalid_file["text"] not in json.dumps(rejected), "upload diagnostic lost the entry or echoed draft data")
+    check(agent.call("get_site", key)["revision"] == rev0, "invalid upload advanced the draft")
     out1 = agent.call("upload_files", write)
     # A second independent negotiated client can recover and retry after a lost response.
     peer = MCP(port, token, "agent-b")
@@ -299,7 +304,7 @@ def main():
                     app.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     app.kill()
-    print("PASS: two independent MCP clients, revision retry/conflict, scoped binary upload, workspace sign-in, publish/rollback, agent approvals and browser CSRF, withdrawal with old ETag")
+    print("PASS: two independent MCP clients, indexed upload correction, revision retry/conflict, scoped binary upload, workspace sign-in, publish/rollback, agent approvals and browser CSRF, withdrawal with old ETag")
 
 
 if __name__ == "__main__":

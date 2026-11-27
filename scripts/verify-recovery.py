@@ -99,8 +99,9 @@ def audit_export(reader, port, after=0):
     return result
 
 
-SUPPORTED_PRIORS = {"0.1.1": 1, "0.2.0": 2, "0.3.2": 4, "0.6.0": 5, "0.9.0": 6}
+SUPPORTED_PRIORS = {"0.1.1": 1, "0.2.0": 2, "0.3.2": 4, "0.6.0": 5, "0.9.0": 6, "0.10.0": 7, "0.10.1": 7}
 CURRENT_SCHEMA = 7
+MEMBER_SCHEMAS = {2, 4, 5, 6, 7}
 MEMBER_NAME = "Restore rehearsal member"
 
 
@@ -142,12 +143,12 @@ def issue_reader_key(browser, control):
     return Inputs(receipt.expect(200, "create reader key")).value("agent-secret")
 
 
-def check_member_and_key(port, specimen):
+def check_member_and_key(port, specimen, expected_release):
     control = f"http://localhost:{port}"
     page = Browser(port).navigate(control + "/account").expect(200, "saved membership")
     check(MEMBER_NAME.encode() in page.body and b"Your account" in page.body, "original local member missing")
     reader = MCP(port, specimen.reader_key, "restored-personal-key")
-    check(reader.call("get_site", specimen.key)["release_id"] == specimen.second["release_id"],
+    check(reader.call("get_site", specimen.key)["release_id"] == expected_release,
           "existing personal key cannot read its original private site")
     reader.call("create_site", {"name": "Must stay read-only", "request_id": secrets.token_hex(16)}, "forbidden")
 
@@ -189,7 +190,7 @@ def seed(binary, dsn, token, state, with_member=False):
             control = f"http://localhost:{port}"
             enroll(visitor, control)
             specimen.reader_key = issue_reader_key(visitor, control)
-            check_member_and_key(port, specimen)
+            check_member_and_key(port, specimen, specimen.second["release_id"])
         return specimen
 
 
@@ -205,7 +206,7 @@ def verify_restored(binary, dsn, token, state, specimen, original_audit, get_aud
         check({r["release_id"] for r in history} == {specimen.first["release_id"], specimen.second["release_id"]}, "restored release history incomplete")
         control = f"http://localhost:{port}"
         if specimen.reader_key:
-            check_member_and_key(port, specimen)
+            check_member_and_key(port, specimen, specimen.second["release_id"])
         else:
             enroll(reader, control)
         before = audit_export(reader, port)
@@ -258,23 +259,33 @@ def reject_downgrade(binary, dsn, token, state):
           "Older binary failed to reject the migrated database at startup")
 
 
-def verify_recovery_target(previous, dsn, token, state, specimen):
-    # Actual service rollback means starting the prior binary on a pre-upgrade
-    # snapshot, never pointing it at a database the candidate already migrated.
+def verify_prior_reads(previous, dsn, token, state, specimen, *, rolled_back=False):
+    release = specimen.first if rolled_back else specimen.second
+    body = specimen.home if rolled_back else specimen.updated
     with server(previous, dsn, token, state) as (port, mcp):
         if specimen.reader_key:
-            check_member_and_key(port, specimen)
+            check_member_and_key(port, specimen, release["release_id"])
         recovered = mcp.call("get_site", specimen.key)
-        check(recovered["release_id"] == specimen.second["release_id"] and recovered["revision"] == specimen.draft2["revision"],
-              "Prior binary did not recover the saved release and draft")
-        Browser(port).request("GET", recovered["site_url"]).expect(303, "pre-upgrade snapshot private access")
-        check(Browser(port).navigate(recovered["site_url"]).body == specimen.updated, "pre-upgrade snapshot content differs")
+        check(recovered["release_id"] == release["release_id"] and recovered["revision"] == specimen.draft2["revision"],
+              "Prior binary did not recover the expected release and draft")
+        Browser(port).request("GET", recovered["site_url"]).expect(303, "prior binary private access")
+        check(Browser(port).navigate(recovered["site_url"]).body == body, "prior binary served different content")
+
+
+def verify_prior_database(previous, dsn, token, state, specimen, previous_schema):
+    if previous_schema < CURRENT_SCHEMA:
+        reject_downgrade(previous, dsn, token, state)
+        return "prior binary rejected the newer schema"
+    # The candidate rolled back the live release on this database. A compatible
+    # prior binary must read that decision without reverting the newer draft.
+    verify_prior_reads(previous, dsn, token, state, specimen, rolled_back=True)
+    return "prior binary served the candidate's rolled-back release with the newer draft intact"
 
 
 def sqlite_upgrade(previous, candidate, previous_schema):
     token = secrets.token_urlsafe(32)
     with tempfile.TemporaryDirectory(prefix="shoowcase-sqlite-upgrade-") as state, tempfile.TemporaryDirectory(prefix="shoowcase-sqlite-backup-") as backup:
-        specimen = seed(previous, "", token, state, with_member=previous_schema in (2, 4, 5, 6))
+        specimen = seed(previous, "", token, state, with_member=previous_schema in MEMBER_SCHEMAS)
         with contextlib.closing(sqlite3.connect(Path(state)/"shoowcase.db")) as db, contextlib.closing(sqlite3.connect(Path(backup)/"shoowcase.db")) as saved:
             check(db.execute("SELECT max(version) FROM sc_schema_migrations").fetchone() == (previous_schema,), f"SQLite did not start on schema {previous_schema}")
             db.backup(saved)
@@ -289,9 +300,9 @@ def sqlite_upgrade(previous, candidate, previous_schema):
         verify_restored(candidate, "", token, state, specimen, before, get_audit)
         check(sql("SELECT max(version) FROM sc_schema_migrations") == [(CURRENT_SCHEMA,)], "wrong migrated SQLite schema")
         check(sql("SELECT count(*) FROM sc_sites s WHERE NOT EXISTS (SELECT 1 FROM sc_reserved_sites r WHERE r.id=s.id)") == [(0,)], "SQLite failed to reserve an existing site address")
-        reject_downgrade(previous, "", token, state)
-        verify_recovery_target(previous, "", token, backup, specimen)
-        print(f"PASS: SQLite schema {previous_schema}→{CURRENT_SCHEMA}; preserved two releases, private content, workspace audit revisions, cursor and replay; release rollback, old-binary rejection and restoring the prior snapshot verified.")
+        prior = verify_prior_database(previous, "", token, state, specimen, previous_schema)
+        verify_prior_reads(previous, "", token, backup, specimen)
+        print(f"PASS: SQLite schema {previous_schema}→{CURRENT_SCHEMA}; preserved two releases, private content, workspace audit revisions, cursor and replay; {prior}; pre-upgrade snapshot restored.")
 
 
 def rehearse(pg, binary, previous_binary=None, previous_schema=None):
@@ -313,7 +324,7 @@ def rehearse(pg, binary, previous_binary=None, previous_schema=None):
             pg.sql("postgres", f"CREATE DATABASE {db} OWNER {user};")
             created.append(("DATABASE", db))
         with tempfile.TemporaryDirectory(prefix="shoowcase-restore-") as state:
-            specimen = seed(previous_binary or binary, dsn(source), token, state, with_member=previous_schema in (2, 4, 5, 6))
+            specimen = seed(previous_binary or binary, dsn(source), token, state, with_member=previous_schema in MEMBER_SCHEMAS)
             if previous_binary:
                 check(int(pg.sql(source, "SELECT MAX(version) FROM sc_schema_migrations")) == previous_schema,
                       f"PostgreSQL did not start on schema {previous_schema}")
@@ -339,9 +350,9 @@ def rehearse(pg, binary, previous_binary=None, previous_schema=None):
             if previous_binary:
                 check(int(pg.sql(restored, "SELECT MAX(version) FROM sc_schema_migrations")) == CURRENT_SCHEMA, "wrong migrated PostgreSQL schema")
                 check(int(pg.sql(restored, "SELECT count(*) FROM sc_sites s WHERE NOT EXISTS (SELECT 1 FROM sc_reserved_sites r WHERE r.id=s.id)")) == 0, "PostgreSQL failed to reserve an existing site address")
-                reject_downgrade(previous_binary, dsn(restored), token, state)
-                verify_recovery_target(previous_binary, dsn(rollback_db), token, state, specimen)
-                print(f"PASS: PostgreSQL schema {previous_schema}→{CURRENT_SCHEMA}; older binary rejected schema {CURRENT_SCHEMA} and served the private site from a separately restored snapshot.")
+                prior = verify_prior_database(previous_binary, dsn(restored), token, state, specimen, previous_schema)
+                verify_prior_reads(previous_binary, dsn(rollback_db), token, state, specimen)
+                print(f"PASS: PostgreSQL schema {previous_schema}→{CURRENT_SCHEMA}; {prior}; prior binary also served the private site from a separately restored snapshot.")
             rows = audit(pg, restored)
             check(len(rows) == 6 and sum(r["action"] == "rollback_site" for r in rows) == 1, "restored DB did not audit rollback")
             version = pg.sql("postgres", "SHOW server_version;").decode().strip()
@@ -354,18 +365,27 @@ def rehearse(pg, binary, previous_binary=None, previous_schema=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--previous-binary", type=Path, help="seed with v0.1.1 (schema 1), v0.2.0 (schema 2), v0.3.2 (schema 4) v0.6.0 (schema 5) or v0.9.0 (schema 6), then verify SQLite/PostgreSQL upgrade and rollback")
+    parser.add_argument("--previous-binary", type=Path, help="seed with a supported prior release, then verify SQLite/PostgreSQL upgrade and rollback")
     parser.add_argument("--engine", choices=("podman", "docker"), default="podman")
     parser.add_argument("--container", required=True, help="disposable official PostgreSQL service, published on loopback")
     args = parser.parse_args()
-    binary = args.binary.resolve(strict=True)
-    previous = args.previous_binary.resolve(strict=True) if args.previous_binary else None
+    def checked_binary(path, option):
+        if not path.is_file() or not os.access(path, os.X_OK):
+            parser.error(f"{option} must point to an executable file: {path}")
+        return path.resolve()
+
+    binary = checked_binary(args.binary, "--binary")
+    previous = checked_binary(args.previous_binary, "--previous-binary") if args.previous_binary else None
     previous_schema = None
     if previous:
-        version = subprocess.check_output([previous, "version"], text=True).strip().removeprefix("v")
-        check(version in SUPPORTED_PRIORS, "expected previous Shoowcase v0.1.1, v0.2.0, v0.3.2, v0.6.0 or v0.9.0 binary")
+        try:
+            version = subprocess.check_output([previous, "version"], stderr=subprocess.DEVNULL, text=True, timeout=5).strip().removeprefix("v")
+        except (OSError, UnicodeError, subprocess.SubprocessError):
+            parser.error("--previous-binary did not report a Shoowcase version")
+        if version not in SUPPORTED_PRIORS:
+            parser.error("--previous-binary must be a supported Shoowcase release: " + ", ".join("v" + v for v in SUPPORTED_PRIORS))
         previous_schema = SUPPORTED_PRIORS[version]
         sqlite_upgrade(previous, binary, previous_schema)
     rehearse(Postgres(args.engine, args.container), binary, previous, previous_schema)
-    if previous_schema in (2, 4, 5, 6):
-        print(f"PASS: On both backends the v{version} member and personal reader key survived migration and snapshot rollback; the same key read the private site and was denied a write.")
+    if previous_schema in MEMBER_SCHEMAS:
+        print(f"PASS: On both backends the v{version} member and personal reader key survived the upgrade and snapshot rollback; the same key read the private site and was denied a write.")

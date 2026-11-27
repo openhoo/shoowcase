@@ -137,11 +137,18 @@ jobs:
           PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           python3 scripts/verify-recovery.py --binary ./bin/shoowcase --engine docker --container "$PG_CONTAINER"
-          mkdir -p "$RUNNER_TEMP/schema6"
-          curl --fail --silent --show-error --location --retry 3 https://github.com/openhoo/shoowcase/releases/download/v0.9.0/shoowcase-v0.9.0-linux-amd64.tar.gz -o "$RUNNER_TEMP/schema6/previous.tar.gz"
-          echo "01108b0a209bea133f4e6dca9b7433e2c83c21d5dce1680ae166adecccd46123  $RUNNER_TEMP/schema6/previous.tar.gz" | sha256sum --check
-          tar -xzf "$RUNNER_TEMP/schema6/previous.tar.gz" -C "$RUNNER_TEMP/schema6" shoowcase
-          python3 scripts/verify-recovery.py --binary ./bin/shoowcase --previous-binary "$RUNNER_TEMP/schema6/shoowcase" --engine docker --container "$PG_CONTAINER"
+          # Cover a schema migration and a patch upgrade with unchanged schema.
+          while read -r tag sha; do
+            previous="$RUNNER_TEMP/prior-$tag"
+            mkdir -p "$previous"
+            curl --fail --silent --show-error --location --retry 3 "https://github.com/openhoo/shoowcase/releases/download/$tag/shoowcase-$tag-linux-amd64.tar.gz" -o "$previous/previous.tar.gz"
+            echo "$sha  $previous/previous.tar.gz" | sha256sum --check
+            tar -xzf "$previous/previous.tar.gz" -C "$previous" shoowcase
+            python3 scripts/verify-recovery.py --binary ./bin/shoowcase --previous-binary "$previous/shoowcase" --engine docker --container "$PG_CONTAINER" < /dev/null
+          done <<'PRIORS'
+          v0.9.0 01108b0a209bea133f4e6dca9b7433e2c83c21d5dce1680ae166adecccd46123
+          v0.10.0 0943dc55ebaaff9b7b1327b4995192cf753e74e4df06e4d37e8826adea073343
+          PRIORS
       - name: Check Grafana queries against representative traffic and idle replicas
         run: python3 scripts/check-grafana.py
       - name: Render the provisioned Grafana dashboards with local Shoowcase metrics

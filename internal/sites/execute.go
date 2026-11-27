@@ -167,6 +167,11 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 			seen[f.Path] = true
 			asset, e := prepare(f)
 			if e != nil {
+				// Only echo paths that satisfy the bounded, printable site path rules.
+				var field *Error
+				if validPath(f.Path) && errors.As(e, &field) && field.Code == "invalid_argument" {
+					return nil, bad(f.Path + ": " + field.Message)
+				}
 				return nil, e
 			}
 			total += asset.Size
@@ -304,9 +309,12 @@ func create(ctx context.Context, tx *sql.Tx, a Actor, p mutation) (record, error
 	_, e = tx.ExecContext(ctx, "INSERT INTO sc_revisions(id,site,created_at) VALUES($1,$2,$3)", r.draft, r.site, time.Now().UnixMilli())
 	return r, e
 }
+// ErrDraftChanged means a mutation targeted a revision that is no longer current.
+var ErrDraftChanged = conflict("Draft changed; read the current revision and retry.")
+
 func upload(ctx context.Context, tx *sql.Tx, a Actor, r *record, p mutation, adds []asset) error {
 	if r.draft != p.Expected {
-		return conflict("Draft changed; read the current revision and retry.")
+		return ErrDraftChanged
 	}
 	var count int
 	if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM sc_revisions WHERE site=$1", r.site).Scan(&count); e != nil {

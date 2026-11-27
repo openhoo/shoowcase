@@ -108,6 +108,59 @@ export function CreateSite({ d }: { d: SiteData }) {
   );
 }
 
+export function DraftConflict({ d }: { d: SiteData }) {
+  return (
+    <>
+      <Head tag="Draft" title="Review the current draft" />
+      <PanelSection>
+        <Notice text="The draft changed after you opened this form." error />
+        {d.Action === "edit" ? (
+          <>
+            <Field
+              id="unsaved"
+              label={
+                <>
+                  Your unsaved text for <code>{d.Path}</code>
+                </>
+              }
+            >
+              <Textarea
+                id="unsaved"
+                className="min-h-80 font-mono"
+                rows={20}
+                readOnly
+                defaultValue={d.Source}
+              />
+            </Field>
+            <p>
+              Keep this tab open to copy your text. Compare it with the current
+              draft before saving again.
+            </p>
+          </>
+        ) : d.Action === "delete" ? (
+          <p>
+            Review the current files, then select the files you still want to
+            remove.
+          </p>
+        ) : (
+          <p>
+            Review the current files, then select your{" "}
+            {d.Action === "import" ? "ZIP archive" : "file"} again.
+          </p>
+        )}
+        <a
+          className={linkStyle}
+          href={navigationTarget(d.Base)}
+          target="_blank"
+          rel="noopener"
+        >
+          Open current draft in a new tab
+        </a>
+      </PanelSection>
+    </>
+  );
+}
+
 export function FileEditor({ d }: { d: SiteData }) {
   return (
     <>

@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -379,6 +380,12 @@ func (a *App) sitePost(w http.ResponseWriter, r *http.Request, d siteData, id, a
 	var out map[string]any
 	if e == nil {
 		out, e = siteCall(a, r.Context(), tool, args)
+		if errors.Is(e, sites.ErrDraftChanged) {
+			// An old draft token cannot succeed. A fresh action must start after
+			// reviewing the current files; never silently advance the edit token.
+			siteView(w, d, http.StatusConflict, "Review the current draft", "draft-conflict")
+			return
+		}
 	}
 	if e == nil {
 		http.Redirect(w, r, d.Base+"?notice="+notice, 303)
@@ -393,9 +400,7 @@ func (a *App) sitePost(w http.ResponseWriter, r *http.Request, d siteData, id, a
 	status, msg := siteProblem(e)
 	d.Error = msg
 	if status == 400 || status == 409 || status == 429 || ((status == 403 || status == 503) && action == "edit") {
-		// Preserve the user’s draft text and old edit token on a conflict. Never
-		// silently resubmit against a newer revision. The user can compare and
-		// copy their work before opening the current file.
+		// Keep correctable input errors on the same form with the user's text.
 		d.S = &sites.SiteDetails{Name: id}
 		switch action {
 		case "edit":

@@ -29,22 +29,23 @@ func definitions() []toolDef {
 	site := stringField("Opaque site ID returned by create_site or list_sites.", 1, 128)
 	revision := stringField("Opaque, immutable revision returned by create_site, upload_files or get_site.", 1, 128)
 	release := stringField("Opaque release ID from get_site with view=releases.", 1, 128)
-	requestID := stringField("Unique ID for this logical operation, such as a UUID. Reuse it only for an exact retry.", 1, 128)
+	requestID := stringField("Use printable ASCII without spaces, such as a UUID. Reuse this ID only for an exact retry.", 1, 128)
 	requestID.Pattern = "^[!-~]+$"
-	slug := stringField("Optional site hostname label; omit to generate one.", 1, 48)
+	slug := stringField("Use lowercase letters, digits and internal hyphens, or omit the slug to generate one.", 1, 48)
 	slug.Pattern = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
-	group := stringField("Budget group for the site and its retained revisions. Use an ID from list_site_groups.", 32, 32)
+	group := stringField("Use a 32-character lowercase hexadecimal group ID from list_site_groups.", 32, 32)
 	group.Pattern = "^[a-f0-9]{32}$"
-	path := stringField("Relative site asset name, such as index.html or images/team.png. No URL, hidden segment, host filesystem path, or reserved top-level auth directory.", 1, 200)
+	path := stringField("Relative site asset names use ASCII letters, digits, underscores, hyphens and dots, such as images/team.png. Separate directories with /. No hidden segments or top-level auth directory.", 1, 200)
 	path.Pattern = "^([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*$"
 	digest := stringField("Lowercase hexadecimal SHA-256 digest of the exact upload bytes.", 64, 64)
 	digest.Pattern = "^[a-f0-9]{64}$"
 	page := &schema{Type: "integer", Description: "Maximum records per page (default 25).", Minimum: ptr(1.0), Maximum: ptr(100.0)}
 	cursor := stringField("Opaque next_cursor from the preceding result for the same query.", 1, 256)
 	file := object(properties{
-		"path": path, "text": stringField("UTF-8 HTML or CSS content, up to 256 KiB of encoded bytes.", 0, 256<<10),
+		"path": path, "text": stringField("UTF-8 HTML, CSS or JavaScript content, up to 256 KiB of encoded bytes.", 0, 256<<10),
 		"base64": stringField("Standard base64-encoded content, sent inline.", 0, ((2<<20)+2)/3*4),
 	}, "path")
+	file.Description = "Supply a relative path and exactly one of text or base64."
 	file.OneOf = []*schema{{Required: []string{"text"}}, {Required: []string{"base64"}}}
 	array := func(item *schema) *schema { return &schema{Type: "array", Items: item, MaxItems: ptr(100)} }
 	return []toolDef{

@@ -2,7 +2,7 @@
 # will keep using this path after the setup command and terminal have closed.
 param([string]$Client, [string]$McpUrl, [string]$SetupCode)
 $ErrorActionPreference = 'Stop'
-$Version = 'v0.8.0'
+$Version = 'v0.10.2'
 $Stage = $null
 function Get-ShoowcaseHash([string]$Path) {
     $Stream = [IO.File]::OpenRead($Path)
