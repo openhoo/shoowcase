@@ -1,6 +1,6 @@
 # Run a verified temporary helper so Windows can remove the installed executable.
 $ErrorActionPreference = 'Stop'
-$Version = 'v0.10.6'
+$Version = 'v0.10.7'
 $Stage = $null
 function Get-ShoowcaseHash([string]$Path) {
     $Stream = [IO.File]::OpenRead($Path)
