@@ -41,7 +41,34 @@ fixture = import_module("smoke-browser")
 WINDOWS = os.name == "nt"
 
 
-def test_ca(root):
+@contextmanager
+def revocation_server(root):
+    # Windows Schannel checks revocation by default. Publish only the fixture CA's
+    # signed, empty CRL on loopback so the real Windows validation stays enabled.
+    class CRL(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if self.path != "/issuer.crl":
+                self.send_error(404)
+                return
+            data = (root / "issuer.crl").read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pkix-crl")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), CRL) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            yield f"http://127.0.0.1:{server.server_port}/issuer.crl"
+        finally:
+            server.shutdown()
+
+
+def test_ca(root, crl_url):
     executable = shutil.which("openssl")
     if not executable and WINDOWS:
         executable = Path(os.environ["ProgramFiles"]) / "Git/usr/bin/openssl.exe"
@@ -50,11 +77,21 @@ def test_ca(root):
         return subprocess.run([executable or "openssl", *args], cwd=root, input=data, stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, check=True).stdout
     openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=Fixture Root",
-            "-keyout", "ca.key", "-out", "ca.pem", "-addext", "basicConstraints=critical,CA:TRUE")
+            "-keyout", "ca.key", "-out", "ca.pem", "-addext", "basicConstraints=critical,CA:TRUE",
+            "-addext", "keyUsage=critical,keyCertSign,cRLSign")
     openssl("req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=relay.localhost", "-keyout", "tls.key", "-out", "tls.csr")
-    (root / "names").write_text("subjectAltName=DNS:relay.localhost,DNS:github.com\nextendedKeyUsage=serverAuth\n")
+    (root / "names").write_text("subjectAltName=DNS:relay.localhost,DNS:github.com\nextendedKeyUsage=serverAuth\n"
+                                "basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n"
+                                f"authorityKeyIdentifier=keyid,issuer\ncrlDistributionPoints=URI:{crl_url}\n")
     openssl("x509", "-req", "-in", "tls.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial",
             "-days", "1", "-extfile", "names", "-out", "tls.pem")
+    (root / "index.txt").touch()
+    (root / "crlnumber").write_text("01\n")
+    (root / "issuer.cnf").write_text("[ca]\ndefault_ca=fixture\n[fixture]\ndatabase=index.txt\n"
+                                     "private_key=ca.key\ncertificate=ca.pem\ndefault_md=sha256\n"
+                                     "crlnumber=crlnumber\ndefault_crl_days=1\n")
+    openssl("ca", "-config", "issuer.cnf", "-gencrl", "-out", "issuer.pem")
+    openssl("crl", "-in", "issuer.pem", "-outform", "DER", "-out", "issuer.crl")
     pub = openssl("x509", "-in", "tls.pem", "-pubkey", "-noout")
     spki = openssl("pkey", "-pubin", "-outform", "DER", data=pub)
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -186,9 +223,10 @@ def proxy(tls, control, backend, assets, secret):
 
 async def main(args):
     binary = args.binary.resolve(strict=True)
-    with tempfile.TemporaryDirectory(prefix="shoowcase-proxy-") as temp, socket.socket() as guard:
+    with (tempfile.TemporaryDirectory(prefix="shoowcase-proxy-") as temp, socket.socket() as guard,
+          revocation_server(Path(temp)) as crl_url):
         root = Path(temp)
-        tls, spki = test_ca(root)
+        tls, spki = test_ca(root, crl_url)
         assets = release_files(root, binary, args.release_dir)
         guard.bind(("127.0.0.1", 0))  # No listener at this port. Only CONNECT reaches the origin.
         host = f"relay.localhost:{guard.getsockname()[1]}"
