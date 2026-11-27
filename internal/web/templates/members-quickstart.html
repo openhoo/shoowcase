@@ -1,28 +1,30 @@
 {{define "quick-start"}}
-<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Connect your agent</h1><p>Choose your agent, create its key here, then run one command on your computer.</p></header>
+<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Connect your agent</h1><p>Choose the app you use. We’ll create a key and give you a command to run on the computer where your agent runs.</p></header>
 <form method="post" action="/quickstart" class="panel stack quick-form">
 <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="creation_token" value="{{.Creation}}">
 {{if .Err}}<p class="notice" role="alert">{{.Err}}</p>{{end}}
 <fieldset class="quick-clients"><legend>Which agent do you use?</legend><div class="quick-choices">
 {{range .Clients}}<label class="quick-choice"><input type="radio" name="client" value="{{.ID}}" required {{if eq $.Client .ID}}checked{{end}}><strong>{{.Name}}</strong></label>{{end}}
-</div></fieldset>
+</div>
+<p class="muted">The GitHub Copilot app, CLI and default VS Code Copilot agent share one local connection. If one is connected, the others are ready too. Running setup again changes the key for all three.</p></fieldset>
 <div class="grid"><div class="field"><label for="quick-platform">Where will you run the command?</label><div class="select-wrap"><select id="quick-platform" name="platform"><option value="unix" {{if eq .Platform "unix"}}selected{{end}}>macOS or Linux terminal</option><option value="windows" {{if eq .Platform "windows"}}selected{{end}}>Windows PowerShell</option></select></div></div>
 <div class="field"><label for="quick-scope">What can this agent do?</label><div class="select-wrap"><select id="quick-scope" name="scope" required>{{range .Scopes}}<option value="{{.}}" {{if eq $.Scope .}}selected{{end}}>{{if eq . "reader"}}View sites{{else if eq . "editor"}}Create and edit drafts{{else}}Create, edit and publish{{end}}</option>{{end}}</select></div></div>
 <div class="field"><label for="quick-days">Key lifetime</label><div class="select-wrap"><select id="quick-days" name="days"><option value="7" {{if eq .Days "7"}}selected{{end}}>7 days</option><option value="30" {{if eq .Days "30"}}selected{{end}}>30 days</option><option value="90" {{if eq .Days "90"}}selected{{end}}>90 days</option></select></div></div></div>
+<details><summary>Name this connection (optional)</summary><div class="field"><label for="quick-name">Name in Agent keys</label><input type="text" id="quick-name" name="name" value="{{.NameValue}}" maxlength="80" placeholder="e.g. My work laptop"></div></details>
 <div class="toolbar"><button type="submit">Create key and get command</button></div>
-<p class="muted">Already using another MCP client? <a href="/keys">Connect it manually with an agent key.</a></p>
+<p class="muted">Does your agent run in the cloud or only accept a server URL? <a href="/keys">Set up a remote HTTP connection instead.</a></p>
 </form>
 {{end}}
 
 {{define "quick-ready"}}
 <header><p class="eyebrow">Quickstart · {{.ClientName}}</p><h1>Connect {{.ClientName}}</h1><p>Your {{role .Scope}} key is ready. It expires in {{.Days}} days.</p></header>
 <section class="panel stack quick-result"><h2>1. Run this command</h2>
-<p>Open {{if eq .Platform "windows"}}PowerShell{{else}}a terminal{{end}} on the computer where you use {{.ClientName}}. This installs the Shoowcase connector for your user and adds it to your agent.</p>
+<p>Open {{if eq .Platform "windows"}}PowerShell{{else}}a terminal{{end}} on the computer where you use {{.ClientName}}. {{if eq .Client "stdio"}}This installs the connector and prints the command and arguments to enter in your client’s local MCP server settings.{{else}}This installs the Shoowcase connector and registers it for your user.{{end}}</p>
 <div class="field"><label for="setup-command">{{if eq .Platform "windows"}}PowerShell{{else}}Terminal{{end}} command</label>
 <textarea id="setup-command" class="quick-command" data-secret-receipt readonly rows="4" spellcheck="false" autocomplete="off" aria-describedby="setup-expiry">{{.Command}}</textarea>
 <div class="toolbar"><button type="button" data-copy-target="setup-command" hidden>Copy command</button></div>
 <small id="setup-expiry">This command contains a private setup code. Use it once within 10 minutes. Don’t share it or paste it into chat.</small></div></section>
-<section class="panel stack"><h2>2. Try it in {{.ClientName}}</h2><p>Restart the agent or start a new session. If asked to trust the Shoowcase connection, review and enable it. Then try this prompt:</p>
+<section class="panel stack"><h2>2. Try it in {{.ClientName}}</h2><p>{{if eq .Client "copilot-app"}}Open a local session in the GitHub Copilot app. In Customize, check that Shoowcase is enabled.{{else if eq .Client "vscode"}}Open a new session with the Copilot agent in VS Code. You can find the server in Agent Customizations → MCP Servers under Copilot Global.{{else if eq .Client "vscode-local"}}In the default profile of VS Code Stable, start a session with the legacy Local agent. For custom profiles, use the Other local MCP client option. Run “MCP: List Servers” from the Command Palette to find Shoowcase.{{else if eq .Client "stdio"}}Add a server named shoowcase with the stdio transport and the command and arguments printed by the installer. Save the settings and restart the client.{{else if eq .Client "gemini"}}Start Gemini CLI and use /mcp to check the connection.{{else if eq .Client "opencode"}}Start a new OpenCode session. You can check the connection with <code>opencode mcp list</code>.{{else}}Restart the agent or start a new session.{{end}} If asked to trust the Shoowcase connection, review and enable it. Then try this prompt:</p>
 <div class="field"><label for="first-prompt">First prompt</label><input readonly id="first-prompt" value="{{.Prompt}}"><div><button type="button" class="secondary" data-copy-target="first-prompt" hidden>Copy prompt</button></div></div></section>
 <p>Manage or revoke this key in <a href="/keys">Agent keys</a>. If your setup command expired, revoke the unused key there, then <a href="/quickstart">start again</a>.</p>
 {{end}}

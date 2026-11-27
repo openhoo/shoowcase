@@ -4,6 +4,8 @@ package agentsetup
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -17,13 +19,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openhoo/shoowcase/internal/agentclients"
 	"github.com/openhoo/shoowcase/internal/sites"
 )
 
-const connectUsage = "usage: shoowcase connect <codex|claude|cursor|copilot> --url https://CONTROL/mcp --setup-code CODE"
+const connectUsage = "usage: shoowcase connect <client> --url https://CONTROL/mcp --setup-code CODE"
 
 func validClient(c string) bool {
-	return c == "codex" || c == "claude" || c == "cursor" || c == "copilot"
+	return agentclients.Name(c) != ""
 }
 
 func endpoint(raw string) (*url.URL, error) {
@@ -124,7 +127,18 @@ func Connect(ctx context.Context, args []string, out io.Writer) error {
 	if !privatePath(lock.Name(), false) || lockStore(lock) != nil {
 		return errors.New("another Shoowcase setup is running or the credential directory is locked")
 	}
-	path := filepath.Join(dir, name+".json")
+	localID := agentclients.LocalID(name)
+	slot := localID
+	var connectionID string
+	if name == "stdio" {
+		// Each custom client gets its own credential; adding a second one must
+		// never change the access granted to the first.
+		var id [16]byte
+		rand.Read(id[:])
+		connectionID = hex.EncodeToString(id[:])
+		slot += "-" + connectionID
+	}
+	path := filepath.Join(dir, slot+".json")
 	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) && !privatePath(path, false) {
 		return errors.New("existing Shoowcase credentials are not a private regular file")
 	}
@@ -141,7 +155,7 @@ func Connect(ctx context.Context, args []string, out io.Writer) error {
 	}
 	// Registration contains no secret. If a client cannot accept the configuration,
 	// the code is still usable. An unsuccessful renewal leaves prior credentials intact.
-	if err := register(ctx, name, binary); err != nil {
+	if err := register(ctx, localID, binary); err != nil {
 		return err
 	}
 	token, err := redeem(ctx, httpClient(), *ep, name, *code)
@@ -156,19 +170,28 @@ func Connect(ctx context.Context, args []string, out io.Writer) error {
 	if _, err = tmp.Write(b); err != nil || tmp.Sync() != nil || tmp.Close() != nil || os.Rename(tmp.Name(), path) != nil {
 		return errors.New("could not save the new credential; revoke the new key in Shoowcase")
 	}
-	_, err = fmt.Fprintf(out, "Shoowcase connected for %s. Restart the agent or open a new session.\n", name)
+	if name == "stdio" {
+		if _, err = fmt.Fprintln(out, "Add a local stdio server named shoowcase in your MCP client. Use the command and arguments below:"); err != nil {
+			return err
+		}
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(entry{Command: binary, Args: []string{"mcp-stdio", "stdio", connectionID}})
+	}
+	_, err = fmt.Fprintf(out, "Shoowcase connected for %s. Restart the agent or open a new session.\n", agentclients.Name(name))
 	return err
 }
 
 func Stdio(ctx context.Context, args []string, in io.Reader, out io.Writer) error {
-	if len(args) != 1 || !validClient(args[0]) {
-		return errors.New("usage: shoowcase mcp-stdio <codex|claude|cursor|copilot>")
+	slot, ok := stdioSlot(args)
+	if !ok {
+		return errors.New("usage: shoowcase mcp-stdio <client> (a custom stdio connection also requires its connection ID)")
 	}
 	dir, err := credentialDir()
 	if err != nil {
 		return err
 	}
-	p := filepath.Join(dir, args[0]+".json")
+	p := filepath.Join(dir, slot+".json")
 	if !safeStoreDir(dir) || !privatePath(p, false) {
 		return errors.New("no private credential available; connect this agent in Shoowcase")
 	}
@@ -189,4 +212,18 @@ func Stdio(ctx context.Context, args []string, in io.Reader, out io.Writer) erro
 		return err
 	}
 	return bridge(ctx, httpClient(), c, in, out)
+}
+
+// stdioSlot accepts only names generated during registration. Never treat
+// client-supplied arguments as arbitrary file paths.
+func stdioSlot(args []string) (string, bool) {
+	if len(args) == 1 && validClient(args[0]) && args[0] != "stdio" {
+		return agentclients.LocalID(args[0]), true
+	}
+	if len(args) == 2 && args[0] == "stdio" && len(args[1]) == 32 {
+		if _, err := hex.DecodeString(args[1]); err == nil && args[1] == strings.ToLower(args[1]) {
+			return "stdio-" + args[1], true
+		}
+	}
+	return "", false
 }

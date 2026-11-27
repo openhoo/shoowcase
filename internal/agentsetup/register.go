@@ -45,6 +45,16 @@ func register(ctx context.Context, name, binary string) error {
 	if err != nil || !filepath.IsAbs(home) {
 		return errors.New("cannot find your home directory")
 	}
+	switch name {
+	case "stdio":
+		// A generic client has no standard configuration file. Connect prints
+		// the local command and arguments only after saving the credential.
+		return nil
+	case "vscode-local":
+		return registerVSCode(ctx, home, binary)
+	case "gemini", "opencode":
+		return registerOther(ctx, name, binary)
+	}
 	if name == "codex" {
 		b, err := runClient(ctx, home, "codex", "mcp", "list", "--json")
 		if err != nil {

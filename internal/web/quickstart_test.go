@@ -52,7 +52,7 @@ func TestQuickstartBrowserToAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct{ id, platform string }{{"codex", "unix"}, {"cursor", "windows"}, {"copilot", "unix"}, {"claude", "windows"}} {
+	for _, test := range []struct{ id, platform string }{{"codex", "unix"}, {"cursor", "windows"}, {"copilot", "unix"}, {"claude", "windows"}, {"copilot-app", "unix"}, {"vscode", "windows"}, {"vscode-local", "unix"}, {"gemini", "windows"}, {"opencode", "unix"}, {"stdio", "windows"}} {
 		t.Run(test.id, func(t *testing.T) {
 			get := hitRoute(t, app, "GET", testControl+"/quickstart", c, nil)
 			requireMemberStatus(t, get, 200)
@@ -75,6 +75,9 @@ func TestQuickstartBrowserToAgent(t *testing.T) {
 				t.Fatal("incorrect terminal, agent or control origin")
 			}
 			other := "cursor"
+			if test.id == "copilot-app" || test.id == "vscode" {
+				other = "copilot" // Same local settings, but not the same setup code.
+			}
 			if test.id == other {
 				other = "codex"
 			}
