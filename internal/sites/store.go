@@ -187,7 +187,8 @@ func readSite(ctx context.Context, tx *sql.Tx, a Actor, site string) (record, er
 // Only identity-mode tenants permit IdP readers without local membership.
 const memberAudience = `s.workspace=$1 AND EXISTS (
     SELECT 1 FROM sc_workspace w LEFT JOIN sc_members m ON m.workspace=w.id AND m.subject=$2
-    WHERE w.id=s.workspace AND (m.disabled=FALSE OR (m.subject IS NULL AND w.access_mode='identity')))
+    WHERE w.id=s.workspace AND (m.disabled=FALSE OR (m.subject IS NULL AND w.access_mode='identity' AND substr($2,1,6)<>'local:')))
+    AND NOT EXISTS (SELECT 1 FROM sc_deleted_identities d WHERE d.workspace=s.workspace AND d.identity_digest=$5 AND (d.blocked OR ($3='' AND d.cutoff >= $6)))
     AND ($3='' OR EXISTS (SELECT 1 FROM sc_agent_keys k WHERE k.workspace=s.workspace
       AND k.subject=$2 AND k.id=$3 AND NOT k.revoked AND k.expires_at>$4))`
 
@@ -196,7 +197,7 @@ func deliveryIdentity(ctx context.Context, a Actor) []any {
 		a = Actor{}
 	}
 	keyID, _ := ctx.Value(keyCredentialID{}).(string)
-	return []any{a.Workspace, a.Subject, keyID, time.Now().Unix()}
+	return []any{a.Workspace, a.Subject, keyID, time.Now().Unix(), identityDigest(a.Workspace, a.Subject), actionTime(ctx)}
 }
 
 func (s *Store) PreviewSlug(ctx context.Context, revision string, a Actor) (string, error) {
@@ -204,7 +205,7 @@ func (s *Store) PreviewSlug(ctx context.Context, revision string, a Actor) (stri
 		return "", absent()
 	}
 	var site string
-	e := s.db.QueryRowContext(ctx, "SELECT s.id FROM sc_sites s JOIN sc_revisions r ON r.site=s.id WHERE r.id=$5 AND "+memberAudience, append(deliveryIdentity(ctx, a), revision)...).Scan(&site)
+	e := s.db.QueryRowContext(ctx, "SELECT s.id FROM sc_sites s JOIN sc_revisions r ON r.site=s.id WHERE r.id=$7 AND "+memberAudience, append(deliveryIdentity(ctx, a), revision)...).Scan(&site)
 	if errors.Is(e, sql.ErrNoRows) {
 		return "", absent()
 	}
@@ -246,13 +247,13 @@ func (s *Store) fetch(ctx context.Context, slug, revision, path string, a Actor,
 	}
 	// HEAD never references the blob table. Conditional GET loads a body only
 	// on a miss, after authorizing the chosen revision in the same snapshot.
-	const selectFile = `,f.content_type,f.digest,f.size,r.id,s.visibility,(f.digest=$5)
-      FROM sc_sites s JOIN sc_revisions r ON r.site=s.id AND r.id=CASE WHEN $8='' THEN s.live ELSE $8 END
+	const selectFile = `,f.content_type,f.digest,f.size,r.id,s.visibility,(f.digest=$7)
+      FROM sc_sites s JOIN sc_revisions r ON r.site=s.id AND r.id=CASE WHEN $10='' THEN s.live ELSE $10 END
       JOIN sc_files f ON f.revision=r.id
-      WHERE s.id=$6 AND f.path=$7 AND ($10='' OR r.id=$10) AND (
-        ($8='' AND s.visibility='public' AND $9) OR
-        (($8<>'' OR s.visibility IN ('public','workspace')) AND ` + memberAudience + `))`
-	query := "SELECT CASE WHEN f.digest=$5 THEN NULL ELSE (SELECT body FROM sc_blobs WHERE digest=f.digest) END" + selectFile
+      WHERE s.id=$8 AND f.path=$9 AND ($12='' OR r.id=$12) AND (
+        ($10='' AND s.visibility='public' AND $11) OR
+        (($10<>'' OR s.visibility IN ('public','workspace')) AND ` + memberAudience + `))`
+	query := "SELECT CASE WHEN f.digest=$7 THEN NULL ELSE (SELECT body FROM sc_blobs WHERE digest=f.digest) END" + selectFile
 	if metadataOnly {
 		query = "SELECT NULL" + selectFile
 	}
@@ -308,7 +309,7 @@ func (s *Store) ReleaseRevision(ctx context.Context, a Actor, site, release stri
 		return "", absent()
 	}
 	var rev string
-	e := s.db.QueryRowContext(ctx, "SELECT r.revision FROM sc_releases r JOIN sc_sites s ON s.id=r.site WHERE r.id=$5 AND s.id=$6 AND "+memberAudience, append(deliveryIdentity(ctx, a), release, site)...).Scan(&rev)
+	e := s.db.QueryRowContext(ctx, "SELECT r.revision FROM sc_releases r JOIN sc_sites s ON s.id=r.site WHERE r.id=$7 AND s.id=$8 AND "+memberAudience, append(deliveryIdentity(ctx, a), release, site)...).Scan(&rev)
 	if errors.Is(e, sql.ErrNoRows) {
 		return "", absent()
 	}

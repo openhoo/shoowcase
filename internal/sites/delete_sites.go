@@ -87,6 +87,25 @@ func (s *Store) DeleteSites(ctx context.Context, a Actor, reviewed []SiteDeletio
 			return conflict("Publication or access changed. Reload the directory and review the selection.")
 		}
 	}
+	request := id()
+	for _, r := range records {
+		if err := audit(ctx, tx, a, r, "delete_site", request); err != nil {
+			return err
+		}
+	}
+	if err := s.deleteSiteContent(ctx, tx, records); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Called once for the whole selection, under the workspace lock. In particular
+// bulk account deletion must acquire the union of blob locks in digest order.
+func (s *Store) deleteSiteContent(ctx context.Context, tx *sql.Tx, records []record) error {
+	if len(records) == 0 {
+		return nil
+	}
+	var err error
 	if _, err = tx.ExecContext(ctx, "CREATE TEMPORARY TABLE sc_deleting_digests(digest TEXT PRIMARY KEY)"); err != nil {
 		return err
 	}
@@ -111,13 +130,9 @@ func (s *Store) DeleteSites(ctx context.Context, a Actor, reviewed []SiteDeletio
 			return err
 		}
 	}
-	request := id()
 	for _, r := range records {
 		// Also cover any site created by an older process after the backfill.
 		if _, err = tx.ExecContext(ctx, "INSERT INTO sc_reserved_sites(id) VALUES($1) ON CONFLICT(id) DO NOTHING", r.site); err != nil {
-			return err
-		}
-		if err = audit(ctx, tx, a, r, "delete_site", request); err != nil {
 			return err
 		}
 		for _, statement := range []string{
@@ -140,5 +155,5 @@ func (s *Store) DeleteSites(ctx context.Context, a Actor, reviewed []SiteDeletio
 	if _, err = tx.ExecContext(ctx, "DROP TABLE sc_deleting_digests"); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }

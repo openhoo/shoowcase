@@ -103,22 +103,18 @@ func (a *App) quickRedeem(w http.ResponseWriter, r *http.Request) {
 		invalid()
 		return
 	}
-	// Use a canonical key ID, not the supplied serialization, as the replay key.
-	used, err := a.store.Consume(r.Context(), "quickstart:"+sites.KeyID(secret), expiry)
+	// Validate and spend this key atomically with account deletion.
+	used, err := a.store.RedeemSetupKey(r.Context(), secret, expiry)
 	if err != nil {
-		http.Error(w, "Setup unavailable.", 503)
-		return
-	}
-	if !used {
-		invalid()
-		return
-	}
-	if _, err = a.store.ResolveKey(r.Context(), secret); err != nil {
 		if errorCode(err) == "unauthorized" || errorCode(err) == "forbidden" {
 			invalid()
 		} else {
 			http.Error(w, "Setup unavailable. Open Quickstart to reconnect.", 503)
 		}
+		return
+	}
+	if !used {
+		invalid()
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -179,7 +175,7 @@ func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContex
 			status = 409
 		}
 	}
-	p.Creation = a.sign(ticket{Kind: "create-key", Who: c.Actor, Nonce: rand.Text(), Expires: time.Now().Add(15 * time.Minute).Unix()})
+	p.Creation = a.signConsole(c, ticket{Kind: "create-key", Nonce: rand.Text(), Expires: time.Now().Add(15 * time.Minute).Unix()})
 	consoleView(w, c, status, "Agent quickstart", "quickstart", memberPages.Lookup("quick-start"), p)
 }
 

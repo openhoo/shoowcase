@@ -235,6 +235,9 @@ func TestMemberConsoleRoleControls(t *testing.T) {
 		return w
 	}
 	requireMemberStatus(t, run("/admin", "GET", nil), 403)
+	for _, stage := range []string{"review-selection", "apply-selection"} {
+		requireMemberStatus(t, run("/admin", "POST", url.Values{"action": {stage}, "operation": {"delete-members"}, "selected": {"tester"}, "confirm": {"yes"}}), 403)
+	}
 	keys := run("/keys", "GET", nil)
 	requireMemberStatus(t, keys, 200)
 	if strings.Contains(keys.Body.String(), `value="publisher"`) || strings.Contains(keys.Body.String(), `value="editor"`) {

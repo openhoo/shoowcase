@@ -33,6 +33,14 @@ To act on one row, use its **Suspend**, **Restore**, **Delete** or **Remove** bu
 
 Suspending a member keeps the account record, blocks workspace access, ends their local password sessions and revokes their agent keys. Restoring access does not restore revoked keys. Administrators cannot suspend themselves. Removing a person from a group only removes that membership. Deleting a group removes its grants; if any selected group still has an assigned site, the entire deletion is refused.
 
+### Permanently delete an account
+
+In **Workspace admin → Members**, choose **Delete account** on a row or select several members and choose **Delete selected accounts**. Review the sign-in IDs and site addresses. **Permanently delete accounts** removes the selected accounts, their passwords, keys, memberships, request history, and every site they created in this workspace. Published sites and previews stop serving immediately; drafts, files, releases and changes other members made to those sites are removed together. Sites created by other people remain, including their content and edits. You cannot delete yourself.
+
+The active database removes audit entries identifying the deleted account or its sites. The workspace records who performed the deletion without naming the deleted member. Deleted site addresses stay reserved. Previously exported files, audit logs and backups are separate copies; existing backups expire under the operator's retention policy.
+
+Deleting an OIDC account leaves the identity at the provider unchanged. Shoowcase keeps a workspace-specific digest to prevent existing sessions, tokens or a new sign-in from regaining access. An admin can explicitly provision that subject again; it starts empty and requires a fresh sign-in. If the account was just deleted, allow one minute for identity-provider clock differences before signing in again. A password username can be reused for a new, independent account.
+
 ## Set up a managed tenant
 
 1. For initial setup, sign in with an administrator granted access by the identity provider or configured OIDC subject mapping, then complete enrollment. An existing administrator can also promote a password account.
@@ -95,4 +103,4 @@ Check individual rows, or choose **Select all on this page**. The count shows ho
 
 ## Database upgrade
 
-Stop and drain older writers before upgrading. Schema 5 adds local credentials while preserving OIDC accounts. Schema 4 retains existing sites, groups and access settings. Existing sites start unassigned, with their revision storage already counted, and workspaces keep the previous 100-site and 2-GiB ceilings. Workspaces upgrading from before schema 3 start in identity mode. Keep a restorable pre-upgrade backup; a binary built for an older schema refuses to open an upgraded database. See the [schema 7 upgrade instructions](operations.md#upgrade-to-schema-7).
+Stop and drain older writers before upgrading. Schema 5 adds local credentials while preserving OIDC accounts. Schema 4 retains existing sites, groups and access settings. Existing sites start unassigned, with their revision storage already counted, and workspaces keep the previous 100-site and 2-GiB ceilings. Workspaces upgrading from before schema 3 start in identity mode. Keep a restorable pre-upgrade backup; a binary built for an older schema refuses to open an upgraded database. See the [schema 9 upgrade instructions](operations.md#upgrade-to-schema-9).

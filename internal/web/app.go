@@ -143,7 +143,7 @@ func (a *App) executeAs(ctx context.Context, who sites.Actor, tool string, args 
 	}
 	r, e := a.store.Execute(ctx, who, tool, args)
 	if generation, ok := sites.ApprovalGeneration(e); ok && a.config.Public {
-		t := ticket{Kind: "approval", KeyID: sourceKey(ctx), Generation: generation, Who: who, Tool: tool, Args: args, Expires: time.Now().Add(5 * time.Minute).Unix()}
+		t := ticket{Kind: "approval", AssertionTime: sites.AssertionTime(ctx), KeyID: sourceKey(ctx), Generation: generation, Who: who, Tool: tool, Args: args, Expires: time.Now().Add(5 * time.Minute).Unix()}
 		browserURL := a.config.ControlURL + "/approve?t=" + url.QueryEscape(a.sign(t))
 		t.Kind = "mcp-approval"
 		return map[string]any{"approval_url": browserURL, "approval_token": a.sign(t), "status": "approval_required"}, e
@@ -178,19 +178,21 @@ func (a *App) approvePublicChange(ctx context.Context, who sites.Actor, args jso
 	default:
 		return nil, problem("invalid_argument", "Approval token does not identify a public change.")
 	}
-	r, err := a.store.Execute(sites.WithApproval(ctx, t.Generation), who, t.Tool, t.Args)
+	r, err := a.store.Execute(sites.WithApproval(sites.WithActionAssertion(ctx, t.AssertionTime), t.Generation), who, t.Tool, t.Args)
 	return a.decorate(r), err
 }
 
 type ticket struct {
-	Kind       string
-	Who        sites.Actor
-	Tool       string
-	Args       json.RawMessage
-	Expires    int64
-	Generation int64  `json:",omitempty"`
-	KeyID      string `json:",omitempty"`
-	Nonce      string `json:",omitempty"`
+	Session       string `json:",omitempty"`
+	Kind          string
+	AssertionTime int64 `json:",omitempty"`
+	Who           sites.Actor
+	Tool          string
+	Args          json.RawMessage
+	Expires       int64
+	Generation    int64  `json:",omitempty"`
+	KeyID         string `json:",omitempty"`
+	Nonce         string `json:",omitempty"`
 }
 
 func (a *App) sign(t ticket) string {

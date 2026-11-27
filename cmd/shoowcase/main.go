@@ -180,10 +180,15 @@ func run() error {
 					return err
 				}
 			}
+			if i.LocalGeneration > 0 {
+				ctx = sites.WithLocalSession(ctx, i.LocalGeneration)
+			} else {
+				ctx = sites.WithIdentityIssuedAt(ctx, i.IssuedAt)
+			}
 			return s.RecordSession(ctx, sessionActor(i), action)
 		},
 		RevokeSession: func(ctx context.Context, key string, expires time.Time, i auth.Identity) error {
-			return s.RevokeSessionAndAudit(ctx, key, expires, sessionActor(i))
+			return s.RevokeSessionAndAudit(sites.WithIdentityIssuedAt(ctx, i.IssuedAt), key, expires, sessionActor(i))
 		},
 	})
 	if e != nil {

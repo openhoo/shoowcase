@@ -19,6 +19,8 @@
 <form method="post" action="/admin" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="subject" value="{{.Subject}}"><input type="hidden" name="expected_ceiling" value="{{.Ceiling}}"><input type="hidden" name="expected_disabled" value="{{.Disabled}}">
 {{if .Disabled}}<input type="hidden" name="action" value="restore"><p>Restoring access lets this member sign in again. Their revoked keys stay inactive.</p><div><button type="submit">{{template "icon-UserCheck"}}<span class="action-label">Restore access</span></button></div>
 {{else}}<input type="hidden" name="action" value="suspend"><label><input type="checkbox" name="confirm" value="yes" required> Suspend this member and revoke all their keys.</label><div><button class="danger" type="submit">{{template "icon-UserRoundX"}}<span class="action-label">Suspend member</span></button></div>{{end}}</form>
+<form method="post" action="/admin" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="review-selection"><input type="hidden" name="selected" value="{{.Subject}}">
+<h3>Delete account</h3><p>Review the sites this account owns before deleting it permanently.</p><div><button class="secondary danger-action" name="operation" value="delete-members">{{template "icon-Trash2"}}<span class="action-label">Delete account…</span></button></div></form>
 {{else}}<p>This is your account. <a href="/account">Open account settings</a></p>{{end}}{{end}}
 </section>
 {{else}}

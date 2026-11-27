@@ -136,7 +136,7 @@ The **control host** handles MCP, sign-in, uploads and public release approvals.
 
 In **Admin → Members**, a workspace administrator can change another [password account’s role](docs/tenant-access.md#change-a-password-accounts-role) after creation, including promoting the member to Admin or demoting an existing local Admin. The member signs in again with the same password. For SSO accounts, use **Role limit** to lower or restore access within the role granted by the identity provider.
 
-Administrators also manage groups, set role limits, suspend members and revoke keys. In [managed mode](docs/tenant-access.md), group membership grants editing or publishing to non-admin members within their sign-in role and any individual limit. Personal keys grant at most Publisher access. Suspension revokes the member’s keys; restoring the member does not reactivate them.
+Administrators also manage groups, set role limits, suspend members, revoke keys and permanently delete an account and the sites it created. The [deletion review](docs/tenant-access.md#permanently-delete-an-account) lists the affected accounts and sites before confirmation. In [managed mode](docs/tenant-access.md), group membership grants editing or publishing to non-admin members within their sign-in role and any individual limit. Personal keys grant at most Publisher access. Suspension revokes the member’s keys; restoring the member does not reactivate them.
 
 See [OIDC and PKCE configuration](docs/oidc.md) and [audit export and retention](docs/audit.md).
 
