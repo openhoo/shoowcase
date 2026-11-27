@@ -123,6 +123,9 @@ func (a *App) executeAs(ctx context.Context, who sites.Actor, tool string, args 
 	if tool == "prepare_upload" {
 		return a.prepare(ctx, who, args)
 	}
+	if tool == "approve_public_change" {
+		return a.approvePublicChange(ctx, who, args)
+	}
 	if tool == "set_site_access" && !a.config.Public {
 		var v struct{ Visibility string }
 		_ = json.Unmarshal(args, &v)
@@ -132,10 +135,43 @@ func (a *App) executeAs(ctx context.Context, who sites.Actor, tool string, args 
 	}
 	r, e := a.store.Execute(ctx, who, tool, args)
 	if generation, ok := sites.ApprovalGeneration(e); ok && a.config.Public {
-		token := a.sign(ticket{Kind: "approval", KeyID: sourceKey(ctx), Generation: generation, Who: who, Tool: tool, Args: args, Expires: time.Now().Add(5 * time.Minute).Unix()})
-		return map[string]any{"approval_url": a.config.ControlURL + "/approve?t=" + url.QueryEscape(token), "status": "approval_required"}, e
+		t := ticket{Kind: "approval", KeyID: sourceKey(ctx), Generation: generation, Who: who, Tool: tool, Args: args, Expires: time.Now().Add(5 * time.Minute).Unix()}
+		browserURL := a.config.ControlURL + "/approve?t=" + url.QueryEscape(a.sign(t))
+		t.Kind = "mcp-approval"
+		return map[string]any{"approval_url": browserURL, "approval_token": a.sign(t), "status": "approval_required"}, e
 	}
 	return a.decorate(r), e
+}
+
+// Apply the signed operation with the current MCP caller's authority. The store
+// rechecks that authority and the publication generation under its workspace lock.
+func (a *App) approvePublicChange(ctx context.Context, who sites.Actor, args json.RawMessage) (map[string]any, error) {
+	if !a.config.Public {
+		return nil, problem("forbidden", "Public sharing is disabled on this instance.")
+	}
+	var input map[string]string
+	if json.Unmarshal(args, &input) != nil || len(input) != 1 || input["approval_token"] == "" {
+		return nil, problem("invalid_argument", "Supply only the approval_token returned for the public change.")
+	}
+	t, ok := a.ticketValue(input["approval_token"], "mcp-approval")
+	if !ok || t.Generation < 1 {
+		return nil, problem("invalid_argument", "Invalid or expired approval token. Request the public change again.")
+	}
+	if who.Subject != t.Who.Subject || who.Workspace != t.Who.Workspace || sourceKey(ctx) != t.KeyID {
+		return nil, problem("forbidden", "Use the same publisher account and credential that requested this change.")
+	}
+	switch t.Tool {
+	case "publish_site", "rollback_site":
+	case "set_site_access":
+		var access struct{ Visibility string }
+		if json.Unmarshal(t.Args, &access) != nil || access.Visibility != "public" {
+			return nil, problem("invalid_argument", "Approval token does not identify a public change.")
+		}
+	default:
+		return nil, problem("invalid_argument", "Approval token does not identify a public change.")
+	}
+	r, err := a.store.Execute(sites.WithApproval(ctx, t.Generation), who, t.Tool, t.Args)
+	return a.decorate(r), err
 }
 
 type ticket struct {

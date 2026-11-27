@@ -10,7 +10,7 @@ Run the commands below from the Shoowcase repository. For authoring a site on an
 ## Preserve these contracts
 
 - **Agent API:** Keep the schemas in `internal/mcpserver` aligned with `internal/sites` and `internal/web`. Derive the workspace and actor from the authenticated request. A fresh MCP client must be able to discover the site, read the draft and continue an edit. Retrying the same mutation as the same actor must not write twice; a stale revision must not overwrite a newer draft.
-- **Publication:** Draft edits, live releases and audience changes are separate. Rollback keeps the stable URL and leaves the draft alone. A public change requires the requesting publisher's browser approval for the exact operation, revision and publication state. After a conflict, read the current site and request a fresh approval. Test with two publishers.
+- **Publication:** Draft edits, live releases and audience changes are separate. Rollback keeps the stable URL and leaves the draft alone. A publisher can complete a public change over MCP with `approve_public_change` or use the browser form. Both paths bind approval to the exact operation, revision or release, and publication state. Test refusal with a different publisher and a different personal key for the same publisher. After a conflict, read the current site and request a fresh approval.
 - **Delivery:** Keep control and content on separate registrable domains. Authorize each HTML and asset request before returning bytes, headers or a cached response. Test anonymous and unrelated-workspace access to previews and private releases; include `HEAD` and a previously valid ETag after withdrawal. Keep signed URLs, credentials, site contents and database connection strings out of logs.
 
 ## Upgrade and restore
