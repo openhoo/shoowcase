@@ -118,7 +118,32 @@ async def create_key(page, endpoint):
           "leaving the key receipt preserved a credential in the document")
     await check_record_tables(page, "Your keys")
     check(secret not in await page.content(), "key visible after leaving the receipt")
+    await check_key_name_and_times(page, "Your keys")
+    native = await page.context.browser.new_context(java_script_enabled=False,
+        storage_state=await page.context.storage_state(), viewport={"width": 320, "height": 780})
+    try:
+        native_keys = await native.new_page()
+        await native_keys.goto(endpoint.removesuffix("/mcp") + "/keys")
+        await check_key_name_and_times(native_keys, "Your keys")
+    finally:
+        await native.close()
     return secret
+
+
+async def check_key_name_and_times(page, table_name):
+    table = page.get_by_role("table", name=table_name, exact=True)
+    row = table.get_by_role("row").filter(has_text="Workshop publisher")
+    times = row.locator("time")
+    await expect(times).to_have_count(2)
+    for stamp in await times.all():
+        await expect(stamp).to_have_text(re.compile(r" at [0-9]{2}:[0-9]{2} UTC$"))
+    name = page.get_by_label("Key name")
+    await name.fill(" WORKSHOP PUBLISHER ")
+    await page.get_by_role("button", name="Create key").click()
+    await expect(page.get_by_role("alert")).to_contain_text("You already have a key with this name. Choose a different name.")
+    await expect(name).to_have_value("WORKSHOP PUBLISHER")
+    await expect(name).to_have_attribute("aria-invalid", "true")
+    await expect(row).to_have_count(1)
 
 
 async def manual_site(page, agent):

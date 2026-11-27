@@ -41,6 +41,10 @@ Workspaces use their signed identity-provider claim as the tenant ID. In the def
 
 An existing personal key does not contact the identity provider on every request. A newer verified identity assertion updates the recorded provider role, but removing someone at the provider alone does not notify Shoowcase. For immediate offboarding, **suspend the member or revoke their keys in Shoowcase and remove access at the provider**. Another active workspace administrator can suspend an administrator immediately. No one can suspend themselves. For an SSO administrator, the identity provider or configured OIDC subject mapping controls the sign-in role. Another workspace administrator can limit that member’s access locally and remove the limit later. A workspace administrator can [change another password account’s role](tenant-access.md#change-a-password-accounts-role), including promoting or demoting a local administrator. Role changes, suspension and restoration appear in workspace activity. Limit OAuth token lifetimes and rotate the session signing key for emergency invalidation of existing sessions and signed links.
 
+## Upgrade to schema 8
+
+Stop older writers and take a restorable backup before upgrading. Startup makes agent key names unique per account in each workspace. The oldest key keeps its name when multiple names differ only in case, Unicode normalization, or surrounding whitespace. Later duplicates receive an unused numeric suffix. Existing secrets, expiry times and revocations remain valid. Names remain reserved while their records are retained. To downgrade, restore the pre-upgrade snapshot.
+
 ## Upgrade to schema 7
 
 Take a restorable backup and stop all older writers **before** starting this version. Older running processes do not honor reserved addresses or coordinate with draft deletion. Rehearse the upgrade with the [restore drill](restore-drill.md). Schema 7 reserves existing site addresses and indexes file digests. Allow time and disk space to build this index. To downgrade, restore the pre-upgrade snapshot.

@@ -217,7 +217,7 @@ func TestKeyQuotaAcrossReplicas(t *testing.T) {
 					if i%2 == 0 {
 						db = peer
 					}
-					_, _, e := db.CreateKey(ctx, a, "Agent", "", 1)
+					_, _, e := db.CreateKey(ctx, a, numberedKeyName("Agent", i+1), "", 1)
 					results <- e
 				}(i)
 			}
@@ -281,7 +281,7 @@ func TestAccountSchemaUpgradeFromV011(t *testing.T) {
 				t.Fatal(m, e)
 			}
 			var version int
-			if e = s.db.QueryRow("SELECT MAX(version) FROM sc_schema_migrations").Scan(&version); e != nil || version != 7 {
+			if e = s.db.QueryRow("SELECT MAX(version) FROM sc_schema_migrations").Scan(&version); e != nil || version != 8 {
 				t.Fatal(version, e)
 			}
 		})

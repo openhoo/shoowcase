@@ -161,32 +161,42 @@ func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContex
 			if !a.spendKeyForm(w, r, c) {
 				return
 			}
-			if p.NameValue == "" {
-				p.NameValue = p.ClientName
+			create, name := a.store.CreateKey, p.NameValue
+			if name == "" {
+				create, name = a.store.CreateKeyWithSuggestedName, p.ClientName
 			}
-			_, secret, err := a.store.CreateKey(r.Context(), actor(c.Identity), p.NameValue, p.Scope, days)
-			if err != nil {
+			key, secret, err := create(r.Context(), actor(c.Identity), name, p.Scope, days)
+			if err == nil {
+				p.NameValue = key.Name
+				a.quickReceipt(w, c, p, secret)
+				return
+			}
+			p.NameError = keyNameConflict(err)
+			if p.NameError == "" {
 				memberError(w, c, err)
 				return
 			}
-			command := quickCommand
-			if p.CompanyProxy {
-				command = quickProxyCommand
-			}
-			p.Command = command(a.config.ControlURL, p.Client, p.Platform, a.setupCode(secret, p.Client, time.Now().Add(10*time.Minute)))
-			p.Prompt = "List the sites I can access in Shoowcase."
-			if p.Scope == "editor" {
-				p.Prompt = "Create a Shoowcase site with a welcome page and give me its private preview."
-			}
-			if p.Scope == "publisher" {
-				p.Prompt = "Create a Shoowcase site with a welcome page. Show me the preview, then ask me before publishing it."
-			}
-			consoleView(w, c, 200, "Connect "+p.ClientName, "quickstart", memberPages.Lookup("quick-ready"), p)
-			return
+			status = 409
 		}
 	}
 	p.Creation = a.sign(ticket{Kind: "create-key", Who: c.Actor, Nonce: rand.Text(), Expires: time.Now().Add(15 * time.Minute).Unix()})
 	consoleView(w, c, status, "Agent quickstart", "quickstart", memberPages.Lookup("quick-start"), p)
+}
+
+func (a *App) quickReceipt(w http.ResponseWriter, c consoleContext, p quickPage, secret string) {
+	command := quickCommand
+	if p.CompanyProxy {
+		command = quickProxyCommand
+	}
+	p.Command = command(a.config.ControlURL, p.Client, p.Platform, a.setupCode(secret, p.Client, time.Now().Add(10*time.Minute)))
+	p.Prompt = "List the sites I can access in Shoowcase."
+	if p.Scope == "editor" {
+		p.Prompt = "Create a Shoowcase site with a welcome page and give me its private preview."
+	}
+	if p.Scope == "publisher" {
+		p.Prompt = "Create a Shoowcase site with a welcome page. Show me the preview, then ask me before publishing it."
+	}
+	consoleView(w, c, 200, "Connect "+p.ClientName, "quickstart", memberPages.Lookup("quick-ready"), p)
 }
 
 func serveInstaller(w http.ResponseWriter, r *http.Request) {

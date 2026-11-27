@@ -3,6 +3,7 @@ package web
 import (
 	"crypto/rand"
 	"embed"
+	"errors"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -66,6 +67,7 @@ type memberPage struct {
 	CSRF, Workspace, Subject, Name, Role, Endpoint        string
 	Enrolled                                              bool
 	NameValue, Scope, Days, Secret, Err, Notice, Creation string
+	NameError                                             string
 	Scopes                                                []string
 	Keys                                                  []memberKeyRow
 	Member                                                *memberRow
@@ -354,6 +356,14 @@ func (a *App) spendKeyForm(w http.ResponseWriter, r *http.Request, c consoleCont
 	return true
 }
 
+func keyNameConflict(err error) string {
+	var e *sites.Error
+	if errors.As(err, &e) && e.Code == "key_name_taken" {
+		return e.Message
+	}
+	return ""
+}
+
 func (a *App) memberKeys(w http.ResponseWriter, r *http.Request, c consoleContext, p memberPage) {
 	p.Scopes = memberScopes(c.Actor.Role)
 	p.Scope = defaultKeyScope(p.Scopes)
@@ -376,17 +386,22 @@ func (a *App) memberKeys(w http.ResponseWriter, r *http.Request, c consoleContex
 					return
 				}
 				_, secret, err := a.store.CreateKey(r.Context(), who, p.NameValue, p.Scope, days)
-				if err != nil {
+				if err == nil {
+					p.Secret = secret
+					// Do not read the database again and risk losing the one-time secret.
+					consoleView(w, c, 200, "Connect your agent", "keys", memberPages.Lookup("key-receipt"), p)
+					return
+				}
+				p.NameError = keyNameConflict(err)
+				if p.NameError == "" {
 					memberError(w, c, err)
 					return
 				}
-				p.Secret = secret
-				// The key has already been created. Render its one-time receipt
-				// without another database read that could fail and hide the secret.
-				consoleView(w, c, 200, "Connect your agent", "keys", memberPages.Lookup("key-receipt"), p)
-				return
 			}
 			status = 400
+			if p.NameError != "" {
+				status = 409
+			}
 		case "revoke", "review-key-revocation", "revoke-selected":
 			a.keyRevocation(w, r, c, false)
 			return

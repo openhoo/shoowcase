@@ -99,9 +99,9 @@ def audit_export(reader, port, after=0):
     return result
 
 
-SUPPORTED_PRIORS = {"0.1.1": 1, "0.2.0": 2, "0.3.2": 4, "0.6.0": 5, "0.9.0": 6, "0.10.0": 7, "0.10.1": 7}
-CURRENT_SCHEMA = 7
-MEMBER_SCHEMAS = {2, 4, 5, 6, 7}
+SUPPORTED_PRIORS = {"0.1.1": 1, "0.2.0": 2, "0.3.2": 4, "0.6.0": 5, "0.9.0": 6, "0.10.0": 7, "0.10.1": 7, "0.10.5": 7}
+CURRENT_SCHEMA = 8
+MEMBER_SCHEMAS = {2, 4, 5, 6, 7, 8}
 MEMBER_NAME = "Restore rehearsal member"
 
 
