@@ -5,6 +5,7 @@ import io
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -12,7 +13,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "internal/web/quickstartassets"
-TAG = "v0.10.5"
+TAG = re.search(r"^    version=(v[0-9.]+)$", (ASSETS / "install.sh").read_text(), re.M)[1]
 CODE = "synthetic-setup-code-for-installer-fixture"
 PROXY_PASSWORD = "synthetic-password-for-installer-fixture"
 PROXY = f"http://user:{PROXY_PASSWORD}@proxy.invalid:8080"
@@ -46,6 +47,10 @@ func main(){
     if os.WriteFile(args[i+1],b,0600)!=nil{os.Exit(25)};return
   }
   if slices.Equal(args,[]string{"version"}){fmt.Println(os.Getenv("FIXTURE_TAG"));return}
+  if slices.Equal(args,[]string{"uninstall"}) {
+    p,e:=os.Executable();if e!=nil||os.WriteFile(os.Getenv("FIXTURE_RECEIPT"),[]byte(p),0600)!=nil {os.Exit(32)}
+    return
+  }
   if !slices.Equal(args,[]string{"connect","codex","--url","https://control.example/mcp","--setup-code",os.Getenv("FIXTURE_CODE")}){os.Exit(30)}
   p,e:=os.Executable();if e!=nil||os.WriteFile(os.Getenv("FIXTURE_RECEIPT"),[]byte(p),0600)!=nil {os.Exit(31)}
 }'''
@@ -137,7 +142,33 @@ def main():
         archive.write_bytes(good_bytes)
         sums.write_text(f"{sha}  {asset}\n{sha}  {asset}\n")
         invoke(False)
-        print(f"PASS: {system}/{arch}: install, reuse, update, bad checksum and ambiguous manifest; stable path, symmetric proxy/CA settings, cleanup and no credentials in output.")
+        assert f"$Version = '{TAG}'" in (ASSETS / "uninstall.ps1").read_text()
+        assert f"    version={TAG}\n" in (ASSETS / "uninstall.sh").read_text()
+        # The uninstaller must run a verified helper outside the old install
+        # path; on Windows the running executable cannot delete itself.
+        env.update(TEMP=str(root), TMP=str(root), TMPDIR=str(root))
+        if windows:
+            env["FIXTURE_SCRIPT"] = str(ASSETS / "uninstall.ps1")
+            remove_args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                           "& ([scriptblock]::Create([IO.File]::ReadAllText($env:FIXTURE_SCRIPT))); exit $LASTEXITCODE"]
+            remove_data = None
+        else:
+            remove_args = ["sh", "-s"]
+            remove_data = (ASSETS / "uninstall.sh").read_bytes()
+        for good in (False, True):
+            if good:
+                sums.write_text(f"{sha}  {asset}\n")
+            receipt.unlink(missing_ok=True)
+            res = subprocess.run(remove_args, input=remove_data, env=env, capture_output=True, timeout=90)
+            msg = (res.stdout + res.stderr).decode(errors="replace")
+            assert CODE not in msg and PROXY_PASSWORD not in msg, "uninstaller printed a credential"
+            assert (res.returncode == 0) == good, msg
+            assert receipt.exists() == good, "uninstaller did not respect checksum gate"
+            if good:
+                helper = Path(receipt.read_text())
+                assert helper != installed and not helper.exists()
+                assert not helper.parent.exists(), "uninstaller left temporary files"
+        print(f"PASS: {system}/{arch}: install, reuse, update and uninstall bootstrap; bad checksum and ambiguous manifest; stable path, symmetric proxy/CA settings, cleanup and no credentials in output.")
 
 
 if __name__ == "__main__":

@@ -567,6 +567,40 @@ export function Quickstart({ p }: { p: QuickData }) {
           </a>
         </p>
       </Post>
+      <Disclosure title="Uninstall the local connector">
+        <p>
+          Close your agents first. Run the command as the same user who ran
+          setup. It removes the connector and all local Quickstart connections
+          for this user. Remove entries you configured manually in your agent,
+          and revoke the corresponding keys under{" "}
+          <a className={linkStyle} href="/keys">
+            Agent keys
+          </a>
+          .
+        </p>
+        {(
+          [
+            ["uninstall-unix", "macOS or Linux command", p.UninstallUnix],
+            [
+              "uninstall-windows",
+              "Windows PowerShell command",
+              p.UninstallWindows,
+            ],
+          ] as const
+        ).map(([id, label, command]) => (
+          <Field key={id} id={id} label={label}>
+            <Textarea
+              id={id}
+              className="min-w-0 break-all font-mono"
+              readOnly
+              rows={2}
+              spellCheck={false}
+              value={command}
+            />
+            <Copy id={id}>Copy command</Copy>
+          </Field>
+        ))}
+      </Disclosure>
     </>
   );
 }

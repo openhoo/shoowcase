@@ -83,8 +83,8 @@ def notices(tag):
     return (*NOTICES, "UI-LICENSES.txt") if tuple(map(int, tag[1:].split("."))) >= (0, 10, 0) else NOTICES
 
 
-def inventory(tag, has_chart):
-    names = {"SHA256SUMS", "image.txt", *notices(tag), f"shoowcase-{tag}-skills.zip"}
+def inventory(tag, has_chart, uninstallers=()):
+    names = {"SHA256SUMS", "image.txt", *notices(tag), *uninstallers, f"shoowcase-{tag}-skills.zip"}
     if has_chart:
         names.update({"chart.txt", f"shoowcase-{tag[1:]}.tgz"})
     for osname, arch in targets(tag):
@@ -94,8 +94,8 @@ def inventory(tag, has_chart):
     return names
 
 
-def get_assets(rel, tag, dest, has_chart):
-    want = inventory(tag, has_chart)
+def get_assets(rel, tag, dest, has_chart, uninstallers=()):
+    want = inventory(tag, has_chart, uninstallers)
     require(len(rel["assets"]) == len(want) and {x["name"] for x in rel["assets"]} == want, "unexpected release asset inventory")
     for asset in rel["assets"]:
         name = asset["name"]
@@ -254,13 +254,21 @@ def main():
     # Earlier releases predate the chart. Derive the expected inventory from
     # the trusted commit, never from what the remote release happens to contain.
     has_chart = bool(subprocess.check_output(["git", "-C", ROOT, "ls-tree", "--name-only", args.commit, "charts/shoowcase/Chart.yaml"]).strip())
-    get_assets(rel, args.tag, dest, has_chart)
+    script_dir = "internal/web/quickstartassets/"
+    paths = [script_dir + name for name in ("uninstall.sh", "uninstall.ps1")]
+    uninstallers = [Path(path).name for path in paths if subprocess.check_output(
+        ["git", "-C", ROOT, "ls-tree", "--name-only", args.commit, path]).strip()]
+    get_assets(rel, args.tag, dest, has_chart, uninstallers)
+    for name in uninstallers:
+        require((dest / name).read_bytes() == source(args.commit, script_dir + name),
+                "uninstaller does not match tagged source: " + name)
     verify_skills(dest, args.tag, args.commit)
     exes, notices = verify_binaries(dest, args.tag, args.commit)
     image = verify_image(dest, args.tag, args.commit, exes, notices)
     print(f"PASS: {rel['html_url']}: immutable tag → {args.commit}, {len(rel['assets'])} anonymous assets, both skills, {len(exes)} Go binaries, SPDX/CycloneDX, notices, and both anonymous OCI platforms for {image}", flush=True)
     command("gh", "release", "verify", args.tag, "--repo", REPO)
     artifacts = [str(dest / "SHA256SUMS"), str(dest / f"shoowcase-{args.tag}-darwin-arm64.tar.gz"), str(dest / f"shoowcase-{args.tag}-skills.zip"), "oci://" + image]
+    artifacts.extend(str(dest / name) for name in uninstallers)
     if has_chart:
         chart_ref = verify_chart(dest, args.tag, image)
         artifacts.extend([str(dest / f"shoowcase-{args.tag[1:]}.tgz"), "oci://" + chart_ref])

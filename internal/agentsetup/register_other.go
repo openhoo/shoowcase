@@ -25,16 +25,7 @@ func registerOther(ctx context.Context, name, binary string) error {
 	}
 	switch name {
 	case "gemini":
-		// Gemini CLI treats GEMINI_CLI_HOME as an alternative home, then
-		// appends .gemini/settings.json (including when that variable is set).
-		base := os.Getenv("GEMINI_CLI_HOME")
-		if base == "" {
-			base = home
-		}
-		if !filepath.IsAbs(base) {
-			return errors.New("GEMINI_CLI_HOME must be absolute for user configuration")
-		}
-		path := filepath.Join(base, ".gemini", "settings.json")
+		path := geminiPath(home)
 		doc, err := readClientDocument(path)
 		if err != nil {
 			return err
@@ -69,6 +60,24 @@ func registerOther(ctx context.Context, name, binary string) error {
 	}
 }
 
+func geminiPath(home string) string {
+	base := os.Getenv("GEMINI_CLI_HOME")
+	if base == "" {
+		base = home
+	}
+	return filepath.Join(base, ".gemini", "settings.json")
+}
+
+var openCodeFiles = []string{"config.json", "opencode.json", "opencode.jsonc"}
+
+func openCodeDir(home string) string {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "opencode")
+}
+
 type openCodeServer struct {
 	Type    string   `json:"type"`
 	Command []string `json:"command"`
@@ -83,17 +92,12 @@ func registerOpenCode(home, binary string) error {
 			return errors.New("OpenCode has a configuration override; use its default global profile for automatic setup or use manual MCP setup")
 		}
 	}
-	base := os.Getenv("XDG_CONFIG_HOME")
-	if base == "" {
-		base = filepath.Join(home, ".config")
-	}
-	if !filepath.IsAbs(base) {
+	dir := openCodeDir(home)
+	if !filepath.IsAbs(dir) {
 		return errors.New("XDG_CONFIG_HOME must be absolute for OpenCode user configuration")
 	}
-	dir := filepath.Join(base, "opencode")
 	// OpenCode 1.x merges all three in order. Check every layer because
 	// adding our entry in a higher layer could shadow an unrelated server.
-	files := []string{"config.json", "opencode.json", "opencode.jsonc"}
 	target := filepath.Join(dir, "opencode.json")
 	want := openCodeServer{Type: "local", Command: []string{binary, "mcp-stdio", "opencode"}}
 	matches := func(raw json.RawMessage) bool {
@@ -101,7 +105,7 @@ func registerOpenCode(home, binary string) error {
 		return decodeManagedServer(raw, &got) && got.Type == "local" && slices.Equal(got.Command, want.Command) && (got.Enabled == nil || *got.Enabled)
 	}
 	found := false
-	for _, file := range files {
+	for _, file := range openCodeFiles {
 		path := filepath.Join(dir, file)
 		raw, ok, err := readClientJSONCEntry(path, "mcp", "shoowcase")
 		if err != nil {

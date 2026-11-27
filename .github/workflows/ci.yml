@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   installers:
-    name: Quickstart installer (${{ matrix.os }})
+    name: Quickstart install and uninstall (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -22,9 +22,9 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.27.4'
-      - name: Install, upgrade and reject a corrupted archive with the native shell
+      - name: Install, upgrade and verify the uninstall bootstrap with the native shell
         run: python scripts/test-quickstart-install.py
-      - name: Check client registration and Windows credential protection
+      - name: Check Windows registration, uninstall and credential protection
         if: runner.os == 'Windows'
         run: go test ./internal/agentsetup
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0

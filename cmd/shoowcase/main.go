@@ -53,6 +53,8 @@ func run() error {
 		switch os.Args[1] {
 		case "connect":
 			return agentsetup.Connect(context.Background(), os.Args[2:], os.Stdout)
+		case "uninstall":
+			return agentsetup.Uninstall(context.Background(), os.Args[2:], os.Stdout)
 		case "mcp-stdio":
 			return agentsetup.Stdio(context.Background(), os.Args[2:], os.Stdin, os.Stdout)
 		}
@@ -72,7 +74,7 @@ func run() error {
 	dev := flag.Bool("dev", false, "single-user development mode on loopback only")
 	flag.Parse()
 	if flag.NArg() != 0 {
-		return errors.New("usage: shoowcase [-dev] | version | keygen | connect <client> --url URL --setup-code CODE")
+		return errors.New("usage: shoowcase [-dev] | version | keygen | uninstall | connect <client> --url URL --setup-code CODE")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

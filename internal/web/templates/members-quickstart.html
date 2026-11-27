@@ -16,6 +16,11 @@
 <div class="toolbar"><button type="submit">{{template "icon-KeyRound"}}<span class="action-label">Create key and get command</span></button></div>
 <p class="muted">Does your agent run in the cloud or only accept a server URL? <a href="/keys">Set up a remote HTTP connection instead.</a></p>
 </form>
+<details class="panel stack"><summary>Uninstall the local connector</summary>
+<p>Close your agents first. Run the command as the same user who ran setup. It removes the connector and all local Quickstart connections for this user. Remove entries you configured manually in your agent, and revoke the corresponding keys under <a href="/keys">Agent keys</a>.</p>
+<div class="field"><label for="uninstall-unix">macOS or Linux command</label><textarea id="uninstall-unix" class="quick-command" readonly rows="2" spellcheck="false">{{.UninstallUnix}}</textarea></div>
+<div class="field"><label for="uninstall-windows">Windows PowerShell command</label><textarea id="uninstall-windows" class="quick-command" readonly rows="2" spellcheck="false">{{.UninstallWindows}}</textarea></div>
+</details>
 {{end}}
 
 {{define "quick-ready"}}
