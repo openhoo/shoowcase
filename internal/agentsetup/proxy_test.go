@@ -266,10 +266,23 @@ func TestRelayAuthenticatedConnectAndCorporateCA(t *testing.T) {
 				res.Body.Close()
 				t.Fatal("transport allowed a different origin")
 			}
-			client.CloseIdleConnections()
+			// A live TLS tunnel has already passed CONNECT authentication. Use a
+			// new transport here so this case always tests a fresh negotiation,
+			// independent of when the previous response returns to the idle pool.
 			refuse.Store(true)
-			if _, err := request(client, "/mcp"); err == nil || strings.Contains(err.Error(), password) || strings.Contains(err.Error(), expected) || strings.Contains(err.Error(), proxyUser) {
-				t.Fatal("proxy failure was ignored or leaked a credential")
+			rejected, err := relayHTTPClient(&saved)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rejected.CloseIdleConnections()
+			limitDial(rejected)
+			res, err = request(rejected, "/mcp")
+			if err == nil {
+				res.Body.Close()
+				t.Fatal("fresh relay transport forwarded a refused CONNECT")
+			}
+			if strings.Contains(err.Error(), password) || strings.Contains(err.Error(), expected) || strings.Contains(err.Error(), proxyUser) {
+				t.Fatal("refused CONNECT exposed a proxy credential")
 			}
 			if denied.Load() != 1 || origins.Load() != 2 {
 				t.Fatal("a rejected CONNECT was retried or forwarded")
