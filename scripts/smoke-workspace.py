@@ -18,6 +18,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright, expect
 from bulk_admin_smoke import check_bulk_admin
 from bulk_site_smoke import check_bulk_sites
+from native_handoff_smoke import check_quickstart_handoff, native_page, save_workspace_mode
 from smoke import check
 
 browser_smoke = import_module("smoke-browser")
@@ -131,8 +132,11 @@ async def manual_site(page, agent):
         with zipfile.ZipFile(buf, "w") as z:
             z.writestr("index.html", "<h1>Rejected draft</h1>")
             z.writestr("images/tally.png", "This is a text file.")
-        await page.get_by_label("ZIP archive").set_input_files(
-            {"name": "bad.zip", "mimeType": "application/zip", "buffer": buf.getvalue()})
+        async with native_page(page, page.url):
+            await page.get_by_label("ZIP archive").set_input_files(
+                {"name": "bad.zip", "mimeType": "application/zip", "buffer": buf.getvalue()})
+        check(await page.get_by_label("ZIP archive").evaluate("el => el.files[0]?.name") == "bad.zip",
+              "the console dropped the selected ZIP when its JavaScript arrived")
     async with page.expect_response(lambda r: r.request.method == "POST") as invalid:
         await page.get_by_role("button", name="Import files").click()
     check((await invalid.value).status == 400, "invalid ZIP response status")
@@ -365,11 +369,8 @@ async def manage_workspace_access(page, control, media=None):
     await page.get_by_role("button", name="Save group").click()
     await expect(page.get_by_role("heading", name="Releases")).to_be_visible()
 
-    await nav.get_by_role("link", name="Workspace settings").click()
-    await page.get_by_label("Access mode").select_option("managed")
+    await save_workspace_mode(page, control, "identity", "managed")
     await fits(page, "workspace access settings")
-    await page.get_by_role("button", name="Save workspace settings").click()
-    await expect(page.get_by_label("Access mode")).to_have_value("managed")
     await admin_image(page, media, "access-mode")
     await nav.get_by_role("link", name="Groups").click()
     await check_admin_directory(page, "group", "releas", "Releases", "publisher", media)
@@ -383,10 +384,7 @@ async def manage_workspace_access(page, control, media=None):
     await page.get_by_label("Remove this group and all its grants.").check()
     await page.get_by_role("button", name="Delete group").click()
     await expect(page.get_by_text("No groups yet.")).to_be_visible()
-    await nav.get_by_role("link", name="Workspace settings").click()
-    await page.get_by_label("Access mode").select_option("identity")
-    await page.get_by_role("button", name="Save workspace settings").click()
-    await expect(page.get_by_label("Access mode")).to_have_value("identity")
+    await save_workspace_mode(page, control, "managed", "identity")
 
     await nav.get_by_role("link", name="Activity").click()
     await expect(page.get_by_role("heading", name="Audit log")).to_be_visible()
@@ -622,6 +620,7 @@ async def workspace(binary, channel, screenshot, admin_media):
             page = await ctx.new_page()
             anon = await browser.new_page(viewport={"width": 320, "height": 780})
             await enroll(page, control)
+            await check_quickstart_handoff(page, control)
             await manage_workspace_access(page, control, admin_media)
             secret = await create_key(page, endpoint)
             async with browser_smoke.connect(endpoint, secret) as agent:
