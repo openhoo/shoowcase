@@ -3,14 +3,70 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/openhoo/shoowcase/internal/auth"
 	"github.com/openhoo/shoowcase/internal/sites"
 )
+
+func TestSiteDirectoryScopeAndAdminActions(t *testing.T) {
+	app, store := handlerFixture(t, filepath.Join(t.TempDir(), "scope.sqlite"), "team-a", false)
+	cookie, csrf := joinMemberConsole(t, app)
+	ctx := t.Context()
+	member := sites.Actor{Workspace: "team-a", Subject: "member", Role: "editor"}
+	if _, err := store.EnrollAccount(ctx, member, "Member"); err != nil {
+		t.Fatal(err)
+	}
+	create := func(who sites.Actor, id string) string {
+		t.Helper()
+		out, err := store.Execute(ctx, who, "create_site", mustSiteJSON(t, map[string]any{"name": id, "slug": id, "request_id": id}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out["revision"].(string)
+	}
+	rev := create(member, "members-project")
+	create(sites.Actor{Workspace: "team-b", Subject: member.Subject, Role: "editor"}, "separate-tenant-site")
+
+	// Check the whole response: the React page model must not disclose rows
+	// that are absent from the server-rendered table.
+	personal := hitRoute(t, app, "GET", testControl+"/sites?view=sites", cookie, nil)
+	requireMemberStatus(t, personal, 200)
+	if body := personal.Body.String(); strings.Contains(body, "members-project") || !strings.Contains(body, "No sites yet") {
+		t.Fatal("the admin's personal directory included another member's site")
+	}
+	const adminSites = "/admin?view=sites"
+	all := hitRoute(t, app, "GET", testControl+adminSites, cookie, nil)
+	requireMemberStatus(t, all, 200)
+	if body := all.Body.String(); !strings.Contains(body, `href="/sites/members-project"`) || strings.Contains(body, "separate-tenant-site") {
+		t.Fatal("admin directory did not list exactly this workspace")
+	}
+	denied := httptest.NewRecorder()
+	signedInPage(app, denied, httptest.NewRequestWithContext(ctx, "GET", testControl+adminSites, nil),
+		auth.Identity{Workspace: member.Workspace, Subject: member.Subject, Role: auth.Editor})
+	requireMemberStatus(t, denied, 403)
+
+	review := memberPost(t, app, cookie, adminSites, url.Values{"csrf": {csrf}, "action": {"review-delete-sites"}, "site": {"members-project:" + rev}})
+	requireMemberStatus(t, review, 200)
+	form := siteForm(t, review.Body.String(), adminSites)
+	form.Set("confirm", "delete")
+	done := memberPost(t, app, cookie, adminSites, form)
+	requireMemberStatus(t, done, 303)
+	next, err := url.Parse(done.Header().Get("Location"))
+	if err != nil || next.Path != "/admin" || next.Query().Get("view") != "sites" {
+		t.Fatalf("deletion did not return to the admin directory: %v", next)
+	}
+	list := hitRoute(t, app, "GET", testControl+next.String(), cookie, nil)
+	requireMemberStatus(t, list, 200)
+	if strings.Contains(list.Body.String(), "members-project") {
+		t.Fatal("deleted site still in admin directory")
+	}
+}
 
 func TestDirectoryFiltersAndTotals(t *testing.T) {
 	app, s := handlerFixture(t, filepath.Join(t.TempDir(), "directory.sqlite"), "team-a", true)

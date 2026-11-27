@@ -487,32 +487,3 @@ func releaseChange(ctx context.Context, tx *sql.Tx, r *record, p mutation, tool 
 	_, e := tx.ExecContext(ctx, "UPDATE sc_sites SET live=$1,release_id=$2,visibility=$3,publication_generation=publication_generation+1 WHERE id=$4", r.live, r.release, r.visibility, r.site)
 	return e
 }
-func (s *Store) listSites(ctx context.Context, a Actor, q siteListQuery) (map[string]any, error) {
-	tx, a, limit, e := s.beginSiteRead(ctx, a, q.Cursor, q.Limit)
-	if e != nil {
-		return nil, e
-	}
-	defer tx.Rollback()
-	rows, e := tx.QueryContext(ctx, `SELECT s.id,s.name,s.visibility,s.draft,s.live,s.release_id,COALESCE(sg.group_id,'') FROM sc_sites s
-			LEFT JOIN sc_site_groups sg ON sg.workspace=s.workspace AND sg.site=s.id WHERE s.workspace=$1 AND s.id>$2 ORDER BY s.id LIMIT $3`, a.Workspace, q.Cursor, limit+1)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	list := []map[string]any{}
-	last := ""
-	next := ""
-	for rows.Next() {
-		var r record
-		if e = rows.Scan(&r.site, &r.name, &r.visibility, &r.draft, &r.live, &r.release, &r.group); e != nil {
-			return nil, e
-		}
-		if len(list) == limit {
-			next = last
-			break
-		}
-		list = append(list, effectiveAudience(ctx, r.out()))
-		last = r.site
-	}
-	return map[string]any{"sites": list, "next_cursor": next}, rows.Err()
-}

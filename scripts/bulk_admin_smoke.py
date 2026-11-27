@@ -7,7 +7,7 @@ async def check_navigation_labels(page):
     # An accessible name alone passed even when every link was just an icon.
     for landmark, labels in (
         ("Workspace", ["Sites", "Quickstart", "Agent keys", "Admin", "Account"]),
-        ("Administration views", ["Members", "Groups", "Quotas", "Workspace settings", "Workspace keys", "Activity"]),
+        ("Administration views", ["Members", "Groups", "All sites", "Quotas", "Workspace settings", "Workspace keys", "Activity"]),
     ):
         nav = page.get_by_role("navigation", name=landmark, exact=True)
         links = nav.get_by_role("link")

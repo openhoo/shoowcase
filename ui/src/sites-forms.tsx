@@ -5,7 +5,7 @@ import { FileUp, FolderPlus, History, Save, Trash2, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { SiteData } from "./sites-model";
+import { siteListURL, type SiteData } from "./sites-model";
 import {
   Back,
   ButtonLink,
@@ -325,7 +325,7 @@ export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
     title = (sites ? "Delete " : "Remove ") + plural;
   return (
     <>
-      <Back d={sites ? undefined : d} />
+      <Back d={sites ? undefined : d} inAdmin={d.InAdmin} />
       <Head tag={sites ? "Site directory" : "Draft files"} title={title} />
       <PanelSection>
         <Notice text={d.Error} error />
@@ -343,7 +343,9 @@ export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
         </ul>
         <form
           method="post"
-          action={postTarget(sites ? "/sites" : d.Base + "/delete")}
+          action={postTarget(
+            sites ? siteListURL(d.InAdmin) : d.Base + "/delete",
+          )}
         >
           {sites ? (
             <>
@@ -376,7 +378,7 @@ export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
               icon={Trash2}
             />
             <ButtonLink
-              href={sites ? "/sites" : d.Base}
+              href={sites ? siteListURL(d.InAdmin) : d.Base}
               label="Cancel"
               icon={X}
             />

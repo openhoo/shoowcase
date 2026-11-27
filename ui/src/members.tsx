@@ -49,6 +49,7 @@ import {
   role,
 } from "./members-model";
 import { Quotas } from "./members-quotas";
+import { SiteDirectoryTable } from "./sites-directory";
 import {
   Cell,
   Choices,
@@ -402,6 +403,7 @@ function Audit({ p }: { p: MemberData }) {
 const views = [
   ["members", "Members", UserRound],
   ["groups", "Groups", UsersRound],
+  ["sites", "All sites", LayoutGrid],
   ["quotas", "Quotas", Gauge],
   ["settings", "Workspace settings", Settings2],
   ["keys", "Workspace keys", KeyRound],
@@ -455,6 +457,8 @@ function Admin({ p }: { p: MemberData }) {
         <MemberListing p={p} />
       ) : p.View === "groups" ? (
         <Groups p={p} />
+      ) : p.View === "sites" && p.SiteListing ? (
+        <SiteDirectoryTable d={p.SiteListing} />
       ) : p.View === "settings" ? (
         <Settings p={p} />
       ) : p.View === "keys" ? (

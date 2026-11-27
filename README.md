@@ -61,7 +61,7 @@ Development mode uses SQLite in `.shoowcase/`, signs local browsers in as one te
 
 ## Publish from your browser
 
-Open **Sites** to see your workspace’s publishing desk. Search by site name or address, filter by status and audience, and sort by last update or name. Each row shows the file count, when the site changed, and whether the draft differs from the published release.
+Open **Sites** to see sites you created and sites assigned to a group you belong to. Search by site name or address, filter by status and audience, or sort by last update or name. Each row shows the file count, when the site changed, and whether the draft differs from the published release. Administrators can open **Workspace admin → All sites** for the full workspace directory.
 
 Choose **New site**, give it a name, choose its budget group if prompted, and select **Create site**. Then choose how to add your first draft:
 
@@ -104,7 +104,7 @@ Public sharing is disabled by default. If an operator enables it, an agent with 
 | --- | --- |
 | `create_site` | Reserve an address and start an unpublished workspace site. |
 | `list_site_groups` | Find the groups this credential can charge when creating a site; pass the chosen ID as `group_id` to `create_site`. |
-| `list_sites` | Find sites the workspace can access, including ones made in another chat. |
+| `list_sites` | Find sites you created, including in another chat, and sites assigned to your groups. |
 | `get_site` | Inspect the draft, a selected revision, a single file or paginated release history. |
 | `upload_files` | Add, replace or explicitly delete draft files against an expected revision. |
 | `prepare_upload` | Get a five-minute link for one file of a specified size and SHA-256 digest. Upload exact bytes or let a person choose the file in a browser. |

@@ -44,7 +44,7 @@ func TestPublicationGenerationAndAudience(t *testing.T) {
 					t.Fatalf("wrong instance/site audience: %v", m)
 				}
 			}
-			list := mustOp(t, s, denied, reader, "list_sites", args{})["sites"].([]map[string]any)
+			list := mustOp(t, s, denied, Actor{Subject: author.Subject, Workspace: author.Workspace, Role: "reader"}, "list_sites", args{})["sites"].([]map[string]any)
 			if len(list) != 1 {
 				t.Fatal(list)
 			}

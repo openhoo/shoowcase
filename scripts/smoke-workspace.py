@@ -19,6 +19,7 @@ from playwright.async_api import async_playwright, expect
 from bulk_admin_smoke import check_bulk_admin
 from bulk_site_smoke import check_bulk_sites
 from native_handoff_smoke import check_quickstart_handoff, native_page, save_workspace_mode
+from site_lists_smoke import check_site_lists
 from smoke import check
 
 browser_smoke = import_module("smoke-browser")
@@ -565,6 +566,7 @@ async def password_accounts(binary, browser):
             await signin(page, control, first)
             await expect(page.get_by_role("heading", name="Your account")).to_be_visible()
             await expect(page.get_by_role("link", name="Admin", exact=True)).to_have_count(0)
+        await check_site_lists(admin, member, control)
         # A new browser that starts on a private site returns to the exact
         # destination through the password flow. Its site cookie must expire too.
         async with browser_smoke.connect(endpoint, token) as agent:
