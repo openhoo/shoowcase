@@ -13,7 +13,7 @@
 <div><label><input type="checkbox" name="company_proxy" aria-describedby="proxy-help" {{if .CompanyProxy}}checked{{end}}> Use a company proxy</label>
 <p class="muted" id="proxy-help">Choose this if your computer needs a proxy to reach the internet. The installer uses your terminal’s proxy settings or asks for the address locally.</p></div>
 <details><summary>Name this connection (optional)</summary><div class="field"><label for="quick-name">Name in Agent keys</label><input type="text" id="quick-name" name="name" value="{{.NameValue}}" maxlength="80" placeholder="e.g. My work laptop"></div></details>
-<div class="toolbar"><button type="submit">{{template "icon-KeyRound"}}<span class="action-caption">Create key and get command</span></button></div>
+<div class="toolbar"><button type="submit">{{template "icon-KeyRound"}}<span class="action-label">Create key and get command</span></button></div>
 <p class="muted">Does your agent run in the cloud or only accept a server URL? <a href="/keys">Set up a remote HTTP connection instead.</a></p>
 </form>
 {{end}}

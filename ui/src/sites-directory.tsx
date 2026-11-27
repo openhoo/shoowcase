@@ -125,7 +125,7 @@ export function SiteDirectory({ d }: { d: SiteData }) {
       d.C.Actor.Role === "admin" && rows.some((s) => s.DeletionValue);
   const sel = useSelection(rows.map((s) => s.DeletionValue).filter(Boolean));
   const newSite = d.CanEdit && (
-    <ButtonLink action primary href="/sites/new" label="New site" icon={Plus} />
+    <ButtonLink primary href="/sites/new" label="New site" icon={Plus} />
   );
   return (
     <>

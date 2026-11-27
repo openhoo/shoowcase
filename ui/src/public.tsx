@@ -321,6 +321,7 @@ function Password({ p }: { p: PasswordPage }) {
             <div>
               {p.Register ? (
                 <ActionButton
+                  showLabel
                   type="submit"
                   label="Create account"
                   icon={UserRoundPlus}
@@ -409,6 +410,7 @@ function Approval({ p }: { p: ApprovalPage }) {
       <form method="post">
         <input type="hidden" name="csrf" value={p.CSRF} />
         <ActionButton
+          showLabel
           type="submit"
           label="Approve public release"
           icon={Globe2}
@@ -457,7 +459,12 @@ function Upload({ p }: { p: UploadPage }) {
           />
         </div>
         <div>
-          <ActionButton type="submit" label="Upload to draft" icon={FileUp} />
+          <ActionButton
+            showLabel
+            type="submit"
+            label="Upload to draft"
+            icon={FileUp}
+          />
         </div>
       </form>
     </Shell>
