@@ -26,7 +26,7 @@ type consoleContext struct {
 
 //go:embed console.html
 var consoleHTML string
-var frame = template.Must(template.New("console").Parse(consoleHTML))
+var frame = template.Must(webui.NativeTemplate("console").Parse(consoleHTML))
 
 // MarshalJSON limits the browser context to fields used by the control UI.
 func (c consoleContext) MarshalJSON() ([]byte, error) {
@@ -164,6 +164,9 @@ func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Ide
 			limit := int64(16 << 10)
 			if r.URL.Path == "/admin" {
 				// A page of 25 percent-encoded identity-provider subjects plus its review fields.
+				limit = 32 << 10
+			} else if r.URL.Path == "/sites" {
+				// Up to 100 reviewed sites with their draft revision, live revision and release ID.
 				limit = 32 << 10
 			} else if strings.HasPrefix(r.URL.Path, "/sites/") && strings.HasSuffix(r.URL.Path, "/edit") {
 				limit = 2 << 20

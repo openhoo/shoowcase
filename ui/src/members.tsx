@@ -1,3 +1,12 @@
+import { ActionButton, ActionLink } from "@/components/icon-action";
+import {
+  exportCSV,
+  SelectAll,
+  SelectionCount,
+  SelectRow,
+  useSelection,
+} from "@/components/selection";
+import { Input } from "@/components/ui/input";
 import { navigationTarget } from "@/lib/navigation";
 import {
   Activity,
@@ -5,6 +14,7 @@ import {
   Check,
   Download,
   ExternalLink,
+  FileJson,
   Gauge,
   Globe,
   KeyRound,
@@ -18,24 +28,6 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  exportCSV,
-  SelectAll,
-  SelectionCount,
-  SelectRow,
-  useSelection,
-} from "@/components/selection";
-import {
-  ButtonLink,
-  Empty,
-  Head,
-  linkStyle,
-  Notice,
-  panel,
-  toolbar,
-} from "./sites-ui";
 import { Groups, MemberListing } from "./members-directory";
 import {
   KeyList,
@@ -45,14 +37,14 @@ import {
   QuickReady,
   Quickstart,
 } from "./members-keys";
-import { Quotas } from "./members-quotas";
 import {
-  type MemberData,
   type AuditEvent,
   longDate,
+  type MemberData,
   plural,
   role,
 } from "./members-model";
+import { Quotas } from "./members-quotas";
 import {
   Cell,
   Choices,
@@ -71,6 +63,15 @@ import {
   secondaryText,
   stack,
 } from "./members-ui";
+import {
+  ButtonLink,
+  Empty,
+  Head,
+  linkStyle,
+  Notice,
+  panel,
+  toolbar,
+} from "./sites-ui";
 
 function Account({ p }: { p: MemberData }) {
   if (!p.Enrolled)
@@ -119,10 +120,7 @@ function Account({ p }: { p: MemberData }) {
               ["Role", role(p.Role)],
             ]}
           />
-          <Button>
-            <UserRoundPlus aria-hidden="true" />
-            Create account
-          </Button>
+          <ActionButton label="Create account" icon={UserRoundPlus} />
         </Post>
       </>
     );
@@ -140,34 +138,26 @@ function Account({ p }: { p: MemberData }) {
         />
         <div className={toolbar}>
           {p.LocalUser ? (
-            <ButtonLink href="#change-password" primary>
-              <KeyRound aria-hidden="true" />
-              Change password
-            </ButtonLink>
+            <ButtonLink
+              href="#change-password"
+              primary
+              label="Change password"
+              icon={KeyRound}
+            />
           ) : p.OIDCAccountURL ? (
             <ButtonLink
               external
               href={p.OIDCAccountURL}
               rel="noreferrer"
               primary
-            >
-              <ExternalLink aria-hidden="true" />
-              Change password at identity provider
-            </ButtonLink>
+              label="Change password at identity provider"
+              icon={ExternalLink}
+            />
           ) : null}
-          <ButtonLink href="/sites">
-            <LayoutGrid aria-hidden="true" />
-            Open sites
-          </ButtonLink>
-          <ButtonLink href="/keys">
-            <KeyRound aria-hidden="true" />
-            Manage agent keys
-          </ButtonLink>
+          <ButtonLink href="/sites" label="Open sites" icon={LayoutGrid} />
+          <ButtonLink href="/keys" label="Manage agent keys" icon={KeyRound} />
           <Post path="/auth/logout" fields={{ csrf: p.CSRF }}>
-            <Button variant="outline">
-              <LogOut aria-hidden="true" />
-              Sign out
-            </Button>
+            <ActionButton variant="outline" label="Sign out" icon={LogOut} />
           </Post>
         </div>
       </Panel>
@@ -206,10 +196,7 @@ function Account({ p }: { p: MemberData }) {
               />
             </Field>
             <div>
-              <Button>
-                <LockKeyhole aria-hidden="true" />
-                Change password
-              </Button>
+              <ActionButton label="Change password" icon={LockKeyhole} />
             </div>
           </Post>
         </Panel>
@@ -294,10 +281,7 @@ function Settings({ p }: { p: MemberData }) {
           </p>
         </div>
         <div>
-          <Button>
-            <Save aria-hidden="true" />
-            Save workspace settings
-          </Button>
+          <ActionButton label="Save workspace settings" icon={Save} />
         </div>
       </Post>
     </Panel>
@@ -341,9 +325,12 @@ function Audit({ p }: { p: MemberData }) {
           Sign-ins and changes to workspace access, keys, drafts and releases.
           Most recent first.
         </p>
-        <a className={linkStyle} href="/api/audit">
-          Open JSON export
-        </a>
+        <ActionLink
+          variant="ghost"
+          href="/api/audit"
+          label="Open JSON export"
+          icon={FileJson}
+        />
       </div>
       {rows.length > 0 ? (
         <>
@@ -354,17 +341,15 @@ function Audit({ p }: { p: MemberData }) {
           >
             <SelectAll selection={s} />
             <SelectionCount selection={s} />
-            <Button
+            <ActionButton
               type="button"
               variant="outline"
-              size="sm"
               data-selection-export="audit-events"
               disabled={!s.count}
               onClick={download}
-            >
-              <Download aria-hidden="true" />
-              Download selected (CSV)
-            </Button>
+              label="Download selected (CSV)"
+              icon={Download}
+            />
           </div>
           <RecordTable id="activity" columns={["Select", ...cols]}>
             {rows.map((e) => (
@@ -451,20 +436,15 @@ function Admin({ p }: { p: MemberData }) {
         aria-label="Administration views"
       >
         {views.map(([view, title, Icon]) => (
-          <Button
-            asChild
-            variant={p.View === view ? "secondary" : "ghost"}
-            size="sm"
+          <ActionLink
             key={view}
-          >
-            <a
-              href={view === "members" ? "/admin" : "/admin?view=" + view}
-              aria-current={p.View === view ? "page" : undefined}
-            >
-              <Icon aria-hidden="true" />
-              {title}
-            </a>
-          </Button>
+            variant={p.View === view ? "secondary" : "ghost"}
+            className="aria-[current=page]:ring-1 aria-[current=page]:ring-primary"
+            aria-current={p.View === view ? "page" : undefined}
+            href={view === "members" ? "/admin" : "/admin?view=" + view}
+            label={title}
+            icon={Icon}
+          />
         ))}
       </nav>
       {p.View === "members" ? (
@@ -523,7 +503,7 @@ function SelectionReview({ p }: { p: Review }) {
           {p.Selection.IDs.map((id) => (
             <Hidden key={id} fields={{ selected: id }} />
           ))}
-          <Button
+          <ActionButton
             name="confirm"
             value="yes"
             variant={
@@ -531,14 +511,10 @@ function SelectionReview({ p }: { p: Review }) {
                 ? "default"
                 : "destructive"
             }
-          >
-            <Check aria-hidden="true" />
-            {p.Button}
-          </Button>
-          <ButtonLink href={p.Back}>
-            <X aria-hidden="true" />
-            Cancel
-          </ButtonLink>
+            label={p.Button}
+            icon={Check}
+          />
+          <ButtonLink href={p.Back} label="Cancel" icon={X} />
         </Post>
       </section>
     </>
@@ -574,14 +550,18 @@ function ClearReview({
           ))}
         </ul>
         <div className={toolbar}>
-          <Button variant="destructive" name="confirm" value="yes">
-            <Check aria-hidden="true" />
-            {p.Title}
-          </Button>
-          <ButtonLink href={"/admin?view=quotas#" + p.Cancel}>
-            <X aria-hidden="true" />
-            Cancel
-          </ButtonLink>
+          <ActionButton
+            variant="destructive"
+            name="confirm"
+            value="yes"
+            label={p.Title}
+            icon={Check}
+          />
+          <ButtonLink
+            href={"/admin?view=quotas#" + p.Cancel}
+            label="Cancel"
+            icon={X}
+          />
         </div>
       </Post>
     </section>
@@ -625,10 +605,11 @@ export function Members({ page }: { page: any }) {
         <section className={panel}>
           <Head tag="Workspace admin" title={p.Title} />
           <p>{p.Detail}</p>
-          <ButtonLink href={p.Back ?? "/admin?view=quotas"}>
-            <ArrowLeft aria-hidden="true" />
-            {p.Back ? "Back to directory" : "Back to quotas"}
-          </ButtonLink>
+          <ButtonLink
+            href={p.Back ?? "/admin?view=quotas"}
+            label={p.Back ? "Back to directory" : "Back to quotas"}
+            icon={ArrowLeft}
+          />
         </section>
       );
       break;

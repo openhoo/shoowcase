@@ -1,8 +1,8 @@
-import { postTarget, navigationTarget } from "@/lib/navigation";
-import { FileUp, FolderPlus, History, Save, Trash2, X } from "lucide-react";
+import { ActionButton } from "@/components/icon-action";
 import { PanelSection } from "@/components/panel-section";
+import { navigationTarget, postTarget } from "@/lib/navigation";
+import { FileUp, FolderPlus, History, Save, Trash2, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { SiteData } from "./sites-model";
@@ -89,14 +89,12 @@ export function CreateSite({ d }: { d: SiteData }) {
               />
             </Field>
             <div className={toolbar}>
-              <Button type="submit">
-                <FolderPlus aria-hidden="true" />
-                Create site
-              </Button>
-              <ButtonLink href="/sites">
-                <X aria-hidden="true" />
-                Cancel
-              </ButtonLink>
+              <ActionButton
+                type="submit"
+                label="Create site"
+                icon={FolderPlus}
+              />
+              <ButtonLink href="/sites" label="Cancel" icon={X} />
             </div>
           </form>
         ) : (
@@ -175,14 +173,8 @@ export function FileEditor({ d }: { d: SiteData }) {
             />
           </Field>
           <div className={toolbar}>
-            <Button type="submit">
-              <Save aria-hidden="true" />
-              Save file
-            </Button>
-            <ButtonLink href={d.Base}>
-              <X aria-hidden="true" />
-              Cancel
-            </ButtonLink>
+            <ActionButton type="submit" label="Save file" icon={Save} />
+            <ButtonLink href={d.Base} label="Cancel" icon={X} />
           </div>
         </form>
       </PanelSection>
@@ -259,14 +251,12 @@ export function UploadSiteFile({ d }: { d: SiteData }) {
             </Field>
           )}
           <div className={toolbar}>
-            <Button type="submit">
-              <FileUp aria-hidden="true" />
-              {zip ? "Import files" : "Upload to draft"}
-            </Button>
-            <ButtonLink href={d.Base}>
-              <X aria-hidden="true" />
-              Cancel
-            </ButtonLink>
+            <ActionButton
+              type="submit"
+              label={zip ? "Import files" : "Upload to draft"}
+              icon={FileUp}
+            />
+            <ButtonLink href={d.Base} label="Cancel" icon={X} />
           </div>
         </form>
       </PanelSection>
@@ -277,7 +267,7 @@ export function UploadSiteFile({ d }: { d: SiteData }) {
 export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
   const selected = d.Selected || [],
     labels = sites ? d.Labels || [] : d.Paths || [];
-  const noun = sites ? "draft site" : "file",
+  const noun = sites ? "site" : "file",
     plural = noun + (labels.length === 1 ? "" : "s"),
     title = (sites ? "Delete " : "Remove ") + plural;
   return (
@@ -288,7 +278,7 @@ export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
         <Notice text={d.Error} error />
         <p>
           {sites
-            ? "Deleting these drafts permanently removes all their files, previews and saved revisions. Their addresses remain reserved. This cannot be undone."
+            ? "Deleting a site takes it offline and permanently removes its files, previews, saved revisions and releases. Its address stays reserved. This cannot be undone."
             : `Remove the following ${plural} from the draft? Published releases will keep their copies.`}
         </p>
         <ul className="list-disc space-y-1 pl-5">
@@ -308,9 +298,9 @@ export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
               <Hidden name="action" value="delete-sites" />
               {selected.map((s) => (
                 <Hidden
-                  key={s.Site}
+                  key={s.DeletionValue}
                   name="site"
-                  value={s.Site + ":" + s.Revision}
+                  value={s.DeletionValue}
                 />
               ))}
             </>
@@ -324,19 +314,19 @@ export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
           )}
           <Hidden name="proof" value={d.ReviewProof} />
           <div className={toolbar}>
-            <Button
+            <ActionButton
               type="submit"
               variant="destructive"
               name="confirm"
               value={sites ? "delete" : "remove"}
-            >
-              <Trash2 aria-hidden="true" />
-              {title}
-            </Button>
-            <ButtonLink href={sites ? "/sites" : d.Base}>
-              <X aria-hidden="true" />
-              Cancel
-            </ButtonLink>
+              label={title}
+              icon={Trash2}
+            />
+            <ButtonLink
+              href={sites ? "/sites" : d.Base}
+              label="Cancel"
+              icon={X}
+            />
           </div>
         </form>
       </PanelSection>
@@ -367,14 +357,12 @@ export function RestoreRelease({ d }: { d: SiteData }) {
           <Hidden name="release" value={d.RestoreID} />
           <Hidden name="current" value={d.S?.ReleaseID || ""} />
           <div className={toolbar}>
-            <Button type="submit">
-              <History aria-hidden="true" />
-              Restore release
-            </Button>
-            <ButtonLink href={d.Base}>
-              <X aria-hidden="true" />
-              Cancel
-            </ButtonLink>
+            <ActionButton
+              type="submit"
+              label="Restore release"
+              icon={History}
+            />
+            <ButtonLink href={d.Base} label="Cancel" icon={X} />
           </div>
         </form>
       </PanelSection>

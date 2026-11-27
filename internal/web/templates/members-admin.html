@@ -2,7 +2,7 @@
 <header class="desk-head"><div><p class="eyebrow">Workspace <span aria-hidden="true">/</span> {{.Workspace}}</p><h1>Workspace admin</h1></div></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 <dl class="desk-stats admin-stats" aria-label="Workspace totals"><div><dt>Members</dt><dd><strong>{{.Stats.Members}}</strong></dd></div><div><dt>Sites</dt><dd><strong>{{.Stats.Sites}}</strong></dd></div><div><dt>Active keys</dt><dd><strong>{{.Stats.ActiveKeys}}</strong></dd></div></dl>
-<nav class="toolbar admin-views" aria-label="Administration views"><a href="/admin"{{if eq .View "members"}} aria-current="page"{{end}}>Members</a><a href="/admin?view=groups"{{if eq .View "groups"}} aria-current="page"{{end}}>Groups</a><a href="/admin?view=quotas"{{if eq .View "quotas"}} aria-current="page"{{end}}>Quotas</a><a href="/admin?view=settings"{{if eq .View "settings"}} aria-current="page"{{end}}>Workspace settings</a><a href="/admin?view=keys"{{if eq .View "keys"}} aria-current="page"{{end}}>Workspace keys</a><a href="/admin?view=activity"{{if eq .View "activity"}} aria-current="page"{{end}}>Activity</a></nav>
+<nav class="toolbar admin-views" aria-label="Administration views"><a href="/admin"{{if eq .View "members"}} aria-current="page"{{end}}>{{template "icon-UserRound"}}<span class="action-caption">Members</span></a><a href="/admin?view=groups"{{if eq .View "groups"}} aria-current="page"{{end}}>{{template "icon-UsersRound"}}<span class="action-caption">Groups</span></a><a href="/admin?view=quotas"{{if eq .View "quotas"}} aria-current="page"{{end}}>{{template "icon-Gauge"}}<span class="action-caption">Quotas</span></a><a href="/admin?view=settings"{{if eq .View "settings"}} aria-current="page"{{end}}>{{template "icon-Settings"}}<span class="action-caption">Workspace settings</span></a><a href="/admin?view=keys"{{if eq .View "keys"}} aria-current="page"{{end}}>{{template "icon-KeyRound"}}<span class="action-caption">Workspace keys</span></a><a href="/admin?view=activity"{{if eq .View "activity"}} aria-current="page"{{end}}>{{template "icon-Activity"}}<span class="action-caption">Activity</span></a></nav>
 {{if eq .View "members"}}
 {{if .Member}}
 <p><a href="/admin">← All members</a></p>
@@ -11,10 +11,10 @@
 {{if .Manage}}<p>Sign-in role: {{role .IdentityRole}}. {{if eq .IdentityRole "admin"}}Your identity provider manages this role.{{else}}Role limit: {{role .Ceiling}}.{{end}}</p>
 {{if ne .IdentityRole "admin"}}<form class="stack" method="post" action="/admin"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="role"><input type="hidden" name="subject" value="{{.Subject}}"><input type="hidden" name="expected_ceiling" value="{{.Ceiling}}"><input type="hidden" name="expected_disabled" value="{{.Disabled}}">
 <div class="field"><label for="ceiling-member">Role limit for {{.DisplayName}}</label><div class="select-wrap"><select name="ceiling" id="ceiling-member" aria-describedby="role-help-member"><option value=""{{if eq .Ceiling ""}} selected{{end}}>Use sign-in role</option>{{range .Ceilings}}<option value="{{.}}"{{if eq $.Member.Ceiling .}} selected{{end}}>{{role .}}</option>{{end}}</select></div><small id="role-help-member">A limit can only reduce the access granted at sign-in.</small></div>
-<div><button type="submit" class="secondary">Save role limit</button></div></form>{{end}}
+<div><button type="submit" class="secondary">{{template "icon-Save"}}<span class="action-caption">Save role limit</span></button></div></form>{{end}}
 <form method="post" action="/admin" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="subject" value="{{.Subject}}"><input type="hidden" name="expected_ceiling" value="{{.Ceiling}}"><input type="hidden" name="expected_disabled" value="{{.Disabled}}">
-{{if .Disabled}}<input type="hidden" name="action" value="restore"><p>Restoring access lets this member sign in again. Their revoked keys stay inactive.</p><div><button type="submit">Restore access</button></div>
-{{else}}<input type="hidden" name="action" value="suspend"><label><input type="checkbox" name="confirm" value="yes" required> Suspend this member and revoke all their keys.</label><div><button class="danger" type="submit">Suspend member</button></div>{{end}}</form>
+{{if .Disabled}}<input type="hidden" name="action" value="restore"><p>Restoring access lets this member sign in again. Their revoked keys stay inactive.</p><div><button type="submit">{{template "icon-UserCheck"}}<span class="action-caption">Restore access</span></button></div>
+{{else}}<input type="hidden" name="action" value="suspend"><label><input type="checkbox" name="confirm" value="yes" required> Suspend this member and revoke all their keys.</label><div><button class="danger" type="submit">{{template "icon-UserRoundX"}}<span class="action-caption">Suspend member</span></button></div>{{end}}</form>
 {{else}}<p>This is your account. <a href="/account">Open account settings</a></p>{{end}}{{end}}
 </section>
 {{else}}
@@ -22,11 +22,11 @@
 <input type="hidden" name="action" value="create-local"><input type="hidden" name="csrf" value="{{.CSRF}}">
 <label class="field">Username<input required name="username" autocomplete="off" spellcheck="false" minlength="3" maxlength="64"></label><small>Use 3–64 letters, numbers, periods, underscores or hyphens. Start with a letter or number.</small>
 <label class="field">Starting password<input type="password" name="password" required minlength="12" autocomplete="new-password"></label><small>Use at least 12 characters. Share the password privately. The member can change it under Account.</small>
-<label class="field">Sign-in role<select name="role"><option value="reader">Viewer</option><option value="editor">Editor</option><option value="publisher">Publisher</option></select></label><div><button>Create password account</button></div></form></details>{{end}}
+<label class="field">Sign-in role<select name="role"><option value="reader">Viewer</option><option value="editor">Editor</option><option value="publisher">Publisher</option></select></label><div><button>{{template "icon-UserPlus"}}<span class="action-caption">Create password account</span></button></div></form></details>{{end}}
 <details><summary>Add a member</summary><form class="stack" method="post" action="/admin"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="provision">
 <p>Use the person’s exact subject ID from your identity provider. They must sign in to this workspace to use the account.</p>
 <div class="field"><label for="member-subject">Sign-in ID</label><input id="member-subject" name="subject" required maxlength="255"></div>
-<div class="field"><label for="member-name">Display name</label><input id="member-name" name="display_name" required maxlength="80"></div><div><button>Add member</button></div></form></details>
+<div class="field"><label for="member-name">Display name</label><input id="member-name" name="display_name" required maxlength="80"></div><div><button>{{template "icon-UserPlus"}}<span class="action-caption">Add member</span></button></div></form></details>
 </div>
 {{template "member-directory" .}}
 {{end}}

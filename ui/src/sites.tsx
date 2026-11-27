@@ -1,6 +1,5 @@
-import type { SiteData } from "./sites-model";
-import { SiteDirectory } from "./sites-directory";
 import { SiteDetail } from "./sites-detail";
+import { SiteDirectory } from "./sites-directory";
 import {
   ConfirmDelete,
   CreateSite,
@@ -8,6 +7,7 @@ import {
   RestoreRelease,
   UploadSiteFile,
 } from "./sites-forms";
+import type { SiteData } from "./sites-model";
 
 const views = {
   list: SiteDirectory,

@@ -1,14 +1,20 @@
-import { navigationTarget } from "@/lib/navigation";
-import { RotateCcw, Save, Unlink, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ActionButton, ActionLink } from "@/components/icon-action";
 import { SelectRow, useSelection } from "@/components/selection";
-import { ButtonLink, Empty, linkStyle, toolbar } from "./sites-ui";
+import { Input } from "@/components/ui/input";
+import { navigationTarget } from "@/lib/navigation";
+import {
+  RotateCcw,
+  Save,
+  SlidersHorizontal,
+  Unlink,
+  UsersRound,
+  X,
+} from "lucide-react";
 import {
   type Budget,
-  type SiteQuota,
   type MemberData,
   type Resource,
+  type SiteQuota,
   plural,
   urlValue,
 } from "./members-model";
@@ -29,6 +35,7 @@ import {
   secondaryText,
   stack,
 } from "./members-ui";
+import { ButtonLink, Empty, linkStyle, toolbar } from "./sites-ui";
 
 const units = [
   ["GiB", 2 ** 30],
@@ -138,15 +145,13 @@ function BudgetEditor({ b, cap }: { b: Budget; cap: number }) {
         </Field>
       </div>
       <div className={toolbar}>
-        <Button>
-          <Save aria-hidden="true" />
-          Save limits
-        </Button>
+        <ActionButton label="Save limits" icon={Save} />
         {!b.Workspace && (
-          <ButtonLink href={"/admin?view=quotas#budget-" + urlValue(b.ID)}>
-            <X aria-hidden="true" />
-            Cancel
-          </ButtonLink>
+          <ButtonLink
+            href={"/admin?view=quotas#budget-" + urlValue(b.ID)}
+            label="Cancel"
+            icon={X}
+          />
         )}
       </div>
     </Post>
@@ -159,25 +164,21 @@ function ClearButton({
   action,
   row,
   label,
-  children,
 }: {
   p: MemberData;
   action: string;
   row: Budget | SiteQuota;
   label: string;
-  children: string;
 }) {
   return (
     <Post fields={{ csrf: p.CSRF, action }}>
-      <Button
-        size="sm"
+      <ActionButton
         variant="outline"
         name="selected"
         value={selectId(row)}
-        aria-label={label}
-      >
-        {children}
-      </Button>
+        label={label}
+        icon={action === "clear-group-limits" ? RotateCcw : Unlink}
+      />
     </Post>
   );
 }
@@ -210,10 +211,11 @@ function GroupQuotas({ p }: { p: MemberData }) {
           fields={{ csrf: p.CSRF, action: "clear-group-limits" }}
           selection={s}
         >
-          <BulkButton disabled={!s.count}>
-            <RotateCcw aria-hidden="true" />
-            Clear selected limits
-          </BulkButton>
+          <BulkButton
+            disabled={!s.count}
+            label="Clear selected limits"
+            icon={RotateCcw}
+          />
         </BulkForm>
       )}
       {groups.length > 0 ? (
@@ -259,26 +261,23 @@ function GroupQuotas({ p }: { p: MemberData }) {
               </Cell>
               <Cell>
                 <div className={toolbar}>
-                  <a
-                    className={linkStyle}
+                  <ActionLink
+                    variant="ghost"
                     href={
                       "/admin?view=quotas&budget=" +
                       urlValue(g.ID) +
                       "#budget-editor"
                     }
-                    aria-label={"Edit limits for " + g.Name}
-                  >
-                    Edit limits
-                  </a>
+                    label={"Edit limits for " + g.Name}
+                    icon={SlidersHorizontal}
+                  />
                   {hasLimit(g) && (
                     <ClearButton
                       p={p}
                       row={g}
                       action="clear-group-limits"
                       label={"Clear limits for " + g.Name}
-                    >
-                      Clear limits
-                    </ClearButton>
+                    />
                   )}
                 </div>
               </Cell>
@@ -344,14 +343,12 @@ function Assignments({ p }: { p: MemberData }) {
             />
           </Field>
           <div className={toolbar}>
-            <Button>
-              <Save aria-hidden="true" />
-              Save assignment
-            </Button>
-            <ButtonLink href="/admin?view=quotas#site-assignments">
-              <X aria-hidden="true" />
-              Cancel
-            </ButtonLink>
+            <ActionButton label="Save assignment" icon={Save} />
+            <ButtonLink
+              href="/admin?view=quotas#site-assignments"
+              label="Cancel"
+              icon={X}
+            />
           </div>
         </Post>
       )}
@@ -361,10 +358,11 @@ function Assignments({ p }: { p: MemberData }) {
           fields={{ csrf: p.CSRF, action: "clear-site-assignments" }}
           selection={s}
         >
-          <BulkButton disabled={!s.count}>
-            <Unlink aria-hidden="true" />
-            Remove selected assignments
-          </BulkButton>
+          <BulkButton
+            disabled={!s.count}
+            label="Remove selected assignments"
+            icon={Unlink}
+          />
         </BulkForm>
       )}
       {sites.length > 0 ? (
@@ -406,26 +404,23 @@ function Assignments({ p }: { p: MemberData }) {
               <Cell label="Revision storage">{bytes(site.Bytes)}</Cell>
               <Cell>
                 <div className={toolbar}>
-                  <a
-                    className={linkStyle}
+                  <ActionLink
+                    variant="ghost"
                     href={
                       "/admin?view=quotas&site=" +
                       urlValue(site.ID) +
                       "#assignment"
                     }
-                    aria-label={"Change group for " + site.Name}
-                  >
-                    Change group
-                  </a>
+                    label={"Change group for " + site.Name}
+                    icon={UsersRound}
+                  />
                   {site.GroupID && (
                     <ClearButton
                       p={p}
                       row={site}
                       action="clear-site-assignments"
                       label={"Remove assignment for " + site.Name}
-                    >
-                      Remove assignment
-                    </ClearButton>
+                    />
                   )}
                 </div>
               </Cell>

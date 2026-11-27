@@ -45,7 +45,7 @@ An existing personal key does not contact the identity provider on every request
 
 Take a restorable backup and stop all older writers **before** starting this version. Older running processes do not honor reserved addresses or coordinate with draft deletion. Rehearse the upgrade with the [restore drill](restore-drill.md). Schema 7 reserves existing site addresses and indexes file digests. Allow time and disk space to build this index. To downgrade, restore the pre-upgrade snapshot.
 
-Workspace administrators can permanently delete never-published sites from **Sites**. This removes all their revisions and previews, releases their quota, and removes stored file contents when no other revision uses them. Site addresses stay reserved. Audit records and backups retain their normal lifetimes. A site with any release, including an offline site, keeps its history.
+Workspace administrators can permanently delete any site, including a public, workspace-only, or offline site. In **Sites**, use the trash icon on a row or select several sites and use the trash icon above the list. Review the names and publication states before confirming. Deletion immediately stops live and preview delivery, removes release history and saved revisions, and frees quota. Shared file contents stay available to other sites, and deleted addresses remain reserved. Audit records and backups keep their normal retention. To take a site offline while preserving its history, change its audience to **Offline** instead.
 
 ## Upgrade to schema 6
 

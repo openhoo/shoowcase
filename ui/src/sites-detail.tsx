@@ -1,29 +1,31 @@
+import { ActionButton, ActionLink } from "@/components/icon-action";
+import { PanelSection } from "@/components/panel-section";
+import {
+  Cell,
+  NameCell,
+  PickCell,
+  RecordRow,
+  RecordTable,
+} from "@/components/record-table";
 import { postTarget } from "@/lib/navigation";
 import {
   Archive,
+  CloudUpload,
   Download,
   ExternalLink,
   Eye,
+  History,
   Plus,
   ShieldCheck,
   Trash2,
   Upload,
 } from "lucide-react";
-import {
-  RecordTable,
-  RecordRow,
-  NameCell,
-  Cell,
-  PickCell,
-} from "@/components/record-table";
-import { PanelSection } from "@/components/panel-section";
 
-import { Button } from "@/components/ui/button";
 import {
-  exportCSV,
   SelectAll,
   SelectRow,
   SelectionCount,
+  exportCSV,
   useSelection,
 } from "@/components/selection";
 import {
@@ -76,18 +78,22 @@ function DraftFiles({ d }: { d: SiteData }) {
       )}
       {d.CanEdit && (
         <div className={toolbar}>
-          <ButtonLink primary href={d.Base + "/edit"}>
-            <Plus aria-hidden="true" />
-            New file
-          </ButtonLink>
-          <ButtonLink href={d.Base + "/upload"}>
-            <Upload aria-hidden="true" />
-            Upload file
-          </ButtonLink>
-          <ButtonLink href={d.Base + "/import"}>
-            <Archive aria-hidden="true" />
-            Import ZIP
-          </ButtonLink>
+          <ButtonLink
+            primary
+            href={d.Base + "/edit"}
+            label="New file"
+            icon={Plus}
+          />
+          <ButtonLink
+            href={d.Base + "/upload"}
+            label="Upload file"
+            icon={Upload}
+          />
+          <ButtonLink
+            href={d.Base + "/import"}
+            label="Import ZIP"
+            icon={Archive}
+          />
         </div>
       )}
       {rows.length > 0 ? (
@@ -105,16 +111,15 @@ function DraftFiles({ d }: { d: SiteData }) {
               <div className={toolbar}>
                 <SelectAll selection={sel} label="Select all on this page" />
                 <SelectionCount selection={sel} />
-                <Button
+                <ActionButton
                   type="submit"
                   variant="outline"
                   className="text-destructive"
                   form="delete-files-selection"
                   disabled={!sel.count}
-                >
-                  <Trash2 aria-hidden="true" />
-                  Remove selected files…
-                </Button>
+                  label="Remove selected files…"
+                  icon={Trash2}
+                />
               </div>
             </>
           )}
@@ -159,21 +164,15 @@ function DraftFiles({ d }: { d: SiteData }) {
                 <Cell label="Size">{humanBytes(f.size)}</Cell>
                 {d.CanEdit && (
                   <Cell>
-                    <Button
-                      asChild
-                      size="sm"
+                    <ActionLink
                       variant="ghost"
                       className="text-destructive"
-                    >
-                      <a
-                        href={
-                          d.Base + "/delete?path=" + encodeURIComponent(f.path)
-                        }
-                        aria-label={"Remove " + f.path}
-                      >
-                        Remove…
-                      </a>
-                    </Button>
+                      href={
+                        d.Base + "/delete?path=" + encodeURIComponent(f.path)
+                      }
+                      label={"Remove " + f.path}
+                      icon={Trash2}
+                    />
                   </Cell>
                 )}
               </RecordRow>
@@ -240,10 +239,12 @@ function SiteAccess({ d }: { d: SiteData }) {
               options={options}
             />
           </Field>
-          <Button type="submit" variant="outline">
-            <ShieldCheck aria-hidden="true" />
-            Update access
-          </Button>
+          <ActionButton
+            type="submit"
+            variant="outline"
+            label="Update access"
+            icon={ShieldCheck}
+          />
         </form>
       )}
     </PanelSection>
@@ -280,15 +281,14 @@ function Releases({ d }: { d: SiteData }) {
           <div className={toolbar}>
             <SelectAll selection={sel} label="Select all on this page" />
             <SelectionCount selection={sel} />
-            <Button
+            <ActionButton
               type="button"
               variant="outline"
               onClick={download}
               disabled={!sel.count}
-            >
-              <Download aria-hidden="true" />
-              Download selected (CSV)
-            </Button>
+              label="Download selected (CSV)"
+              icon={Download}
+            />
           </div>
           <RecordTable
             id="releases-title"
@@ -324,19 +324,18 @@ function Releases({ d }: { d: SiteData }) {
                 {d.CanPublish && (
                   <Cell>
                     {r.release_id !== current && (
-                      <a
-                        className={linkStyle}
+                      <ActionLink
+                        variant="ghost"
                         href={
                           d.Base +
                           "/rollback?release=" +
                           encodeURIComponent(r.release_id)
                         }
-                        aria-label={
+                        label={
                           "Review restore of revision " + shortID(r.revision)
                         }
-                      >
-                        Restore…
-                      </a>
+                        icon={History}
+                      />
                     )}
                   </Cell>
                 )}
@@ -385,24 +384,44 @@ export function SiteDetail({ d }: { d: SiteData }) {
       </Head>
       <div className={toolbar}>
         {d.HasIndex && (
-          <ButtonLink external href={d.PreviewURL}>
-            <Eye aria-hidden="true" />
-            Preview draft
-          </ButtonLink>
+          <ButtonLink
+            external
+            href={d.PreviewURL}
+            label="Preview draft"
+            icon={Eye}
+          />
         )}
         {s.ReleaseID && s.Visibility !== "offline" && (
-          <ButtonLink external href={d.SiteURL}>
-            <ExternalLink aria-hidden="true" />
-            Open live site
-          </ButtonLink>
+          <ButtonLink
+            external
+            href={d.SiteURL}
+            label="Open live site"
+            icon={ExternalLink}
+          />
         )}
         {d.CanPublish && d.HasIndex && s.LiveRevision !== s.Revision && (
           <form method="post" action={postTarget(d.Base + "/publish")}>
             <Write d={d} />
-            <Button type="submit">
-              <Upload aria-hidden="true" />
-              Publish draft
-            </Button>
+            <ActionButton
+              type="submit"
+              label="Publish draft"
+              icon={CloudUpload}
+            />
+          </form>
+        )}
+        {d.DeletionValue && d.C.Actor.Role === "admin" && (
+          <form method="post" action="/sites">
+            <Token d={d} />
+            <Hidden name="action" value="review-delete-sites" />
+            <ActionButton
+              type="submit"
+              variant="outline"
+              className="text-destructive"
+              name="site"
+              value={d.DeletionValue}
+              label="Delete site"
+              icon={Trash2}
+            />
           </form>
         )}
       </div>

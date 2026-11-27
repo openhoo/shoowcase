@@ -76,7 +76,7 @@ Choose **Preview draft**. When you’re ready, choose **Publish draft**. Use **A
   <img src="docs/media/workspace.png" alt="Shoowcase publishing desk with search and filters, showing site names, release status, audience, file counts and recent changes." width="1120">
 </picture>
 
-The management interface uses React, Tailwind CSS and shadcn/ui. Search and filter the directories, select visible rows, then review exactly which items a bulk action will change. Audit events and release history support selection for CSV export. Password settings are under **Account**. To build the interface locally, see [the UI guide](ui/README.md).
+The management interface uses React, Tailwind CSS and shadcn/ui. Action buttons use icons; hover or focus to see their names. Search and filter the directories, select visible rows, then review exactly which items a bulk action will change. Workspace administrators can delete draft, published, or offline sites. Deletion also removes release history and disables the live address and previews. Audit events and release history support selection for CSV export. Password settings are under **Account**. To build the interface locally, see [the UI guide](ui/README.md).
 
 ### Give a project a budget
 

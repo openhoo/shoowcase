@@ -1,25 +1,33 @@
-import { navigationTarget } from "@/lib/navigation";
-import { Folder, ListFilter, Plus, Search, Trash2 } from "lucide-react";
-import {
-  RecordTable,
-  RecordRow,
-  NameCell,
-  Cell,
-  PickCell,
-} from "@/components/record-table";
+import { ActionButton, ActionLink } from "@/components/icon-action";
 import { PanelSection } from "@/components/panel-section";
+import {
+  Cell,
+  NameCell,
+  PickCell,
+  RecordRow,
+  RecordTable,
+} from "@/components/record-table";
+import { navigationTarget } from "@/lib/navigation";
+import {
+  Folder,
+  ListFilter,
+  ListRestart,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 
 import { useState } from "react";
 
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
   SelectAll,
   SelectRow,
   SelectionCount,
   useSelection,
 } from "@/components/selection";
-import type { SiteData, SiteEntry } from "./sites-model";
+import { Input } from "@/components/ui/input";
+import type { SiteData } from "./sites-model";
 import {
   ButtonLink,
   Empty,
@@ -53,7 +61,6 @@ const sorts = [
   ["name", "Name A–Z"],
   ["oldest", "Oldest first"],
 ] as const;
-const target = (site: SiteEntry) => site.ID + ":" + site.DraftRevision;
 
 function SiteFilters({ d, open }: { d: SiteData; open: boolean }) {
   const f = d.Directory;
@@ -100,10 +107,12 @@ function SiteFilters({ d, open }: { d: SiteData; open: boolean }) {
           </Field>
         ))}
       </div>
-      <Button type="submit" variant="outline">
-        <ListFilter aria-hidden="true" />
-        Apply filters
-      </Button>
+      <ActionButton
+        type="submit"
+        variant="outline"
+        label="Apply filters"
+        icon={ListFilter}
+      />
     </form>
   );
 }
@@ -112,14 +121,11 @@ export function SiteDirectory({ d }: { d: SiteData }) {
   const [open, setOpen] = useState(false),
     f = d.Directory,
     rows = f.Sites || [],
-    canDeleteDrafts =
-      d.C.Actor.Role === "admin" && rows.some((s) => s.DraftRevision);
-  const sel = useSelection(rows.filter((s) => s.DraftRevision).map(target));
+    canDeleteSites =
+      d.C.Actor.Role === "admin" && rows.some((s) => s.DeletionValue);
+  const sel = useSelection(rows.map((s) => s.DeletionValue).filter(Boolean));
   const newSite = d.CanEdit && (
-    <ButtonLink primary href="/sites/new">
-      <Plus aria-hidden="true" />
-      New site
-    </ButtonLink>
+    <ButtonLink primary href="/sites/new" label="New site" icon={Plus} />
   );
   return (
     <>
@@ -160,23 +166,25 @@ export function SiteDirectory({ d }: { d: SiteData }) {
             {f.MatchCount} {f.MatchCount === 1 ? "site" : "sites"}
             {f.Filtered ? " of " + f.Total : ""}
           </span>
-          <Button
+          <ActionButton
             className="md:hidden"
             type="button"
             variant="outline"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
             aria-controls="directory-options"
-          >
-            <ListFilter aria-hidden="true" />
-            Filter and sort
-          </Button>
+            label="Filter and sort"
+            icon={SlidersHorizontal}
+          />
         </div>
         <SiteFilters d={d} open={open} />
         {f.Filtered && (
-          <a className={linkStyle} href="/sites">
-            Reset filters
-          </a>
+          <ActionLink
+            variant="ghost"
+            href="/sites"
+            label="Reset filters"
+            icon={ListRestart}
+          />
         )}
         {!rows.length ? (
           f.Total ? (
@@ -197,7 +205,7 @@ export function SiteDirectory({ d }: { d: SiteData }) {
           )
         ) : (
           <>
-            {canDeleteDrafts && (
+            {canDeleteSites && (
               <>
                 <form id="delete-sites-selection" method="post" action="/sites">
                   <Token d={d} />
@@ -211,45 +219,44 @@ export function SiteDirectory({ d }: { d: SiteData }) {
                 >
                   <SelectAll selection={sel} label="Select all on this page" />
                   <SelectionCount selection={sel} />
-                  <Button
+                  <ActionButton
                     type="submit"
                     variant="outline"
                     className="text-destructive"
                     form="delete-sites-selection"
                     disabled={!sel.count}
-                  >
-                    <Trash2 aria-hidden="true" />
-                    Delete selected drafts…
-                  </Button>
+                    label="Delete selected sites…"
+                    icon={Trash2}
+                  />
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Only never-published drafts can be deleted. To take a released
-                  site offline, open its Access settings.
+                  Deletion removes the selected sites, including their live
+                  releases. You can review the selection before confirming.
                 </p>
               </>
             )}
             <RecordTable
               id="directory-title"
               columns={[
-                ...(canDeleteDrafts ? ["Select"] : []),
+                ...(canDeleteSites ? ["Select"] : []),
                 "Site",
                 "Status",
                 "Audience",
                 "Files",
                 "Last updated",
-                ...(canDeleteDrafts ? ["Actions"] : []),
+                ...(canDeleteSites ? ["Actions"] : []),
               ]}
             >
               {rows.map((s) => (
                 <RecordRow key={s.ID}>
-                  {canDeleteDrafts && (
+                  {canDeleteSites && (
                     <PickCell>
-                      {s.DraftRevision && (
+                      {s.DeletionValue && (
                         <SelectRow
                           selection={sel}
-                          id={target(s)}
+                          id={s.DeletionValue}
                           name="site"
-                          label={`Select draft ${s.Name} (${s.ID})`}
+                          label={`Select site ${s.Name} (${s.ID})`}
                           form="delete-sites-selection"
                         />
                       )}
@@ -287,29 +294,22 @@ export function SiteDirectory({ d }: { d: SiteData }) {
                   <Cell label="Updated">
                     <time dateTime={s.Updated}>{s.UpdatedLabel}</time>
                   </Cell>
-                  {canDeleteDrafts && (
+                  {canDeleteSites && (
                     <Cell>
-                      {s.DraftRevision ? (
+                      {s.DeletionValue && (
                         <form method="post" action="/sites">
                           <Token d={d} />
                           <Hidden name="action" value="review-delete-sites" />
-                          <Button
-                            size="sm"
+                          <ActionButton
                             variant="ghost"
                             className="text-destructive"
                             type="submit"
                             name="site"
-                            value={target(s)}
-                            aria-label={`Delete draft ${s.Name} (${s.ID})`}
-                          >
-                            <Trash2 aria-hidden="true" />
-                            Delete…
-                          </Button>
+                            value={s.DeletionValue}
+                            label={`Delete site ${s.Name} (${s.ID})`}
+                            icon={Trash2}
+                          />
                         </form>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Release kept
-                        </span>
                       )}
                     </Cell>
                   )}

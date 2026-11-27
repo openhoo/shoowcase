@@ -5,14 +5,30 @@ import (
 	"database/sql"
 )
 
-type DraftSelection struct {
+type SiteSelection struct {
 	Site, Revision string
 }
 
-// A release protects the site's entire history, including when delivery is offline.
-func selectedDrafts(ctx context.Context, tx *sql.Tx, a Actor, selected []DraftSelection) ([]record, error) {
+// The generation detects even a change of access or rollback that later
+// restores exactly the same live release.
+type SiteDeletionState struct {
+	SiteSelection
+	Live, Release, Visibility string
+	Generation                int64
+}
+
+type ReviewedSite struct {
+	SiteDeletionState
+	Name string
+}
+
+func deletionState(r record) SiteDeletionState {
+	return SiteDeletionState{SiteSelection{r.site, r.draft}, r.live, r.release, r.visibility, r.generation}
+}
+
+func selectedSites(ctx context.Context, tx *sql.Tx, a Actor, selected []SiteSelection) ([]record, error) {
 	if len(selected) == 0 || len(selected) > MaxSitesPerWorkspace {
-		return nil, bad("Select between 1 and 100 draft sites.")
+		return nil, bad("Select between 1 and 100 sites.")
 	}
 	records := make([]record, 0, len(selected))
 	seen := make(map[string]bool, len(selected))
@@ -25,42 +41,51 @@ func selectedDrafts(ctx context.Context, tx *sql.Tx, a Actor, selected []DraftSe
 		if err != nil {
 			return nil, err
 		}
-		if r.draft != x.Revision || r.live != "" || r.release != "" {
-			return nil, conflict("A selected site changed or has a release. Reload the directory and review the selection.")
+		if r.draft != x.Revision {
+			return nil, conflict("A selected draft changed. Reload the directory and review the selection.")
 		}
 		records = append(records, r)
 	}
 	return records, nil
 }
 
-func (s *Store) ReviewDraftDeletion(ctx context.Context, a Actor, selected []DraftSelection) ([]string, error) {
+func (s *Store) ReviewSiteDeletion(ctx context.Context, a Actor, selected []SiteSelection) ([]ReviewedSite, error) {
 	tx, err := s.adminRead(ctx, a)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	records, err := selectedDrafts(ctx, tx, a, selected)
+	records, err := selectedSites(ctx, tx, a, selected)
 	if err != nil {
 		return nil, err
 	}
-	labels := make([]string, 0, len(records))
+	review := make([]ReviewedSite, 0, len(records))
 	for _, r := range records {
-		labels = append(labels, r.name+" ("+r.site+")")
+		review = append(review, ReviewedSite{deletionState(r), r.name})
 	}
-	return labels, nil
+	return review, nil
 }
 
-// DeleteDraftSites frees the historical manifests and their quota charge in one
-// transaction. Address reservations, audit events and replay receipts survive.
-func (s *Store) DeleteDraftSites(ctx context.Context, a Actor, selected []DraftSelection) error {
+// DeleteSites removes releases, historical manifests and their quota charge in
+// one transaction. Address reservations, audit events and replay receipts survive.
+func (s *Store) DeleteSites(ctx context.Context, a Actor, reviewed []SiteDeletionState) error {
 	tx, err := s.adminWrite(ctx, a)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	records, err := selectedDrafts(ctx, tx, a, selected)
+	selected := make([]SiteSelection, len(reviewed))
+	for i, x := range reviewed {
+		selected[i] = x.SiteSelection
+	}
+	records, err := selectedSites(ctx, tx, a, selected)
 	if err != nil {
 		return err
+	}
+	for i, r := range records {
+		if deletionState(r) != reviewed[i] {
+			return conflict("Publication or access changed. Reload the directory and review the selection.")
+		}
 	}
 	if _, err = tx.ExecContext(ctx, "CREATE TEMPORARY TABLE sc_deleting_digests(digest TEXT PRIMARY KEY)"); err != nil {
 		return err
@@ -98,6 +123,7 @@ func (s *Store) DeleteDraftSites(ctx context.Context, a Actor, selected []DraftS
 		for _, statement := range []string{
 			"UPDATE sc_workspace SET used_bytes=used_bytes-(SELECT retained_bytes FROM sc_sites WHERE id=$1) WHERE id=(SELECT workspace FROM sc_sites WHERE id=$1)",
 			"DELETE FROM sc_files WHERE revision IN (SELECT id FROM sc_revisions WHERE site=$1)",
+			"DELETE FROM sc_releases WHERE site=$1",
 			"DELETE FROM sc_revisions WHERE site=$1",
 			"DELETE FROM sc_site_groups WHERE site=$1",
 			"DELETE FROM sc_sites WHERE id=$1",

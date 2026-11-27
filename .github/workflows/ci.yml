@@ -97,7 +97,7 @@ jobs:
           npm audit
           npm run build
           npm test
-          git diff --exit-code -- ../internal/web/uiassets inventory.json UI-LICENSES.txt
+          git diff --exit-code -- ../internal/web/uiassets ../internal/webui/action-icons.html inventory.json UI-LICENSES.txt
       - name: Verify generated directory query
         run: |
           curl --fail --silent --show-error --location --retry 3 https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o "$RUNNER_TEMP/sqlc.tar.gz"

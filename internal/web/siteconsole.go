@@ -16,6 +16,7 @@ import (
 
 	"github.com/openhoo/shoowcase/internal/routes"
 	"github.com/openhoo/shoowcase/internal/sites"
+	"github.com/openhoo/shoowcase/internal/webui"
 )
 
 //go:embed directory-icons.html
@@ -24,7 +25,7 @@ var directoryIcons string
 //go:embed siteconsole.html
 var siteHTML string
 
-var siteParts = template.Must(template.New("sites").Funcs(template.FuncMap{
+var siteParts = template.Must(webui.NativeTemplate("sites").Funcs(template.FuncMap{
 	"humanBytes": func(n int) string {
 		if n < 1024 {
 			return fmt.Sprintf("%d B", n)
@@ -65,8 +66,8 @@ var siteParts = template.Must(template.New("sites").Funcs(template.FuncMap{
 type siteData struct {
 	C                                                                   consoleContext
 	Directory                                                           directoryData
-	Selected                                                            []sites.DraftSelection
-	ReviewProof                                                         string
+	Selected                                                            []selectedSiteRow
+	ReviewProof, DeletionValue                                          string
 	Labels, Paths                                                       []string
 	Creation                                                            sites.CreationGroupOptions
 	GroupID                                                             string
@@ -154,7 +155,7 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 	}
 	if route.Page == routes.Directory {
 		if r.Method == http.MethodPost {
-			if r.PostForm.Get("action") != "" {
+			if r.PostForm.Has("action") {
 				a.deleteSiteSelection(w, r, d)
 				return
 			}
@@ -187,8 +188,8 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 			siteFailure(w, c, e)
 			return
 		}
-		if r.URL.Query().Get("notice") == "drafts-deleted" {
-			d.Notice = "Selected draft sites deleted."
+		if r.URL.Query().Get("notice") == "sites-deleted" {
+			d.Notice = "Selected sites deleted."
 		}
 		siteView(w, d, 200, "Sites", "list")
 		return
@@ -222,6 +223,9 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 	if e != nil {
 		siteFailure(w, c, e)
 		return
+	}
+	if c.Actor.Role == "admin" {
+		d.DeletionValue = siteSelectionValue(d.S.SiteID, d.S.Revision)
 	}
 	d.Rev = d.S.Revision
 	d.SiteURL, d.PreviewURL = a.siteLinks(d.S.SiteID, d.S.Revision, d.S.SelectedRevision)

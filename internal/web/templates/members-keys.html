@@ -1,18 +1,18 @@
 {{define "endpoint"}}
-<div class="field"><label for="mcp-endpoint">MCP server URL</label><input id="mcp-endpoint" type="url" readonly value="{{.Endpoint}}" spellcheck="false"><button type="button" class="secondary" data-copy-target="mcp-endpoint" hidden>Copy URL</button></div>
+<div class="field"><label for="mcp-endpoint">MCP server URL</label><input id="mcp-endpoint" type="url" readonly value="{{.Endpoint}}" spellcheck="false"><button type="button" class="secondary" data-copy-target="mcp-endpoint" hidden>{{template "icon-Copy"}}<span class="action-caption">Copy URL</span></button></div>
 {{end}}
 
 {{define "key-receipt"}}
 <header><p class="eyebrow">Agent keys · {{.Workspace}}</p><h1>Connect your agent</h1><p>Your key for <strong>{{.NameValue}}</strong> is ready. Copy it before leaving this page.</p></header>
 <section class="panel stack" aria-labelledby="connection"><h2 id="connection">Connection details</h2>
 {{template "endpoint" .}}
-<div class="field"><label for="agent-secret">Secret key</label><input id="agent-secret" data-secret-receipt readonly value="{{.Secret}}" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="secret-help"><small id="secret-help">You can only see this key here. Keep it in your agent’s credential settings.</small><button type="button" data-copy-target="agent-secret" hidden>Copy key</button></div>
+<div class="field"><label for="agent-secret">Secret key</label><input id="agent-secret" data-secret-receipt readonly value="{{.Secret}}" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="secret-help"><small id="secret-help">You can only see this key here. Keep it in your agent’s credential settings.</small><button type="button" data-copy-target="agent-secret" hidden>{{template "icon-Copy"}}<span class="action-caption">Copy key</span></button></div>
 <ol><li>In your agent’s MCP settings, add a <strong>Streamable HTTP</strong> server using the URL above.</li><li>Choose bearer token authentication and paste the secret key. If your agent uses HTTP headers, set <code>Authorization</code> to <code>Bearer </code> followed by the key.</li><li>Connect the server and ask your agent to list your sites.</li></ol>
-<div><a class="button secondary" href="/keys">Back to agent keys</a></div></section>
+<div><a class="button secondary" href="/keys">{{template "icon-ArrowLeft"}}<span class="action-caption">Back to agent keys</span></a></div></section>
 {{end}}
 
 {{define "keys"}}
-<header class="desk-head"><div><p class="eyebrow">Workspace <span aria-hidden="true">/</span> {{.Workspace}}</p><h1>Agent keys</h1><p>Use a separate key for each agent connection.</p><p><a href="/quickstart">Set up an agent with Quickstart →</a></p></div><a class="button new-site-action" href="#new-key">Create a key</a></header>
+<header class="desk-head"><div><p class="eyebrow">Workspace <span aria-hidden="true">/</span> {{.Workspace}}</p><h1>Agent keys</h1><p>Use a separate key for each agent connection.</p><p><a href="/quickstart">Set up an agent with Quickstart →</a></p></div><a class="button new-site-action" href="#new-key">{{template "icon-KeyRound"}}<span class="action-caption">Create a key</span></a></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 {{template "key-list" .}}
 <section class="panel stack" aria-labelledby="new-key"><h2 id="new-key" tabindex="-1">Create a key</h2>
@@ -21,7 +21,7 @@
 <div class="field"><label for="key-name">Key name</label><input id="key-name" name="name" type="text" value="{{.NameValue}}" required maxlength="80" placeholder="e.g. Design team agent"{{if .Err}} aria-describedby="key-error"{{end}}></div>
 <div class="grid"><div class="field"><label for="key-scope">Access</label><div class="select-wrap"><select id="key-scope" name="scope" required>{{range .Scopes}}<option value="{{.}}"{{if eq $.Scope .}} selected{{end}}>{{if eq . "reader"}}Viewer · Read sites{{else if eq . "editor"}}Editor · Create and edit{{else}}Publisher · Publish and manage public access{{end}}</option>{{end}}</select></div></div>
 <div class="field"><label for="key-days">Expires in</label><div class="select-wrap"><select id="key-days" name="days"><option value="7"{{if eq .Days "7"}} selected{{end}}>7 days</option><option value="30"{{if eq .Days "30"}} selected{{end}}>30 days</option><option value="90"{{if eq .Days "90"}} selected{{end}}>90 days</option></select></div></div></div>
-<div><button type="submit">Create key</button></div></form></section>
+<div><button type="submit">{{template "icon-KeyRound"}}<span class="action-caption">Create key</span></button></div></form></section>
 <details class="panel"><summary>Connect an existing key</summary><div class="stack"><p>In your agent’s MCP settings, choose Streamable HTTP. Enter the server URL and use your key as the bearer token.</p>{{template "endpoint" .}}</div></details>
 {{end}}
 
@@ -37,7 +37,7 @@
   {{if $canSelect}}<form id="select-keys" class="selection-toolbar" method="post" action="{{if .Admin}}/admin{{else}}/keys{{end}}">
     <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="review-key-revocation">
     {{template "admin-select-all"}}
-    <button class="danger-action" type="submit" data-selection-submit>Revoke selected keys</button>
+    <button class="danger-action" type="submit" data-selection-submit>{{template "icon-Unplug"}}<span class="action-caption">Revoke selected keys</span></button>
   </form>{{end}}
   <table class="directory-table" role="table" aria-labelledby="{{if .Admin}}workspace-keys{{else}}your-keys{{end}}">
     <thead><tr>{{if $canSelect}}<th scope="col" class="selection-cell">Select</th>{{end}}<th scope="col">Key{{if .Admin}} / owner{{end}}</th><th scope="col">Status</th><th scope="col">Access</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Action</th></tr></thead>
@@ -48,11 +48,11 @@
       <td><span class="mobile-label" aria-hidden="true">Access</span>{{role .Scope}}</td>
       <td><span class="mobile-label" aria-hidden="true">Created</span><time datetime="{{isoDate .CreatedAt}}" title="{{longDate .CreatedAt}}">{{shortDate .CreatedAt}}</time></td>
       <td><span class="mobile-label" aria-hidden="true">Expires</span><time datetime="{{isoDate .ExpiresAt}}" title="{{longDate .ExpiresAt}}">{{shortDate .ExpiresAt}}</time></td>
-      <td class="entry-wide"><span class="mobile-label" aria-hidden="true">Action</span>{{if eq .State "Active"}}<details><summary class="danger-action">Revoke {{.Name}}</summary>
+      <td class="entry-wide"><span class="mobile-label" aria-hidden="true">Action</span>{{if eq .State "Active"}}<details><summary class="danger-action">{{template "icon-Unplug"}}<span class="action-caption">Revoke {{.Name}}</span></summary>
         <form class="stack" action="{{if $.Admin}}/admin{{else}}/keys{{end}}" method="post">
           <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{.ID}}">
           <label><input type="checkbox" name="confirm" value="yes" required> Disconnect agents using this key.</label>
-          <div><button type="submit" class="danger">Revoke key</button></div>
+          <div><button type="submit" class="danger">{{template "icon-Unplug"}}<span class="action-caption">Revoke key</span></button></div>
         </form></details>{{else}}—{{end}}</td>
     </tr>{{end}}</tbody>
   </table>
@@ -69,6 +69,6 @@
 <ul>{{range .Keys}}<li><strong>{{.Name}}</strong>{{if $.Admin}} · Owner: <code>{{.Subject}}</code>{{end}} · ID: <code>{{.ID}}</code></li>{{end}}</ul>
 <form class="toolbar" method="post" action="{{.Path}}">
   <input type="hidden" name="action" value="revoke-selected"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="review" value="{{.Review}}">
-  <button type="submit" name="confirm" value="yes" class="danger">{{if eq (len .Keys) 1}}Revoke key{{else}}Revoke keys{{end}}</button><a href="{{.Back}}">Cancel</a>
+  <button type="submit" name="confirm" value="yes" class="danger">{{template "icon-Unplug"}}<span class="action-caption">{{if eq (len .Keys) 1}}Revoke key{{else}}Revoke keys{{end}}</span></button><a href="{{.Back}}">{{template "icon-X"}}<span class="action-caption">Cancel</span></a>
 </form></section>
 {{end}}

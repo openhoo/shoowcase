@@ -1,9 +1,12 @@
+import { ActionButton, ActionLink } from "@/components/icon-action";
 import {
+  Ban,
   ListFilter,
+  ListRestart,
   RotateCcw,
   Save,
   Search,
-  ShieldCheck,
+  SlidersHorizontal,
   Trash2,
   UserRound,
   UserRoundMinus,
@@ -12,11 +15,9 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SelectRow, useSelection } from "@/components/selection";
-import { Empty, linkStyle, StateBadge, toolbar } from "./sites-ui";
-import { type MemberData, plural, role, urlValue } from "./members-model";
+import { Input } from "@/components/ui/input";
+import { plural, role, urlValue, type MemberData } from "./members-model";
 import {
   BulkButton,
   BulkForm,
@@ -38,6 +39,7 @@ import {
   secondaryText,
   stack,
 } from "./members-ui";
+import { Empty, linkStyle, StateBadge, toolbar } from "./sites-ui";
 
 const itemLink =
   "site-name inline-flex min-w-0 items-center gap-2 font-medium hover:underline";
@@ -61,17 +63,16 @@ function SearchDirectory({
       title={members ? "Member directory" : "Group directory"}
       count={listCount(p, members ? "member" : "group")}
       control={
-        <Button
+        <ActionButton
           type="button"
           className="md:hidden"
           variant="outline"
           aria-controls="directory-options"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-        >
-          <ListFilter aria-hidden="true" />
-          Filter and sort
-        </Button>
+          label="Filter and sort"
+          icon={SlidersHorizontal}
+        />
       }
     >
       <form
@@ -149,20 +150,22 @@ function SearchDirectory({
             />
           </Field>
         </div>
-        <Button type="submit" variant="outline">
-          <ListFilter aria-hidden="true" />
-          Apply filters
-        </Button>
+        <ActionButton
+          type="submit"
+          variant="outline"
+          label="Apply filters"
+          icon={ListFilter}
+        />
       </form>
       {(d.Filtered || d.Sort !== "name") && (
-        <a
-          className={linkStyle}
+        <ActionLink
+          variant="ghost"
           href={
             p.View === "groups" ? "/admin?view=groups" : "/admin?view=members"
           }
-        >
-          Reset filters
-        </a>
+          label="Reset filters"
+          icon={ListRestart}
+        />
       )}
       {children}
     </DirectoryBox>
@@ -173,28 +176,32 @@ function RowAction({
   id,
   group,
   operation,
-  text,
   label,
 }: {
   csrf: string;
   id: string;
   group?: string;
   operation: string;
-  text: string;
   label: string;
 }) {
   return (
     <Post fields={{ csrf, action: "review-selection", group, selected: id }}>
-      <Button
+      <ActionButton
         type="submit"
         variant="outline"
-        size="sm"
         name="operation"
         value={operation}
-        aria-label={label}
-      >
-        {text}
-      </Button>
+        label={label}
+        icon={
+          operation === "restore-members"
+            ? RotateCcw
+            : operation === "delete-groups"
+              ? Trash2
+              : operation === "remove-members"
+                ? UserRoundMinus
+                : Ban
+        }
+      />
     </Post>
   );
 }
@@ -256,10 +263,10 @@ function CreateMember({ p }: { p: MemberData }) {
               />
             </Field>
             <div>
-              <Button>
-                <UserRoundPlus aria-hidden="true" />
-                Create password account
-              </Button>
+              <ActionButton
+                label="Create password account"
+                icon={UserRoundPlus}
+              />
             </div>
           </Post>
         </Disclosure>
@@ -287,10 +294,7 @@ function CreateMember({ p }: { p: MemberData }) {
             />
           </Field>
           <div>
-            <Button>
-              <UserRoundPlus aria-hidden="true" />
-              Add member
-            </Button>
+            <ActionButton label="Add member" icon={UserRoundPlus} />
           </div>
         </Post>
       </Disclosure>
@@ -348,10 +352,7 @@ function MemberDetails({ p }: { p: MemberData }) {
                   />
                 </Field>
                 <div>
-                  <Button>
-                    <Save aria-hidden="true" />
-                    Save role limit
-                  </Button>
+                  <ActionButton label="Save role limit" icon={Save} />
                 </div>
               </Post>
             )}
@@ -377,10 +378,11 @@ function MemberDetails({ p }: { p: MemberData }) {
                 </label>
               )}
               <div>
-                <Button variant={m.Disabled ? "default" : "destructive"}>
-                  <ShieldCheck aria-hidden="true" />
-                  {m.Disabled ? "Restore access" : "Suspend member"}
-                </Button>
+                <ActionButton
+                  variant={m.Disabled ? "default" : "destructive"}
+                  label={m.Disabled ? "Restore access" : "Suspend member"}
+                  icon={m.Disabled ? RotateCcw : Ban}
+                />
               </div>
             </Post>
           </>
@@ -425,21 +427,21 @@ function MemberDirectory({ p }: { p: MemberData }) {
               <BulkButton
                 name="operation"
                 value="suspend-members"
+                disabledHint="Select only active members."
                 data-requires-kind="active"
                 disabled={kinds.size !== 1 || !kinds.has("active")}
-              >
-                <UserRoundMinus aria-hidden="true" />
-                Suspend selected
-              </BulkButton>
+                label="Suspend selected"
+                icon={UserRoundMinus}
+              />
               <BulkButton
                 name="operation"
                 value="restore-members"
+                disabledHint="Select only suspended members."
                 data-requires-kind="suspended"
                 disabled={kinds.size !== 1 || !kinds.has("suspended")}
-              >
-                <RotateCcw aria-hidden="true" />
-                Restore selected
-              </BulkButton>
+                label="Restore selected"
+                icon={RotateCcw}
+              />
             </BulkForm>
             <RecordTable
               id="directory-title"
@@ -515,7 +517,6 @@ function MemberDirectory({ p }: { p: MemberData }) {
                           operation={
                             m.Disabled ? "restore-members" : "suspend-members"
                           }
-                          text={m.Disabled ? "Restore" : "Suspend"}
                           label={
                             (m.Disabled ? "Restore " : "Suspend ") +
                             m.DisplayName
@@ -594,10 +595,7 @@ function GroupDirectory({ p }: { p: MemberData }) {
             </Field>
           </div>
           <div>
-            <Button>
-              <UsersRound aria-hidden="true" />
-              Create group
-            </Button>
+            <ActionButton label="Create group" icon={UsersRound} />
           </div>
         </Post>
       </Disclosure>
@@ -613,10 +611,9 @@ function GroupDirectory({ p }: { p: MemberData }) {
                 name="operation"
                 value="delete-groups"
                 disabled={!s.count}
-              >
-                <Trash2 aria-hidden="true" />
-                Delete selected
-              </BulkButton>
+                label="Delete selected"
+                icon={Trash2}
+              />
             </BulkForm>
             <RecordTable
               id="directory-title"
@@ -648,7 +645,6 @@ function GroupDirectory({ p }: { p: MemberData }) {
                       csrf={p.CSRF}
                       id={g.ID}
                       operation="delete-groups"
-                      text="Delete"
                       label={"Delete " + g.Name}
                     />
                   </Cell>
@@ -711,10 +707,9 @@ function GroupDetails({ p }: { p: MemberData }) {
                 name="operation"
                 value="remove-members"
                 disabled={!s.count}
-              >
-                <UserRoundMinus aria-hidden="true" />
-                Remove selected
-              </BulkButton>
+                label="Remove selected"
+                icon={UserRoundMinus}
+              />
             </BulkForm>
             <RecordTable
               id="group-roster"
@@ -745,7 +740,6 @@ function GroupDetails({ p }: { p: MemberData }) {
                       group={g.ID}
                       csrf={p.CSRF}
                       operation="remove-members"
-                      text="Remove"
                       label={"Remove " + id + " from group"}
                     />
                   </Cell>
@@ -797,10 +791,7 @@ function GroupDetails({ p }: { p: MemberData }) {
             />
           </Field>
           <div>
-            <Button>
-              <UserRoundPlus aria-hidden="true" />
-              Add to group
-            </Button>
+            <ActionButton label="Add to group" icon={UserRoundPlus} />
           </div>
         </Post>
         <Disclosure title="Edit group">
@@ -828,10 +819,7 @@ function GroupDetails({ p }: { p: MemberData }) {
               </Field>
             </div>
             <div>
-              <Button>
-                <Save aria-hidden="true" />
-                Save group
-              </Button>
+              <ActionButton label="Save group" icon={Save} />
             </div>
           </Post>
         </Disclosure>
@@ -858,10 +846,11 @@ function GroupDetails({ p }: { p: MemberData }) {
               Remove this group and all its grants.
             </label>
             <div>
-              <Button variant="destructive">
-                <Trash2 aria-hidden="true" />
-                Delete group
-              </Button>
+              <ActionButton
+                variant="destructive"
+                label="Delete group"
+                icon={Trash2}
+              />
             </div>
           </Post>
         </Disclosure>

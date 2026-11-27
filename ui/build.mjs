@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 process.chdir(fileURLToPath(new URL(".", import.meta.url)));
+await import("./native-icons.mjs");
 const out = "../internal/web/uiassets";
 await mkdir(out, { recursive: true });
 const { metafile } = await build({

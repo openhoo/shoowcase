@@ -200,7 +200,7 @@ async def revoke_pending(page, pending_review, control, endpoint, secret, agent,
     await expect(page.get_by_text("Alex Morgan", exact=True)).to_be_visible()
     await page.get_by_role("link", name="Workspace keys").click()
     await check_record_tables(page, "Workspace keys")
-    await page.get_by_text("Revoke Workshop publisher", exact=True).click()
+    await page.get_by_label("Revoke Workshop publisher", exact=True).click()
     await page.get_by_label("Disconnect agents using this key.").check()
     await page.get_by_role("button", name="Revoke key").click()
     await expect(page.get_by_text("Revoked", exact=True)).to_be_visible()
@@ -573,7 +573,7 @@ async def workspace(binary, channel, screenshot, admin_media):
                 await page.set_viewport_size({"width": 320, "height": 780})
             await check_group_budget(page, control, admin_media)
             await check_bulk_admin(page, control, browser)
-            await check_bulk_sites(page, control, browser)
+            await check_bulk_sites(page, control, browser, http)
             await password_accounts(binary, browser)
         finally:
             await browser.close()

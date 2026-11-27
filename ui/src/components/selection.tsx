@@ -75,7 +75,7 @@ export function SelectRow({
   className?: string;
 }) {
   return (
-    <label className="inline-flex size-9 cursor-pointer items-center justify-center">
+    <label className="inline-flex size-11 cursor-pointer items-center justify-center">
       <input
         type="checkbox"
         form={form}
