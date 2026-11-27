@@ -82,31 +82,17 @@ func register(ctx context.Context, name, binary string) error {
 		_, err = runClient(ctx, home, "codex", "mcp", "add", "shoowcase", "--", binary, "mcp-stdio", name)
 		return err
 	}
-	var path string
 	want := entry{Command: binary, Args: []string{"mcp-stdio", name}}
-	switch name {
-	case "claude":
+	if name == "claude" {
 		if _, err := exec.LookPath("claude"); err != nil {
 			return errors.New("Claude Code must be installed and available as claude")
 		}
-		root := os.Getenv("CLAUDE_CONFIG_DIR")
-		if root == "" {
-			root = home
-		}
-		path = filepath.Join(root, ".claude.json")
-	case "copilot":
-		root := os.Getenv("COPILOT_HOME")
-		if root == "" {
-			root = filepath.Join(home, ".copilot")
-		}
-		path = filepath.Join(root, "mcp-config.json")
+	}
+	if name == "copilot" {
 		want.Type = "local"
 		want.Tools = []string{"*"}
-	case "cursor":
-		path = filepath.Join(home, ".cursor", "mcp.json")
-	default:
-		return errors.New(connectUsage)
 	}
+	path := standardClientPath(home, name)
 	if !filepath.IsAbs(path) {
 		return errors.New("the client configuration directory must be an absolute user path")
 	}
@@ -150,6 +136,26 @@ func register(ctx context.Context, name, binary string) error {
 		return errors.New("cannot install client MCP settings")
 	}
 	return nil
+}
+
+func standardClientPath(home, name string) string {
+	switch name {
+	case "claude":
+		root := os.Getenv("CLAUDE_CONFIG_DIR")
+		if root == "" {
+			root = home
+		}
+		return filepath.Join(root, ".claude.json")
+	case "copilot":
+		root := os.Getenv("COPILOT_HOME")
+		if root == "" {
+			root = filepath.Join(home, ".copilot")
+		}
+		return filepath.Join(root, "mcp-config.json")
+	case "cursor":
+		return filepath.Join(home, ".cursor", "mcp.json")
+	}
+	return ""
 }
 
 func loadClientFile(path string) (root, servers map[string]json.RawMessage, original []byte, err error) {

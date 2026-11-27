@@ -91,7 +91,8 @@ func NewControl(h Handlers) *Control {
 	for path, handler := range map[string]http.HandlerFunc{
 		"/healthz": h.Health, "/readyz": h.Ready, "/mcp": h.MCP, "/approve": h.Approve, "/upload": h.Upload,
 		"/ui.css": h.CSS, "/api/audit": h.Audit, "/metrics": h.Metrics, "/quickstart/redeem": h.Redeem,
-		"/quickstart/install.sh": h.Installer, "/quickstart/install.ps1": h.Installer, "/console.js": h.Script,
+		"/quickstart/install.sh": h.Installer, "/quickstart/install.ps1": h.Installer,
+		"/quickstart/uninstall.sh": h.Installer, "/quickstart/uninstall.ps1": h.Installer, "/console.js": h.Script,
 	} {
 		add(path, path, handler)
 	}
