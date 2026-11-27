@@ -3,7 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["httpx==0.28.1", "mcp==1.30.0", "playwright==1.65.2"]
 # ///
-"""Connect four agents from a real Chrome session and test their registered MCP bridges.
+"""Connect local agents from a real Chrome session and test their registered MCP bridges.
 
     uv run scripts/smoke-quickstart.py --binary ./bin/shoowcase
 
@@ -29,7 +29,10 @@ from playwright.async_api import async_playwright, expect
 from smoke import check
 
 fixture = import_module("smoke-browser")
-NAMES = {"codex": "Codex", "claude": "Claude Code", "copilot": "GitHub Copilot CLI", "cursor": "Cursor"}
+NAMES = {"codex": "Codex", "claude": "Claude Code", "copilot": "GitHub Copilot CLI", "cursor": "Cursor",
+         "copilot-app": "GitHub Copilot app", "vscode": "GitHub Copilot in VS Code",
+         "vscode-local": "VS Code (legacy Local agent)", "gemini": "Gemini CLI",
+         "opencode": "OpenCode", "stdio": "Other local MCP client"}
 
 
 def profile(home):
@@ -77,26 +80,39 @@ async def register(page, control, endpoint, client, env, home, binary, published
     code = words[-1]
     if published:
         # Execute only the checked grammar. Pass the command on stdin, never in a shell history.
-        await run(["/bin/sh"], env, home, stdin=command.encode())
+        output = await run(["/bin/sh"], env, home, stdin=command.encode())
     else:
-        await run([binary, "connect", client, "--url", endpoint, "--setup-code", code], env, home)
+        output = await run([binary, "connect", client, "--url", endpoint, "--setup-code", code], env, home)
     async with httpx.AsyncClient(trust_env=False) as http:
         replay = await http.post(control + "/quickstart/redeem", json={"client": client, "code": code})
         check(replay.status_code == 401, "a used setup command was accepted again")
-    return code
+    return code, output
 
 
-def registration(client, home):
+def registration(client, home, output):
+    if client == "stdio":
+        # The manual client has no config file. Consume exactly the command
+        # and argv printed to the user; they must work without any secret.
+        raw = output.decode()
+        return json.loads(raw[raw.index("{"):]), raw
     if client == "codex":
-        source = home / ".codex/config.toml"
-        data = tomllib.loads(source.read_text())["mcp_servers"]["shoowcase"]
-    else:
-        candidates = {"claude": [".claude/.claude.json", ".claude.json"],
-                      "copilot": [".copilot/mcp-config.json"], "cursor": [".cursor/mcp.json"]}[client]
-        source = next((home / key for key in candidates if (home / key).is_file()), None)
-        check(source is not None, "missing " + client + " registration")
-        data = json.loads(source.read_text())["mcpServers"]["shoowcase"]
-    return data, source
+        raw = (home / ".codex/config.toml").read_text()
+        return tomllib.loads(raw)["mcp_servers"]["shoowcase"], raw
+    if client in ("copilot-app", "vscode"):
+        client = "copilot"
+    candidates = {"claude": [".claude/.claude.json", ".claude.json"], "copilot": [".copilot/mcp-config.json"],
+                  "cursor": [".cursor/mcp.json"], "gemini": [".gemini/settings.json"],
+                  "vscode-local": [".config/Code/User/mcp.json", "Library/Application Support/Code/User/mcp.json"],
+                  "opencode": [".config/opencode/opencode.json", ".config/opencode/opencode.jsonc"]}[client]
+    source = next((home / path for path in candidates if (home / path).is_file()), None)
+    check(source is not None, "missing " + client + " registration")
+    raw = source.read_text()
+    section = {"vscode-local": "servers", "opencode": "mcp"}.get(client, "mcpServers")
+    data = json.loads(raw)[section]["shoowcase"]
+    if client == "opencode":
+        command, *args = data["command"]
+        data = {"command": command, "args": args}
+    return data, raw
 
 
 async def bridge(data, env, home):
@@ -156,20 +172,20 @@ async def main(args):
                 with tempfile.TemporaryDirectory(prefix="shoowcase-quickstart-") as temp:
                     home = Path(temp)
                     env = profile(home)
-                    code = await register(page, control, endpoint, client, env, home, binary, args.published_installer)
-                    reg, path = registration(client, home)
-                    credentials = list(home.rglob(f"agents/{client}.json"))
+                    code, output = await register(page, control, endpoint, client, env, home, binary, args.published_installer)
+                    reg, config = registration(client, home, output)
+                    credentials = list(home.rglob("agents/*.json"))
                     check(len(credentials) == 1, "expected one private personal credential file")
                     cred = credentials[0]
                     check(cred.stat().st_mode & 0o077 == 0 and cred.parent.stat().st_mode & 0o077 == 0, "credential permissions")
                     token = json.loads(cred.read_text())["token"]
-                    check(token and token not in path.read_text() and code not in path.read_text(), "credential in agent configuration")
+                    check(token and token not in config and code not in config and token.encode() not in output and code.encode() not in output, "credential in agent configuration")
                     check(token not in await page.content(), "long-lived key on setup receipt")
                     await asyncio.wait_for(bridge(reg, env, home), 30)
                     if args.native_clients and client == "codex":
                         await codex_discovery(env, home)
                         print("PASS: Codex app-server discovered Shoowcase tools")
-                    if args.native_clients and client == "copilot":
+                    if args.native_clients and client in ("copilot", "copilot-app", "vscode"):
                         native = json.loads(await run(["copilot", "mcp", "get", "--json", "shoowcase"], env, home))
                         check("shoowcase" in json.dumps(native) and reg["command"] in json.dumps(native),
                               "GitHub Copilot CLI did not load the registration")
@@ -195,7 +211,7 @@ async def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--binary", type=Path, required=True)
-    parser.add_argument("--clients", default="codex,claude,copilot,cursor")
+    parser.add_argument("--clients", default=",".join(NAMES))
     parser.add_argument("--browser-channel", default="chrome")
     parser.add_argument("--published-installer", action="store_true")
     parser.add_argument("--native-clients", action="store_true", help="also run installed Codex, Claude Code and GitHub Copilot CLIs for selected clients")

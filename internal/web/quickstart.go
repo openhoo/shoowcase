@@ -18,29 +18,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openhoo/shoowcase/internal/agentclients"
 	"github.com/openhoo/shoowcase/internal/sites"
 )
 
 //go:embed quickstartassets/install.*
 var installers embed.FS
 
-var quickClients = []struct{ ID, Name string }{
-	{"copilot", "GitHub Copilot CLI"}, {"cursor", "Cursor"}, {"codex", "Codex"}, {"claude", "Claude Code"},
-}
-
-func clientName(id string) string {
-	for _, c := range quickClients {
-		if c.ID == id {
-			return c.Name
-		}
-	}
-	return ""
-}
-
 type quickPage struct {
 	memberPage
 	Client, Platform, ClientName, Command, Prompt string
-	Clients                                       []struct{ ID, Name string }
+	Clients                                       []agentclients.Client
 }
 
 // The browser receives an encrypted, client-bound envelope, not the persistent
@@ -65,7 +53,7 @@ func (a *App) setupCode(secret, client string, expiry time.Time) string {
 }
 
 func (a *App) openSetupCode(code, client string) (string, time.Time, bool) {
-	if clientName(client) == "" || len(code) > 512 {
+	if agentclients.Name(client) == "" || len(code) > 512 {
 		return "", time.Time{}, false
 	}
 	buf, err := base64.RawURLEncoding.Strict().DecodeString(code)
@@ -145,7 +133,7 @@ func quickCommand(base, client, platform, code string) string {
 }
 
 func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContext, m memberPage) {
-	p := quickPage{memberPage: m, Clients: quickClients, Client: "", Platform: "unix"}
+	p := quickPage{memberPage: m, Clients: agentclients.Clients, Client: "", Platform: "unix"}
 	p.Scopes = memberScopes(c.Actor.Role)
 	p.Scope, p.Days = "reader", "30"
 	if strings.Contains(strings.ToLower(r.UserAgent()), "windows") {
@@ -154,17 +142,24 @@ func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContex
 	status := 200
 	if r.Method == http.MethodPost {
 		p.Client, p.Platform = r.PostForm.Get("client"), r.PostForm.Get("platform")
-		p.ClientName = clientName(p.Client)
+		p.ClientName = agentclients.Name(p.Client)
 		p.Scope, p.Days = r.PostForm.Get("scope"), r.PostForm.Get("days")
+		p.NameValue = strings.TrimSpace(r.PostForm.Get("name"))
 		days := map[string]int{"7": 7, "30": 30, "90": 90}[p.Days]
 		if p.ClientName == "" || (p.Platform != "unix" && p.Platform != "windows") || !slices.Contains(p.Scopes, p.Scope) || days == 0 {
 			p.Err = "Choose an agent, a terminal and an access level available to your account."
+			status = 400
+		} else if p.NameValue != "" && !validMemberLabel(p.NameValue, 80) {
+			p.Err = "Choose a connection name of up to 80 characters."
 			status = 400
 		} else {
 			if !a.spendKeyForm(w, r, c) {
 				return
 			}
-			_, secret, err := a.store.CreateKey(r.Context(), actor(c.Identity), p.ClientName, p.Scope, days)
+			if p.NameValue == "" {
+				p.NameValue = p.ClientName
+			}
+			_, secret, err := a.store.CreateKey(r.Context(), actor(c.Identity), p.NameValue, p.Scope, days)
 			if err != nil {
 				memberError(w, c, err)
 				return
