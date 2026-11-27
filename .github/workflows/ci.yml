@@ -137,7 +137,7 @@ jobs:
           PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           python3 scripts/verify-recovery.py --binary ./bin/shoowcase --engine docker --container "$PG_CONTAINER"
-          # Cover a schema migration and a patch upgrade with unchanged schema.
+          # Rehearse upgrades from schema 6 and schema 7.
           while read -r tag sha; do
             previous="$RUNNER_TEMP/prior-$tag"
             mkdir -p "$previous"
@@ -149,6 +149,7 @@ jobs:
           v0.9.0 01108b0a209bea133f4e6dca9b7433e2c83c21d5dce1680ae166adecccd46123
           v0.10.0 0943dc55ebaaff9b7b1327b4995192cf753e74e4df06e4d37e8826adea073343
           v0.10.1 e8d59ad143e2a8381696e3b239932dc9c9dd17edb94766d48e5928abe47d246e
+          v0.10.5 52e54148e106a56f8f874aeec8640d827911d9eb0f804d7f299c3c15d19a018f
           PRIORS
       - name: Check Grafana queries against representative traffic and idle replicas
         run: python3 scripts/check-grafana.py

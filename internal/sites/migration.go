@@ -24,12 +24,12 @@ func migrate(ctx context.Context, db *sql.DB, driver string) error {
 	if err != nil {
 		return err
 	}
-	return applyMigrations(ctx, db, driver, files)
+	return applyMigrations(ctx, db, driver, files, goose.NewGoMigration(8, &goose.GoFunc{RunTx: migrateAgentKeyNames}, nil))
 }
 
-func applyMigrations(ctx context.Context, db *sql.DB, driver string, files fs.FS) error {
+func applyMigrations(ctx context.Context, db *sql.DB, driver string, files fs.FS, extra ...*goose.Migration) error {
 	versions := &schemaVersions{postgres: driver == "pgx"}
-	opts := []goose.ProviderOption{goose.WithStore(versions), goose.WithGoMigrations(legacyMigrations()...), goose.WithDisableGlobalRegistry(true)}
+	opts := []goose.ProviderOption{goose.WithStore(versions), goose.WithGoMigrations(append(legacyMigrations(), extra...)...), goose.WithDisableGlobalRegistry(true)}
 	if versions.postgres {
 		// This is the same key used by pre-Goose binaries. The provider holds
 		// its session lock on the same connection that executes the migrations.
@@ -62,8 +62,8 @@ func applyMigrations(ctx context.Context, db *sql.DB, driver string, files fs.FS
 	}
 }
 
-// Keep the shipped SQL and historic version numbers unchanged. New migrations
-// are transactional SQL files in migrations/. An unversioned v0 database has
+// Keep the shipped SQL and historic version numbers unchanged. Prefer transactional SQL
+// files in migrations/; schema 8 uses the same Go normalization as key issuance. An unversioned v0 database has
 // the base tables already; their CREATE IF NOT EXISTS statements are idempotent.
 func legacyMigrations() []*goose.Migration {
 	steps := [][]string{

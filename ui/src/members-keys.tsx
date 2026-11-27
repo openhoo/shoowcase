@@ -256,10 +256,10 @@ export function KeyList({ p }: { p: MemberData }) {
               </Cell>
               <Cell label="Access">{role(k.Scope)}</Cell>
               <Cell label="Created">
-                <DateDisplay value={k.CreatedAt} />
+                <DateDisplay value={k.CreatedAt} full />
               </Cell>
               <Cell label="Expires">
-                <DateDisplay value={k.ExpiresAt} />
+                <DateDisplay value={k.ExpiresAt} full />
               </Cell>
               <Cell>
                 {k.State === "Active" ? (
@@ -356,8 +356,16 @@ export function Keys({ p }: { p: MemberData }) {
               required
               maxLength={80}
               placeholder="e.g. Design team agent"
-              aria-describedby={p.Err ? "key-error" : undefined}
+              aria-invalid={p.NameError ? true : undefined}
+              aria-describedby={
+                p.NameError ? "key-name-error" : p.Err ? "key-error" : undefined
+              }
             />
+            {p.NameError && (
+              <div id="key-name-error">
+                <Notice text={p.NameError} error />
+              </div>
+            )}
           </Field>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <Field id="key-scope" label="Access">
@@ -541,7 +549,10 @@ export function Quickstart({ p }: { p: QuickData }) {
             address locally.
           </p>
         </div>
-        <Disclosure title="Name this connection (optional)">
+        <Disclosure
+          title="Name this connection (optional)"
+          open={p.NameError ? true : undefined}
+        >
           <Field id="quick-name" label="Name in Agent keys">
             <Input
               id="quick-name"
@@ -550,7 +561,14 @@ export function Quickstart({ p }: { p: QuickData }) {
               defaultValue={p.NameValue}
               maxLength={80}
               placeholder="e.g. My work laptop"
+              aria-invalid={p.NameError ? true : undefined}
+              aria-describedby={p.NameError ? "quick-name-error" : undefined}
             />
+            {p.NameError && (
+              <div id="quick-name-error">
+                <Notice text={p.NameError} error />
+              </div>
+            )}
           </Field>
         </Disclosure>
         <div>
@@ -631,7 +649,8 @@ export function QuickReady({ p }: { p: QuickData }) {
         title={"Connect " + p.ClientName}
       >
         <p>
-          Your {role(p.Scope)} key is ready. It expires in {p.Days} days.
+          Your {role(p.Scope)} key <strong>{p.NameValue}</strong> is ready. It
+          expires in {p.Days} days.
         </p>
       </Head>
       <Panel id="run-command" title="1. Run this command">

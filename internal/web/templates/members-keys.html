@@ -18,7 +18,7 @@
 <section class="panel stack" aria-labelledby="new-key"><h2 id="new-key" tabindex="-1">Create a key</h2>
 <form method="post" action="/keys" class="stack"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="create"><input type="hidden" name="creation_token" value="{{.Creation}}">
 {{if .Err}}<p class="notice" id="key-error" role="alert">{{.Err}}</p>{{end}}
-<div class="field"><label for="key-name">Key name</label><input id="key-name" name="name" type="text" value="{{.NameValue}}" required maxlength="80" placeholder="e.g. Design team agent"{{if .Err}} aria-describedby="key-error"{{end}}></div>
+<div class="field"><label for="key-name">Key name</label><input id="key-name" name="name" type="text" value="{{.NameValue}}" required maxlength="80" placeholder="e.g. Design team agent"{{if .NameError}} aria-invalid="true" aria-describedby="key-name-error"{{else if .Err}} aria-describedby="key-error"{{end}}>{{if .NameError}}<p id="key-name-error" class="notice" role="alert">{{.NameError}}</p>{{end}}</div>
 <div class="grid"><div class="field"><label for="key-scope">Access</label><div class="select-wrap"><select id="key-scope" name="scope" required>{{range .Scopes}}<option value="{{.}}"{{if eq $.Scope .}} selected{{end}}>{{if eq . "reader"}}Viewer · Read sites{{else if eq . "editor"}}Editor · Create and edit{{else}}Publisher · Publish and manage public access{{end}}</option>{{end}}</select></div></div>
 <div class="field"><label for="key-days">Expires in</label><div class="select-wrap"><select id="key-days" name="days"><option value="7"{{if eq .Days "7"}} selected{{end}}>7 days</option><option value="30"{{if eq .Days "30"}} selected{{end}}>30 days</option><option value="90"{{if eq .Days "90"}} selected{{end}}>90 days</option></select></div></div></div>
 <div><button type="submit">{{template "icon-KeyRound"}}<span class="action-label">Create key</span></button></div></form></section>
@@ -46,8 +46,8 @@
       <th scope="row" class="entry-name-cell"><span>{{.Name}}</span>{{if $.Admin}}<span class="site-address">{{.Subject}}</span>{{end}}</th>
       <td><span class="mobile-label" aria-hidden="true">Status</span><span class="status-chip {{if eq .State "Active"}}state-published{{else}}state-offline{{end}}"><i class="dot {{if eq .State "Active"}}published{{else}}offline{{end}}" aria-hidden="true"></i>{{.State}}</span></td>
       <td><span class="mobile-label" aria-hidden="true">Access</span>{{role .Scope}}</td>
-      <td><span class="mobile-label" aria-hidden="true">Created</span><time datetime="{{isoDate .CreatedAt}}" title="{{longDate .CreatedAt}}">{{shortDate .CreatedAt}}</time></td>
-      <td><span class="mobile-label" aria-hidden="true">Expires</span><time datetime="{{isoDate .ExpiresAt}}" title="{{longDate .ExpiresAt}}">{{shortDate .ExpiresAt}}</time></td>
+      <td><span class="mobile-label" aria-hidden="true">Created</span><time datetime="{{isoDate .CreatedAt}}">{{longDate .CreatedAt}}</time></td>
+      <td><span class="mobile-label" aria-hidden="true">Expires</span><time datetime="{{isoDate .ExpiresAt}}">{{longDate .ExpiresAt}}</time></td>
       <td class="entry-wide"><span class="mobile-label" aria-hidden="true">Action</span>{{if eq .State "Active"}}<details><summary class="danger-action">{{template "icon-Unplug"}}<span class="action-caption">Revoke {{.Name}}</span></summary>
         <form class="stack" action="{{if $.Admin}}/admin{{else}}/keys{{end}}" method="post">
           <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{.ID}}">
