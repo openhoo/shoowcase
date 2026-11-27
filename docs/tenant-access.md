@@ -4,12 +4,12 @@ A workspace is one tenant. Its ID comes from the signed workspace claim or the o
 
 ## Choose how access is granted
 
-Open **Workspace admin → Workspace settings** as an enrolled identity-provider administrator.
+Open **Workspace admin → Workspace settings** as a workspace administrator.
 
 | Access mode | Who can access the workspace? | Role |
 | --- | --- | --- |
-| Identity (default) | People with a valid workspace claim and locally provisioned password accounts. MCP and private delivery permit unenrolled identities. The console and personal keys require a local account. | Signed identity-provider role, capped by any individual role limit. Groups do not grant a higher role; membership determines which project budgets an editor can use. |
-| Managed | Active workspace members. An administrator provisions an OIDC subject or creates a password account. Only a user with a verified administrator role may self-enroll. | Members start as readers. The strongest group role applies, capped by the current identity-provider role and any individual limit. An enrolled identity-provider administrator retains admin access. |
+| Identity (default) | People with a valid workspace claim and locally provisioned password accounts. MCP and private delivery permit unenrolled identities. The console and personal keys require a local account. | The sign-in role comes from the identity provider for SSO or from the password account for local sign-in. An individual role limit can reduce access. Groups do not grant a higher role; membership determines which project budgets an editor can use. |
+| Managed | Active workspace members. An administrator provisions an OIDC subject or creates a password account. Only a user with a verified administrator role may self-enroll. | Non-admin members start as viewers. Their strongest group grant applies up to their sign-in role and any individual limit. Members with the Admin sign-in role do not need a group grant. An individual role limit still applies. |
 
 In either mode a suspended account is denied private access. An intentionally public live release remains accessible anonymously, subject to the instance-wide public sharing setting.
 
@@ -23,7 +23,7 @@ Directory membership does not change a site's audience. Someone with a direct li
 
 ## Find a member or group
 
-Open **Workspace admin → Members** to search by display name or sign-in ID. You can filter by active or suspended status and effective role, and sort by name or sign-in ID. Select someone’s name to manage their role limit or access. Your own name opens **Account**.
+Open **Workspace admin → Members** to search by display name or sign-in ID. You can filter by active or suspended status and effective role, and sort by name or sign-in ID. Select someone’s name to manage access, set a role limit or change a password account’s sign-in role. Your own name opens **Account**.
 
 Under **Groups**, search by name, filter by group role, or sort by member count. Select a group to see its members, change its role, or manage membership. On a small screen, **Filter and sort** opens the additional options in either directory.
 
@@ -35,9 +35,9 @@ Suspending a member keeps the account record, blocks workspace access, ends thei
 
 ## Set up a managed tenant
 
-1. Sign in with a workspace administrator account and complete enrollment. The administrator role comes from the identity provider or the configured OIDC subject mapping.
+1. For initial setup, sign in with an administrator granted access by the identity provider or configured OIDC subject mapping, then complete enrollment. An existing administrator can also promote a password account.
 2. Under **Members**, provision the exact OIDC subject and a display name. Choose the stable subject issued to Shoowcase, not a login alias or email address unless it actually is the subject. Provisioning alone does not create an identity or credentials. A signed-in person who needs provisioning sees **Workspace access required** and their exact sign-in ID on the console. After you add them, they can reload the original page.
-3. Under **Groups**, create groups, assign each a role, then add members. An Authors group might have editor rights; a Release team might have publisher rights. A member of both can publish only if the identity provider also permits publication.
+3. Under **Groups**, create groups, assign each a role, then add members. An Authors group might have editor rights; a Release team might have publisher rights. A member of both can publish if their sign-in role and individual role limit allow it.
 4. Review all existing members, groups, keys and the current admin before switching to managed mode. Existing accounts stay enrolled. An existing publisher without a group becomes a reader immediately. A user who previously only used an IdP access token needs to be provisioned.
 5. Save the managed setting, then verify one reader, one editor and one publisher against a private test site. The **Members** view shows effective roles. Switch back to identity mode only if returning access to all signed workspace identities is intended.
 
@@ -56,11 +56,21 @@ After a group removal, role change or switch to managed mode, Shoowcase rechecks
 
 ## Manage password accounts
 
-When an operator enables password sign-in for this workspace, open **Workspace admin** to create an account. Enter a username and an initial password, choose reader, editor or publisher, and give the credentials privately to the new member. Usernames are case insensitive and use 3–64 letters (A–Z), digits, periods, underscores or hyphens, starting with a letter or digit. Passwords need at least 12 characters and may contain spaces.
+When an operator enables password sign-in for this workspace, open **Workspace admin** to create an account. Enter a username and an initial password, choose Viewer, Editor or Publisher, and give the credentials privately to the new member. Usernames are case insensitive and use 3–64 letters (A–Z), digits, periods, underscores or hyphens, starting with a letter or digit. Passwords need at least 12 characters and may contain spaces.
 
 On the sign-in page the member chooses the username and password form. Under **Account → Change password**, they enter the current and new passwords. After a change, they sign in again; their previous browser sessions no longer work. Personal agent keys are managed separately under **Agent keys**. Suspending a password account revokes its keys and sessions. Re-enabling it lets the member sign in again.
 
 An administrator can create password accounts with public registration turned off. If the operator explicitly opens public registration, visitors can create reader accounts. Managed workspaces always require an administrator to add the member. The local username belongs only to its workspace. OIDC users change their passwords at the identity provider; **Account → Change password at identity provider** takes them there when the operator has [configured the link](oidc.md#use-oidc-alongside-password-accounts).
+
+### Change a password account’s role
+
+1. Sign in as a workspace administrator and open **Admin → Members**. Select another member who signs in with a local password.
+2. Under **Sign-in role**, select **Viewer**, **Editor**, **Publisher** or **Admin**. Choose **Save sign-in role**. An administrator can also demote another local Admin here. You cannot change your own role.
+3. Ask the member to sign in again. Changing the role ends their existing password sessions. The password stays the same, and **Admin → Activity** records the change.
+
+The account role is the most this member can do. **Role limit** is a separate setting: changing the account role preserves it. For example, promoting a password account to Admin while its limit is Editor leaves its effective access at Editor. To grant full administrator access, also set the limit to **Use sign-in role**. In managed mode, non-admin accounts still need the corresponding group grant to edit or publish. Existing keys keep their own scopes, can never exceed their owner’s effective access, and cannot administer a workspace.
+
+For an SSO account, the identity provider sets the highest role available. Under **Role limit**, select a lower role and choose **Save role limit**. This also works for another member whose provider grants Admin. Select **Use sign-in role** to remove the limit. For example, an SSO Editor can be limited to Viewer and restored to Editor; only the identity provider can grant that person Publisher or Admin.
 
 ## Set project budgets
 

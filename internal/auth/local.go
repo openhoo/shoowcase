@@ -162,8 +162,8 @@ func (s *Service) passwordRoute(w http.ResponseWriter, r *http.Request) {
 		s.passwordForm(w, r, p.Dest, register, status, message)
 		return
 	}
-	role, ok := map[string]Role{"reader": Viewer, "editor": Editor, "publisher": Publisher}[a.Role]
-	if !ok || a.Workspace != s.cfg.LocalWorkspace || !reservedSubject(a.Subject) || generation < 1 {
+	role, ok := map[string]Role{"reader": Viewer, "editor": Editor, "publisher": Publisher, "admin": Admin}[a.Role]
+	if !ok || register && role != Viewer || a.Workspace != s.cfg.LocalWorkspace || !reservedSubject(a.Subject) || generation < 1 {
 		deny(w, 403)
 		return
 	}

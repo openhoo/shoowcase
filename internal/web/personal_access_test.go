@@ -191,7 +191,7 @@ func TestConsolePeerAdminOffboarding(t *testing.T) {
 	alice, csrf := joinMemberConsole(t, a)
 	bob, bCSRF := joinMemberConsole(t, b)
 	get := hitRoute(t, a, "GET", testControl+"/admin?member=bob", alice, nil)
-	if get.Code != 200 || !strings.Contains(get.Body.String(), "Suspend member") || strings.Contains(get.Body.String(), "Save role limit") {
+	if get.Code != 200 || !strings.Contains(get.Body.String(), "Suspend member") || !strings.Contains(get.Body.String(), "Save role limit") {
 		t.Fatal("unexpected peer admin controls", get.Code)
 	}
 	values := url.Values{"csrf": {csrf}, "action": {"suspend"}, "subject": {"bob"}, "confirm": {"yes"}, "expected_ceiling": {""}, "expected_disabled": {"false"}}
@@ -207,12 +207,22 @@ func TestConsolePeerAdminOffboarding(t *testing.T) {
 	values.Set("csrf", csrf)
 	values.Set("action", "role")
 	values.Set("ceiling", "reader")
-	if w := memberPost(t, a, alice, "/admin", values); w.Code != 403 {
-		t.Fatal("changed IdP admin role", w.Code)
+	if w := memberPost(t, a, alice, "/admin", values); w.Code != 303 {
+		t.Fatal("could not limit the suspended peer admin", w.Code)
 	}
+	values.Set("expected_ceiling", "reader")
 	values.Set("action", "restore")
 	if w := memberPost(t, a, alice, "/admin", values); w.Code != 303 {
 		t.Fatal("restoring peer admin", w.Code)
+	}
+	if w := hitRoute(t, b, "GET", testControl+"/admin", bob, nil); w.Code != 403 {
+		t.Fatal("restoring the member bypassed the role limit", w.Code)
+	}
+	values.Set("action", "role")
+	values.Set("ceiling", "")
+	values.Set("expected_disabled", "false")
+	if w := memberPost(t, a, alice, "/admin", values); w.Code != 303 {
+		t.Fatal("removing the peer admin's role limit", w.Code)
 	}
 	if w := hitRoute(t, b, "GET", testControl+"/admin", bob, nil); w.Code != 200 {
 		t.Fatal("restored admin cannot sign in", w.Code)

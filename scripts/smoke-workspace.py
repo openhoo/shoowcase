@@ -562,10 +562,39 @@ async def password_accounts(binary, browser):
         await admin.get_by_label("Sign-in role").select_option("editor")
         await admin.get_by_role("button", name="Create password account").click()
         await expect(admin.locator(".notice[role=status]")).to_contain_text("Password account created")
+        await signin(member, control, first)
+        await expect(member.get_by_role("link", name="Admin", exact=True)).to_have_count(0)
+        await admin.get_by_role("link", name="studio-member", exact=True).click()
+        await admin.get_by_label("Sign-in role for studio-member").select_option("admin")
+        await admin.get_by_role("button", name="Save sign-in role").click()
+        await expect(admin.get_by_role("status").filter(has_text="Password account role saved.")).to_be_visible()
+        await expect(admin.get_by_label("Role limit for studio-member")).to_be_visible()
+        await member.reload()
+        await expect(member.get_by_label("Password", exact=True)).to_be_visible()
+        await signin(member, control, first)
+        await member.get_by_role("link", name="Admin", exact=True).click()
+        await expect(member.get_by_role("heading", name="Workspace admin")).to_be_visible()
+
+        # Submit the demotion from the native form; the other browser still has
+        # an open admin page from before the role change.
+        native = await browser.new_context(java_script_enabled=False, storage_state=await admin.context.storage_state())
+        try:
+            form = await native.new_page()
+            await form.goto(admin.url)
+            await expect(form.get_by_label("Sign-in role for studio-member")).to_have_value("admin")
+            await form.get_by_label("Sign-in role for studio-member").select_option("editor")
+            await form.get_by_role("button", name="Save sign-in role").click()
+            await expect(form.get_by_role("status").filter(has_text="Password account role saved.")).to_be_visible()
+        finally:
+            await native.close()
+        await member.reload()
+        await expect(member.get_by_label("Password", exact=True)).to_be_visible()
         for page in (member, other):
             await signin(page, control, first)
             await expect(page.get_by_role("heading", name="Your account")).to_be_visible()
             await expect(page.get_by_role("link", name="Admin", exact=True)).to_have_count(0)
+        blocked = await member.request.get(control + "/admin")
+        check(blocked.status == 403, "demoted password account still has workspace admin access")
         await check_site_lists(admin, member, control)
         # A new browser that starts on a private site returns to the exact
         # destination through the password flow. Its site cookie must expire too.
@@ -659,4 +688,4 @@ if __name__ == "__main__":
     parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access, audit and quota screenshots")
     args = parser.parse_args()
     asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot, args.admin_media))
-    print("PASS: member, group and site directories; group members, keys, activity, quotas, assignments, draft files and releases; keyboard, axe and 320/1200px layouts; local password change, private-session invalidation and SSO account link; enrollment, MCP, atomic ZIP rejection, stale upload and editor recovery, publication, revocation, exact selection, confirmation and CSV export")
+    print("PASS: member, group and site directories; group members, keys, activity, quotas, assignments, draft files and releases; keyboard, axe and 320/1200px layouts; password account promotion and demotion, password change, private-session invalidation and SSO account link; enrollment, MCP, atomic ZIP rejection, stale upload and editor recovery, publication, revocation, exact selection, confirmation and CSV export")
