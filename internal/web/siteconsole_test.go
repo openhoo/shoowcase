@@ -132,12 +132,17 @@ func TestSiteConsoleManualWorkflow(t *testing.T) {
 	level1.Set("source", "<p>Unsaved local edits</p>")
 	stale := memberPost(t, app, c, base+"/edit", level1)
 	requireMemberStatus(t, stale, 409)
-	if !strings.Contains(stale.Body.String(), "Unsaved local edits") {
-		t.Fatal("editor dropped text after conflict")
+	body := stale.Body.String()
+	if !strings.Contains(body, "Unsaved local edits") || !strings.Contains(body, "Open current draft in a new tab") || strings.Contains(body, `action="/sites/field/edit"`) {
+		t.Fatal("stale editor must preserve the text and offer recovery without resubmitting")
 	}
 	imp := getForm(base+"/import", base+"/import")
 	bad := makeSiteZIP(t, zipFixtureEntry{"index.html", "<p>Should never appear</p>", 0}, zipFixtureEntry{"bad.png", "ordinary text", 0})
-	requireMemberStatus(t, siteMultipart(t, app, c, base+"/import", imp, "bad.zip", bad), 400)
+	failedImport := siteMultipart(t, app, c, base+"/import", imp, "bad.zip", bad)
+	requireMemberStatus(t, failedImport, 400)
+	if !strings.Contains(failedImport.Body.String(), "bad.png:") {
+		t.Fatal("import error did not identify which file to fix")
+	}
 	if content := page(base + "/edit?path=index.html"); !strings.Contains(content, "Private draft") || strings.Contains(content, "Should never appear") {
 		t.Fatal("failed ZIP changed draft")
 	}

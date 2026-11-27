@@ -105,13 +105,29 @@ async def create_key(page, endpoint):
     return secret
 
 
-async def manual_site(page):
+async def manual_site(page, agent):
+    async def read():
+        return await browser_smoke.call(agent, "get_site", site_id="workshop-tally")
+
     await page.get_by_role("link", name="Sites", exact=True).click()
     await page.get_by_role("link", name="New site", exact=True).first.click()
     await page.get_by_label("Site name").fill("Workshop tally")
     await page.get_by_label("Site address").fill("workshop-tally")
     await page.get_by_role("button", name="Create site").click()
     await page.get_by_role("link", name="Import ZIP").click()
+    initial = await read()
+    with io.BytesIO() as buf:
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("index.html", "<h1>Rejected draft</h1>")
+            z.writestr("images/tally.png", "This is a text file.")
+        await page.get_by_label("ZIP archive").set_input_files(
+            {"name": "bad.zip", "mimeType": "application/zip", "buffer": buf.getvalue()})
+    async with page.expect_response(lambda r: r.request.method == "POST") as invalid:
+        await page.get_by_role("button", name="Import files").click()
+    check((await invalid.value).status == 400, "invalid ZIP response status")
+    await expect(page.get_by_role("alert")).to_contain_text("images/tally.png:")
+    rejected = await read()
+    check(rejected["revision"] == initial["revision"] and not rejected["files"], "failed ZIP changed the draft")
     with io.BytesIO() as buf:
         with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as z:
             for name in ("index.html", "app.js"):
@@ -121,8 +137,44 @@ async def manual_site(page):
     await fits(page, "ZIP importer")
     await page.get_by_role("button", name="Import files").click()
     await expect(page.locator(".notice[role=status]")).to_have_text("ZIP imported into the draft.")
+    # Keep an editor open while a different form changes the same draft.
+    stale_editor = await page.context.new_page()
+    await stale_editor.goto(page.url)
+    await stale_editor.get_by_role("link", name="app.js", exact=True).click()
+    # Reuse the signed-in fixture session to compare script-free and React forms.
+    native = await page.context.browser.new_context(java_script_enabled=False,
+        storage_state=await page.context.storage_state())
+    native_editor = await native.new_page()
+    await native_editor.goto(stale_editor.url)
+    unsaved = "\n// Notes from the other tab.\n\n"
+    for editor_tab in (stale_editor, native_editor):
+        await editor_tab.get_by_label("File contents").fill(unsaved)
     await page.get_by_role("link", name="Upload file").click()
     await fits(page, "file upload")
+    old = await read()
+    current = await browser_smoke.call(agent, "upload_files", site_id="workshop-tally",
+        expected_revision=old["revision"], files=[{"path": "agent.css", "text": "p{margin:0}"}],
+        request_id=browser_smoke.rid())
+    await page.get_by_label("Choose a file").set_input_files(EXAMPLE / "style.css")
+    async with page.expect_response(lambda r: r.request.method == "POST") as conflict:
+        await page.get_by_role("button", name="Upload to draft").click()
+    check((await conflict.value).status == 409, "stale upload response status")
+    await expect(page.get_by_role("alert")).to_contain_text("draft changed")
+    await expect(page.get_by_role("button", name="Upload to draft")).to_have_count(0)
+    for editor_tab in (stale_editor, native_editor):
+        await editor_tab.get_by_role("button", name="Save file").click()
+        await expect(editor_tab.get_by_label("Your unsaved text for app.js")).to_have_value(unsaved)
+        await expect(editor_tab.get_by_role("button", name="Save file")).to_have_count(0)
+    check((await read())["revision"] == current["revision"], "stale forms changed the current draft")
+    async with page.expect_popup() as reopened:
+        await page.get_by_role("link", name="Open current draft in a new tab").click()
+    fresh = await reopened.value
+    await expect(fresh.get_by_role("link", name="agent.css", exact=True)).to_be_visible()
+    current_site_url = fresh.url
+    await fresh.close()
+    await stale_editor.close()
+    await page.goto(current_site_url)
+    await page.get_by_role("link", name="Upload file").click()
     await page.get_by_label("Choose a file").set_input_files(EXAMPLE / "style.css")
     await page.get_by_role("button", name="Upload to draft").click()
     await expect(page.locator(".notice[role=status]")).to_have_text("File uploaded to the draft.")
@@ -130,12 +182,16 @@ async def manual_site(page):
     editor = page.get_by_label("File contents")
     code = await editor.input_value()
     check(code == (EXAMPLE / "app.js").read_text(), "editor did not recover the original program")
-    code += "\n// Workshop edition.\n"
+    code = "\n" + code + "\n// Workshop edition.\n"
     await editor.fill(code)
     await fits(page, "source editor")
     await page.get_by_role("button", name="Save file").click()
     await expect(page.locator(".notice[role=status]")).to_have_text("File saved to the draft.")
     await fits(page, "site detail")
+    await native_editor.goto(page.url)
+    await native_editor.get_by_role("link", name="app.js", exact=True).click()
+    await expect(native_editor.get_by_label("File contents")).to_have_value(code)
+    await native.close()
     return code
 
 
@@ -559,7 +615,7 @@ async def workspace(binary, channel, screenshot, admin_media):
             secret = await create_key(page, endpoint)
             async with browser_smoke.connect(endpoint, secret) as agent:
                 await add_sample_sites(agent)
-                source = await manual_site(page)
+                source = await manual_site(page, agent)
                 read = await browser_smoke.call(agent, "get_site", site_id="workshop-tally", path="app.js")
                 check(read["file"]["text"] == source, "MCP did not see manual edits")
                 await release_counter(page, anon, control, http)
@@ -587,4 +643,4 @@ if __name__ == "__main__":
     parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access, audit and quota screenshots")
     args = parser.parse_args()
     asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot, args.admin_media))
-    print("PASS: member, group and site directories; group members, keys, activity, quotas, assignments, draft files and releases; keyboard, axe and 320/1200px layouts; local password change, private-session invalidation and SSO account link; enrollment, MCP, ZIP, editor, publication, revocation, exact selection, confirmation and CSV export")
+    print("PASS: member, group and site directories; group members, keys, activity, quotas, assignments, draft files and releases; keyboard, axe and 320/1200px layouts; local password change, private-session invalidation and SSO account link; enrollment, MCP, atomic ZIP rejection, stale upload and editor recovery, publication, revocation, exact selection, confirmation and CSV export")

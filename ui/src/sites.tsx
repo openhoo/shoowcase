@@ -3,6 +3,7 @@ import { SiteDirectory } from "./sites-directory";
 import {
   ConfirmDelete,
   CreateSite,
+  DraftConflict,
   FileEditor,
   RestoreRelease,
   UploadSiteFile,
@@ -14,6 +15,7 @@ const views = {
   detail: SiteDetail,
   "new-site": CreateSite,
   edit: FileEditor,
+  "draft-conflict": DraftConflict,
   upload: UploadSiteFile,
   restore: RestoreRelease,
   delete: ({ d }: { d: SiteData }) => <ConfirmDelete d={d} sites={false} />,

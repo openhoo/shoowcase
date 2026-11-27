@@ -12,7 +12,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "internal/web/quickstartassets"
-TAG = "v0.8.0"
+TAG = "v0.10.2"
 CODE = "synthetic-setup-code-for-installer-fixture"
 PROXY_PASSWORD = "synthetic-password-for-installer-fixture"
 PROXY = f"http://user:{PROXY_PASSWORD}@proxy.invalid:8080"
@@ -31,7 +31,7 @@ func main(){
     for _,arg:=range args {if strings.Contains(arg,os.Getenv("FIXTURE_PROXY_PASSWORD")){os.Exit(41)}}
   }
   if strings.EqualFold(strings.TrimSuffix(filepath.Base(os.Args[0]),".exe"),"curl") {
-    base:="https://github.com/openhoo/shoowcase/releases/download/v0.8.0/"
+    base:="https://github.com/openhoo/shoowcase/releases/download/"+os.Getenv("FIXTURE_TAG")+"/"
     if len(args)<5 || args[0]!="-q" || !slices.Contains(args,"--proto-redir") {os.Exit(20)}
     for _,f:= range []string{"--proto","--proto-redir"}{i:=slices.Index(args,f); if i<0||i+1>=len(args)||args[i+1]!="=https"{os.Exit(21)}}
     for _,f:=range []string{"--cacert","--proxy-cacert"}{
@@ -45,7 +45,7 @@ func main(){
     b,e:=os.ReadFile(filepath.Join(os.Getenv("FIXTURE_ROOT"),name));if e!=nil{os.Exit(24)}
     if os.WriteFile(args[i+1],b,0600)!=nil{os.Exit(25)};return
   }
-  if slices.Equal(args,[]string{"version"}){fmt.Println("v0.8.0");return}
+  if slices.Equal(args,[]string{"version"}){fmt.Println(os.Getenv("FIXTURE_TAG"));return}
   if !slices.Equal(args,[]string{"connect","codex","--url","https://control.example/mcp","--setup-code",os.Getenv("FIXTURE_CODE")}){os.Exit(30)}
   p,e:=os.Executable();if e!=nil||os.WriteFile(os.Getenv("FIXTURE_RECEIPT"),[]byte(p),0600)!=nil {os.Exit(31)}
 }'''
@@ -89,7 +89,7 @@ def main():
             "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "SHOOWCASE_CA_FILE", "CURL_CA_BUNDLE", "SSL_CERT_FILE"}}
         env = dict(clean, HOME=str(home), LOCALAPPDATA=str(home),
                    PATH=str(root) + os.pathsep + os.environ["PATH"], FIXTURE_CODE=CODE,
-                   FIXTURE_ASSET=asset, FIXTURE_ROOT=str(root), FIXTURE_RECEIPT=str(receipt))
+                   FIXTURE_TAG=TAG, FIXTURE_ASSET=asset, FIXTURE_ROOT=str(root), FIXTURE_RECEIPT=str(receipt))
         if windows:
             env["FIXTURE_SCRIPT"] = str(ASSETS / "install.ps1")
             # Same invocation shape as the copied command, without a network fetch.

@@ -56,6 +56,7 @@ func newHandler(execute Execute, exactHost, version string) http.Handler {
 		if err != nil {
 			panic(fmt.Errorf("invalid built-in schema for %s: %w", def.name, err))
 		}
+		diagnose := compileDiagnostic(def.input)
 		closedWorld := false
 		destructive := !def.read && def.name != "create_site"
 		server.AddTool(&mcp.Tool{
@@ -76,7 +77,15 @@ func newHandler(execute Execute, exactHost, version string) http.Handler {
 			}
 			if err := schema.Validate(args); err != nil {
 				outcome = "invalid_argument"
-				return failure(nil, outcome, fmt.Sprintf("Arguments do not match the %s input schema. %s", def.name, def.hint)), nil
+				issue := diagnose(args, "")
+				if issue == nil || issue.message == "" {
+					return failure(nil, outcome, def.hint), nil
+				}
+				message := issue.message
+				if issue.field != "" {
+					message = fmt.Sprintf("%s: %s", issue.field, message)
+				}
+				return failureAt(nil, outcome, message, issue.field), nil
 			}
 			out, err := execute(ctx, def.name, raw)
 			if err != nil {
@@ -130,18 +139,26 @@ var actions = map[string]string{
 	"forbidden":         "Ask a workspace administrator for the required role.",
 	"not_found":         "Check the site, revision, release or path using list_sites and get_site.",
 	"conflict":          "Read the current state with get_site. Reconcile concurrent changes before submitting a new request.",
-	"rate_limited":      "Wait a minute and retry with the same request_id and arguments.",
+	"rate_limited":      "Wait a minute, then retry the same call with its arguments unchanged.",
 	"quota_exceeded":    "Reduce the site or upload size, or ask a workspace administrator to review quotas.",
 	"approval_required": "To apply this public change, call approve_public_change with the returned approval_token and the same publisher credential, or review it in the browser at approval_url. Then verify the release and audience with get_site.",
-	"internal":          "Retry with the same request_id and the same arguments; contact an operator if it fails again.",
+	"internal":          "Retry the same call with its arguments unchanged. Contact an operator if it fails again.",
 }
 
 func failure(meta map[string]any, code, message string) *mcp.CallToolResult {
+	return failureAt(meta, code, message, "")
+}
+
+func failureAt(meta map[string]any, code, message, field string) *mcp.CallToolResult {
 	out := make(map[string]any, len(meta)+1)
 	for k, v := range meta {
 		out[k] = v
 	}
-	out["error"] = map[string]string{"code": code, "message": message, "action": actions[code]}
+	detail := map[string]string{"code": code, "message": message, "action": actions[code]}
+	if field != "" {
+		detail["field"] = field
+	}
+	out["error"] = detail
 	return result(out, true)
 }
 

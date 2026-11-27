@@ -67,7 +67,7 @@ var uploadPage = template.Must(webui.NativeTemplate("upload").Parse(`<main>
 func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.ticket(r, "upload")
 	if !ok {
-		signedPageError(w, r, "Expired or invalid upload", 400)
+		signedPageError(w, r, "This upload link is invalid or has expired. Ask your agent for a new upload link.", 400)
 		return
 	}
 	var spec uploadSpec
@@ -88,7 +88,7 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 		}
 		who = actor(i)
 		if who.Subject != t.Who.Subject || who.Workspace != t.Who.Workspace {
-			signedPageError(w, r, "Wrong account", 403)
+			signedPageError(w, r, "Sign in with the workspace account that requested this upload, then reopen the link.", 403)
 			return
 		}
 		ctx, who, err = a.ticketActor(ctx, t, &i)
@@ -115,7 +115,7 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 		}
 		defer r.MultipartForm.RemoveAll()
 		if !a.auth.ValidCSRF(r, r.PostForm.Get("csrf")) {
-			signedPageError(w, r, "Invalid form", 403)
+			signedPageError(w, r, "This form has expired. Reopen the upload link and select your file again.", 403)
 			return
 		}
 		f, _, e := r.FormFile("file")

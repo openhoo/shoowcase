@@ -185,3 +185,53 @@ func TestLoopbackIngressPreservesOnlyConfiguredControlHost(t *testing.T) {
 		}
 	}
 }
+
+func TestSDKInputErrorsIdentifyCorrectionWithoutEchoingValues(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(New(func(context.Context, string, json.RawMessage) (map[string]any, error) {
+		calls.Add(1)
+		return map[string]any{"sites": []any{}}, nil
+	}))
+	defer server.Close()
+	client := connect(t, server.URL, "2025-11-25")
+
+	for _, tc := range []struct {
+		tool, args, field, guidance string
+	}{
+		{"list_sites", `{"limit":101}`, "limit", "1 to 100"},
+		{"list_sites", `{"limit":"private-input"}`, "limit", "integer"},
+		{"publish_site", `{"site_id":"private-input","request_id":"123"}`, "revision", "required"},
+		{"set_site_access", `{"site_id":"s","revision":"r","request_id":"123","visibility":"private-input"}`, "visibility", "workspace, public, offline"},
+		{"upload_files", `{"site_id":"s","expected_revision":"r","request_id":"123","files":[{"path":"index.html","text":"private-input"},{"path":"app.js"}]}`, "files[1]", "exactly one"},
+		{"upload_files", `{"site_id":"s","expected_revision":"r","request_id":"123","files":[{"path":"index.html","text":"private-input","base64":"private-input"}]}`, "files[0]", "exactly one"},
+		{"upload_files", `{"site_id":"s","expected_revision":"r","request_id":"123","files":[{"path":"folder with spaces/private-input","text":"private-input"}]}`, "files[0].path", "Relative site asset"},
+		{"upload_files", `{"site_id":"s","expected_revision":"r","request_id":"123","files":"private-input"}`, "files", "array"},
+		{"list_sites", `{"private-input":true}`, "", "cursor, limit"},
+		{"list_site_groups", `{"private-input":true}`, "", "no arguments"},
+		{"approve_public_change", `{"approval_token":{"token":"private-input"}}`, "approval_token", "string"},
+	} {
+		t.Run(tc.tool+"/"+tc.field+"/"+tc.guidance, func(t *testing.T) {
+			r, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tc.tool, Arguments: json.RawMessage(tc.args)})
+			if err != nil || !r.IsError {
+				t.Fatalf("expected tool error, got %v, %v", r, err)
+			}
+			text := r.Content[0].(*mcp.TextContent).Text
+			var out struct {
+				Error struct{ Code, Message, Field string }
+			}
+			if err := json.Unmarshal([]byte(text), &out); err != nil {
+				t.Fatal(err)
+			}
+			if out.Error.Code != "invalid_argument" || out.Error.Field != tc.field || !strings.Contains(out.Error.Message, tc.guidance) || strings.Contains(text, "private-input") {
+				t.Errorf("unexpected diagnostic: %s", text)
+			}
+		})
+	}
+	if calls.Load() != 0 {
+		t.Fatal("invalid input reached the callback")
+	}
+	r, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: "list_sites", Arguments: map[string]any{"limit": 100}})
+	if err != nil || r.IsError || calls.Load() != 1 {
+		t.Fatalf("corrected retry: %v, %v", r, err)
+	}
+}

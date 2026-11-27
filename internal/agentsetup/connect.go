@@ -72,11 +72,11 @@ func redeem(ctx context.Context, cli *http.Client, ep url.URL, name, code string
 	req.Header.Set("Accept", "application/json")
 	res, err := cli.Do(req)
 	if err != nil {
-		return "", errors.New("could not reach Shoowcase; check connectivity, proxy settings and certificate trust")
+		return "", errUnreachable
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return "", errors.New("Shoowcase did not accept this setup code; create a new command in Agent setup")
+		return "", httpFailure(res.StatusCode, true)
 	}
 	var result struct {
 		Token string `json:"token"`

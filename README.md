@@ -34,6 +34,8 @@ The GitHub Copilot desktop app (local sessions), Copilot CLI and the default Cop
 
 The relay supports HTTP and HTTPS forward proxies, including Basic authentication. Setup reads `HTTPS_PROXY` (or `ALL_PROXY`) and honors `NO_PROXY`; lowercase forms are accepted. The route to this Shoowcase instance and any proxy credentials stay in the local user credential store. To change the proxy, run Quickstart again with the new settings and revoke the old key under **Agent keys**. If your network uses a PAC file or requires NTLM or Kerberos, ask IT for a compatible proxy or approved local gateway.
 
+If Quickstart returns **HTTP 401** while connecting, copy a new command: setup codes expire and work only once. If a connected agent gets **HTTP 401**, reconnect it in Quickstart. **HTTP 429** means to wait before retrying; **HTTP 503** means the service is temporarily unavailable. For a publishing request whose outcome is uncertain, reuse the original request ID and arguments when retrying.
+
 Try: **“Create a site called Team Fieldnotes. Make a welcome page and a checklist, publish them for my workspace, and give me the URL.”** To try it with ready-made files, use the [onboarding example](examples/onboarding/).
 
 ### I want to try it on my computer

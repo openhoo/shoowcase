@@ -12,6 +12,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+var errInvalidReply = errors.New("invalid response from the Shoowcase control host; check the control URL and service status")
+
 const maxMessage = 12 << 20 // same as the Shoowcase HTTP MCP handler
 
 // Shoowcase is a stateless, JSON-response-only Streamable HTTP server. Forward
@@ -63,16 +65,16 @@ func bridge(ctx context.Context, cli *http.Client, c credential, in io.Reader, o
 				req.Header.Set("Mcp-Name", msg.Params.URI)
 			}
 		}
-		result, ok := forward(cli, req, msg.ID)
+		result, err := forward(cli, req, msg.ID)
 		if len(msg.ID) == 0 {
 			continue
 		}
-		if !ok {
+		if err != nil {
 			result, _ = json.Marshal(struct {
 				JSONRPC string          `json:"jsonrpc"`
 				ID      json.RawMessage `json:"id"`
 				Error   any             `json:"error"`
-			}{"2.0", msg.ID, map[string]any{"code": -32000, "message": "Shoowcase request failed. Check your network, proxy and certificate settings. Reconnect the agent if its key has expired or was revoked."}})
+			}{"2.0", msg.ID, map[string]any{"code": -32000, "message": err.Error()}})
 		} else if msg.Method == "initialize" {
 			var init struct {
 				Result struct {
@@ -98,14 +100,17 @@ func bridge(ctx context.Context, cli *http.Client, c credential, in io.Reader, o
 	return nil
 }
 
-func forward(cli *http.Client, req *http.Request, id json.RawMessage) ([]byte, bool) {
+func forward(cli *http.Client, req *http.Request, id json.RawMessage) ([]byte, error) {
 	res, err := cli.Do(req)
 	if err != nil {
-		return nil, false
+		return nil, errUnreachable
 	}
 	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 || len(id) == 0 {
-		return nil, false
+	if len(id) == 0 {
+		return nil, nil // Notifications never produce a stdio reply.
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, httpFailure(res.StatusCode, false)
 	}
 	b, err := readBounded(res.Body, maxMessage)
 	var rpc struct {
@@ -113,11 +118,11 @@ func forward(cli *http.Client, req *http.Request, id json.RawMessage) ([]byte, b
 		ID, Result, Error json.RawMessage
 	}
 	if err != nil || json.Unmarshal(b, &rpc) != nil || rpc.Version != "2.0" || !bytes.Equal(id, rpc.ID) || (len(rpc.Result) == 0) == (len(rpc.Error) == 0) {
-		return nil, false
+		return nil, errInvalidReply
 	}
 	// A credential is transport-only, including on an erroneous server response.
 	if bytes.Contains(b, []byte(req.Header.Get("Authorization")[len("Bearer "):])) {
-		return nil, false
+		return nil, errInvalidReply
 	}
-	return b, true
+	return b, nil
 }

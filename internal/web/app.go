@@ -403,7 +403,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	}
 	who := actor(i)
 	if who.Subject != t.Who.Subject || who.Workspace != t.Who.Workspace {
-		signedPageError(w, r, "Wrong account for this approval", 403)
+		signedPageError(w, r, "Sign in with the workspace account that requested this approval, then reopen the link.", 403)
 		return
 	}
 	ctx, who, err := a.ticketActor(r.Context(), t, &i)
@@ -451,7 +451,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	if r.ParseForm() != nil || !a.auth.ValidCSRF(r, r.PostForm.Get("csrf")) {
-		signedPageError(w, r, "Invalid form", 403)
+		signedPageError(w, r, "This form has expired. Reopen the approval link and review the release again.", 403)
 		return
 	}
 	res, e := a.store.Execute(sites.WithApproval(ctx, t.Generation), who, t.Tool, t.Args)

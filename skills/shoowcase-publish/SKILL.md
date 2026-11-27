@@ -7,6 +7,8 @@ description: Create, update, preview, publish, restrict, or roll back a static w
 
 Use the configured Shoowcase MCP connection. Discover its tools and use the schemas advertised by that server. Authentication selects the workspace: never supply a workspace or role in tool arguments. If tools are unavailable, connect the instance's control URL ending in `/mcp` and use the work-account login. Local development requires a client that can reach the server on the same computer; enter the generated bearer token through its secret store. Do not request a token in chat.
 
+On `invalid_argument`, read `error.message`. A schema error can also return `error.field`, such as `files[1].path` for the second upload. Correct that field before retrying.
+
 ## Author and preview
 
 For a new project, call `list_site_groups` to find which budgets your credential can use. Pass the intended group's ID as `group_id` in `create_site`; if several groups fit and no project is specified, ask which should pay. Subsequent edits charge the site’s assigned group. On `quota_exceeded`, report whether site count or retained revision storage is full and whether the limit belongs to the group or workspace. Do not create a replacement site in another group to bypass it.
