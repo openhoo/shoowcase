@@ -82,7 +82,11 @@ func (a *App) deleteSiteSelection(w http.ResponseWriter, r *http.Request, d site
 		if len(review) == 1 {
 			title = "Delete site"
 		}
-		siteView(w, d, http.StatusOK, title, "delete-sites")
+		active := "sites"
+		if d.InAdmin {
+			active = "admin"
+		}
+		consoleView(w, d.C, http.StatusOK, title, active, siteParts.Lookup("delete-sites"), d)
 	case "delete-sites":
 		if len(r.PostForm["confirm"]) != 1 || len(r.PostForm["proof"]) != 1 || r.PostForm.Get("confirm") != "delete" || !a.validSelectionProof(d.C, deleteSitesProofKind, tokens, r.PostForm.Get("proof")) {
 			siteFailure(w, d.C, badFile("Review and confirm the sites to delete."))
@@ -101,7 +105,11 @@ func (a *App) deleteSiteSelection(w http.ResponseWriter, r *http.Request, d site
 			siteFailure(w, d.C, err)
 			return
 		}
-		http.Redirect(w, r, "/sites?notice=sites-deleted", http.StatusSeeOther)
+		dest := "/sites?notice=sites-deleted"
+		if d.InAdmin {
+			dest = "/admin?view=sites&done=sites-deleted"
+		}
+		http.Redirect(w, r, dest, http.StatusSeeOther)
 	default:
 		siteFailure(w, d.C, badFile("Choose a listed site action."))
 	}

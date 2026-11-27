@@ -20,10 +20,7 @@ var quotaSchema = []string{
 	"ALTER TABLE sc_sites ADD COLUMN assignment_version BIGINT NOT NULL DEFAULT 1",
 	`UPDATE sc_sites SET retained_bytes=(SELECT COALESCE(SUM(f.size),0) FROM sc_revisions r JOIN sc_files f ON f.revision=r.id WHERE r.site=sc_sites.id)`,
 	"CREATE UNIQUE INDEX sc_sites_workspace_id ON sc_sites(workspace,id)",
-	`CREATE TABLE sc_site_groups (
-		workspace TEXT NOT NULL, site TEXT NOT NULL, group_id TEXT NOT NULL, PRIMARY KEY(workspace,site),
-		FOREIGN KEY(workspace,site) REFERENCES sc_sites(workspace,id),
-		FOREIGN KEY(workspace,group_id) REFERENCES sc_groups(workspace,id))`,
+	siteGroupsDDL,
 	"CREATE INDEX sc_site_groups_group ON sc_site_groups(workspace,group_id,site)",
 }
 

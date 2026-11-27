@@ -178,7 +178,7 @@ function Console({ page }: { page: ConsolePage }) {
       >
         {special ? (
           <Message page={page} />
-        ) : active === "sites" ? (
+        ) : active === "sites" || view === "delete-sites" ? (
           <Sites page={page} />
         ) : (
           <Members page={page} />

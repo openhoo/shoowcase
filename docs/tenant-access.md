@@ -15,6 +15,12 @@ In either mode a suspended account is denied private access. An intentionally pu
 
 ![Workspace settings with Managed members and groups selected.](media/admin/access-mode.png)
 
+## Find a site
+
+**Sites** and the MCP tool `list_sites` show sites you created and sites assigned to a group you currently belong to. Any group role counts, including reader. If you leave a group, its sites drop out of your list unless you created them. The same rule applies to administrators; open **Workspace admin → All sites** to see every site in the workspace, including unassigned sites.
+
+Directory membership does not change a site's audience. Someone with a direct link can still open it if its existing access settings allow them to.
+
 ## Find a member or group
 
 Open **Workspace admin → Members** to search by display name or sign-in ID. You can filter by active or suspended status and effective role, and sort by name or sign-in ID. Select someone’s name to manage access, set a role limit or change a password account’s sign-in role. Your own name opens **Account**.

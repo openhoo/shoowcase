@@ -23,6 +23,9 @@ import (
 //go:embed directory-icons.html
 var directoryIcons string
 
+//go:embed templates/site-directory.html
+var siteDirectoryHTML string
+
 //go:embed siteconsole.html
 var siteHTML string
 
@@ -62,11 +65,24 @@ var siteParts = template.Must(webui.NativeTemplate("sites").Funcs(template.FuncM
 			return "Workspace"
 		}
 	},
-}).Parse(directoryIcons + siteHTML))
+}).Parse(directoryIcons + siteDirectoryHTML + siteHTML))
+
+// siteListing is shared by the personal directory and the workspace admin view.
+type siteListing struct {
+	C         consoleContext
+	Directory directoryData
+	InAdmin   bool
+}
+
+func (l siteListing) ListURL() string {
+	if l.InAdmin {
+		return "/admin?view=sites"
+	}
+	return "/sites"
+}
 
 type siteData struct {
-	C                                                                   consoleContext
-	Directory                                                           directoryData
+	siteListing
 	Selected                                                            []selectedSiteRow
 	ReviewProof, DeletionValue                                          string
 	Labels, Paths                                                       []string
@@ -80,7 +96,7 @@ type siteData struct {
 
 func makeSiteData(c consoleContext) siteData {
 	r := c.Actor.Role
-	return siteData{C: c, Request: rand.Text(), CanEdit: r == "editor" || r == "publisher" || r == "admin", CanPublish: r == "publisher" || r == "admin"}
+	return siteData{siteListing: siteListing{C: c}, Request: rand.Text(), CanEdit: r == "editor" || r == "publisher" || r == "admin", CanPublish: r == "publisher" || r == "admin"}
 }
 
 func siteView(w http.ResponseWriter, d siteData, status int, title, part string) {

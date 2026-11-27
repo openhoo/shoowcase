@@ -18,7 +18,7 @@ import (
 	"github.com/openhoo/shoowcase/internal/webui"
 )
 
-//go:embed templates/members*.html directory-icons.html
+//go:embed templates/members*.html templates/site-directory.html directory-icons.html
 var memberFiles embed.FS
 
 var memberPages = template.Must(webui.NativeTemplate("member-pages").Funcs(template.FuncMap{
@@ -31,7 +31,7 @@ var memberPages = template.Must(webui.NativeTemplate("member-pages").Funcs(templ
 	"maxQuotaStorage": func() string { return formatQuotaBytes(sites.MaxWorkspaceManifestBytes) },
 	"quotaBytes":      formatQuotaBytes,
 	"limitState":      quotaLimitState,
-}).ParseFS(memberFiles, "directory-icons.html", "templates/members*.html"))
+}).ParseFS(memberFiles, "directory-icons.html", "templates/site-directory.html", "templates/members*.html"))
 
 func memberRole(r string) string {
 	switch r {
@@ -73,6 +73,7 @@ type memberPage struct {
 	Member                                                *memberRow
 	Members                                               []sites.Account
 	Directory                                             adminDirectory
+	SiteListing                                           *siteListing
 	Events                                                []sites.AuditEvent
 	EventNames                                            map[string]string
 	Settings                                              sites.WorkspaceSettings
@@ -436,6 +437,12 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 	ctx := r.Context()
 	if r.Method == http.MethodPost {
 		action := r.PostForm.Get("action")
+		if r.URL.Query().Get("view") == "sites" && (action == "review-delete-sites" || action == "delete-sites") {
+			d := makeSiteData(c)
+			d.InAdmin = true
+			a.deleteSiteSelection(w, r, d)
+			return
+		}
 		if action == "create-local" {
 			if !p.LocalAdmin {
 				consoleError(w, c, 403, "Local accounts are disabled", "Contact your instance operator.")
@@ -535,6 +542,16 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 		}
 		p.Keys = memberKeyRows(keys)
 		p.Next = memberNext("/admin", "keys", next)
+	case "sites":
+		directory, err := a.siteDirectory(ctx, who, r.URL.Query(), a.store.AdminDirectory)
+		if err != nil {
+			siteFailure(w, c, err)
+			return
+		}
+		p.SiteListing = &siteListing{C: c, Directory: directory, InAdmin: true}
+		if r.URL.Query().Get("done") == "sites-deleted" {
+			p.Notice = "Selected sites deleted."
+		}
 	case "quotas":
 		if !a.quotaView(w, r, c, &p) {
 			return

@@ -19,11 +19,7 @@ var tenantSchema = []string{
 	    workspace TEXT NOT NULL REFERENCES sc_workspace(id), id TEXT NOT NULL,
 	    name TEXT NOT NULL, name_key TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('reader','editor','publisher')),
 	    version BIGINT NOT NULL, PRIMARY KEY(workspace,id), UNIQUE(workspace,name_key))`,
-	`CREATE TABLE sc_group_members (
-	    workspace TEXT NOT NULL, group_id TEXT NOT NULL, subject TEXT NOT NULL,
-	    PRIMARY KEY(workspace,group_id,subject),
-	    FOREIGN KEY(workspace,group_id) REFERENCES sc_groups(workspace,id) ON DELETE CASCADE,
-	    FOREIGN KEY(workspace,subject) REFERENCES sc_members(workspace,subject))`,
+	groupMembersDDL,
 	"CREATE INDEX sc_group_members_subject ON sc_group_members(workspace,subject,group_id)",
 }
 

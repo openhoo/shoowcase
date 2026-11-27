@@ -39,13 +39,18 @@ interface Details {
     { release_id: string; revision: string; created_at: string }[] | null;
   NextCursor: string;
 }
-export interface SiteData {
+export interface SiteListing {
+  InAdmin: boolean;
   C: {
     WorkspaceLabel: string;
     Actor: { Role: string };
     Identity: { CSRF: string };
   };
   Directory: SiteDirectory;
+}
+export const siteListURL = (inAdmin: boolean) =>
+  inAdmin ? "/admin?view=sites" : "/sites";
+export interface SiteData extends SiteListing {
   DeletionValue: string;
   Selected: { DeletionValue: string }[] | null;
   Labels: string[] | null;

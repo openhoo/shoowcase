@@ -34,7 +34,11 @@ func directoryHref(id string) string {
 	return "/sites/" + url.PathEscape(id)
 }
 
-func (a *App) directory(ctx context.Context, who sites.Actor, q url.Values) (d directoryData, err error) {
+func (a *App) directory(ctx context.Context, who sites.Actor, q url.Values) (directoryData, error) {
+	return a.siteDirectory(ctx, who, q, a.store.Directory)
+}
+
+func (a *App) siteDirectory(ctx context.Context, who sites.Actor, q url.Values, list func(context.Context, sites.Actor) ([]sites.DirectorySite, error)) (d directoryData, err error) {
 	d.Query, d.State, d.Audience, d.Sort = strings.TrimSpace(q.Get("q")), q.Get("state"), q.Get("audience"), q.Get("sort")
 	if !utf8.ValidString(d.Query) || utf8.RuneCountInString(d.Query) > 100 || strings.ContainsFunc(d.Query, unicode.IsControl) {
 		return d, badFile("Search for up to 100 characters without line breaks.")
@@ -52,7 +56,7 @@ func (a *App) directory(ctx context.Context, who sites.Actor, q url.Values) (d d
 	if !a.config.Public {
 		ctx = sites.WithPrivateDelivery(ctx)
 	}
-	all, err := a.store.Directory(ctx, who)
+	all, err := list(ctx, who)
 	if err != nil {
 		return d, err
 	}

@@ -1,3 +1,5 @@
+import type { SiteListing } from "./sites-model";
+
 export interface Account {
   Subject: string;
   DisplayName: string;
@@ -94,6 +96,7 @@ export interface MemberData {
     (Account & { Manage: boolean; Local: boolean; Ceilings: string[] }) | null;
   Members: Account[] | null;
   Directory: Directory;
+  SiteListing: SiteListing | null;
   EventNames: Record<string, string>;
   Events: AuditEvent[] | null;
   Settings: { ID: string; DisplayName: string; Mode: string; Version: number };

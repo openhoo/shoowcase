@@ -1,0 +1,37 @@
+{{define "token"}}<input type="hidden" name="csrf" value="{{.C.Identity.CSRF}}">{{end}}
+{{define "file-icon"}}<svg width="15" height="15" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 2.5h5l3.5 3.7v9.3H5zM10 3v4h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>{{end}}
+
+{{define "site-directory"}}
+<section class="directory" aria-labelledby="directory-title" data-selection>
+  <div class="directory-title"><h2 id="directory-title">{{if .InAdmin}}All sites{{else}}Site directory{{end}}</h2><span class="directory-count">{{.Directory.MatchCount}} {{if eq .Directory.MatchCount 1}}site{{else}}sites{{end}}{{if .Directory.Filtered}} of {{.Directory.Total}}{{end}}</span><button type="button" class="filter-toggle secondary" id="directory-toggle" aria-controls="directory-options" aria-expanded="true" hidden>{{template "icon-SlidersHorizontal"}}<span class="action-caption">Filter and sort</span></button></div>
+  <form method="get" action="{{if .InAdmin}}/admin{{else}}/sites{{end}}" class="directory-filters" role="search" aria-label="Filter the site directory">
+    {{if .InAdmin}}<input type="hidden" name="view" value="sites">{{end}}
+    <div class="field search-field"><label for="site-search">Search sites</label><div class="search-box">{{template "search-icon"}}<input type="search" name="q" id="site-search" value="{{.Directory.Query}}" maxlength="100" placeholder="Name or address"></div></div>
+    <div class="directory-options" id="directory-options"><div class="field"><label for="filter-state">Status</label><div class="select-wrap"><select id="filter-state" name="state">
+      <option value="">All statuses</option><option value="draft" {{if eq .Directory.State "draft"}}selected{{end}}>Draft only</option><option value="changes" {{if eq .Directory.State "changes"}}selected{{end}}>Unpublished changes</option><option value="published" {{if eq .Directory.State "published"}}selected{{end}}>Published</option><option value="offline" {{if eq .Directory.State "offline"}}selected{{end}}>Offline</option></select></div></div>
+    <div class="field"><label for="filter-audience">Audience</label><div class="select-wrap"><select id="filter-audience" name="audience">
+      <option value="">All audiences</option><option value="workspace" {{if eq .Directory.Audience "workspace"}}selected{{end}}>Workspace</option><option value="public" {{if eq .Directory.Audience "public"}}selected{{end}}>Public</option></select></div></div>
+    <div class="field"><label for="sort-sites">Sort by</label><div class="select-wrap"><select id="sort-sites" name="sort"><option value="updated" {{if eq .Directory.Sort "updated"}}selected{{end}}>Last updated</option><option value="name" {{if eq .Directory.Sort "name"}}selected{{end}}>Name A–Z</option><option value="oldest" {{if eq .Directory.Sort "oldest"}}selected{{end}}>Oldest first</option></select></div></div></div>
+    <button type="submit" class="secondary filter-action">{{template "icon-ListFilter"}}<span class="action-caption">Apply filters</span></button>
+  </form>
+  {{if .Directory.Filtered}}<p class="filter-reset"><a href="{{.ListURL}}">Reset filters</a></p>{{end}}
+  {{if .Directory.Sites}}
+  {{if eq .C.Actor.Role "admin"}}<form id="delete-sites-selection" method="post" action="{{.ListURL}}">{{template "token" .}}<input type="hidden" name="action" value="review-delete-sites"></form>
+  <div class="selection-toolbar"><label data-select-all-label hidden><input type="checkbox" data-select-all> Select all on this page</label><span data-selection-count role="status"></span><button class="danger-action" type="submit" form="delete-sites-selection" data-selection-submit>{{template "icon-Trash2"}}<span class="action-caption">Delete selected sites…</span></button></div>
+  <p class="directory-body">Deleting a site removes its drafts, releases and live page. To keep its history, take it offline in Access settings instead.</p>{{end}}
+  <table class="directory-table" role="table" aria-labelledby="directory-title"><thead><tr>{{if eq .C.Actor.Role "admin"}}<th scope="col" class="selection-cell">Select</th>{{end}}<th scope="col">Site</th><th scope="col">Status</th><th scope="col">Audience</th><th scope="col">Files</th><th scope="col">Last updated</th>{{if eq .C.Actor.Role "admin"}}<th scope="col">Actions</th>{{end}}</tr></thead>
+  <tbody>{{range .Directory.Sites}}<tr>
+    {{if eq $.C.Actor.Role "admin"}}<td class="selection-cell">{{if .DeletionValue}}<input type="checkbox" name="site" value="{{.DeletionValue}}" form="delete-sites-selection" data-select-row aria-label="Select site {{.Name}} ({{.ID}})">{{end}}</td>{{end}}
+    <th scope="row" class="entry-name-cell"><div class="site-name-wrap"><span class="folio-mark state-{{.State}}" aria-hidden="true"><i></i></span><div><a href="{{.Href}}" class="site-name">{{.Name}}</a><span class="site-address">{{.Address}}</span></div></div></th>
+    <td class="state-cell"><span class="status-chip state-{{.State}}"><i class="dot {{.State}}" aria-hidden="true"></i>{{.StateLabel}}</span></td>
+    <td class="audience-cell"><span class="mobile-label" aria-hidden="true">Audience</span>{{.AudienceLabel}}</td>
+    <td class="files-cell"><span class="mobile-label" aria-hidden="true">Files</span><span class="file-count">{{template "file-icon"}}{{.FileCount}}</span></td>
+    <td class="updated-cell"><span class="mobile-label" aria-hidden="true">Updated</span><time datetime="{{.Updated.UTC.Format "2006-01-02T15:04:05Z"}}">{{.UpdatedLabel}}</time></td>
+    {{if eq $.C.Actor.Role "admin"}}<td>{{if .DeletionValue}}<form method="post" action="{{$.ListURL}}">{{template "token" $}}<input type="hidden" name="action" value="review-delete-sites"><button class="danger-action" type="submit" name="site" value="{{.DeletionValue}}" aria-label="Delete site {{.Name}} ({{.ID}})">{{template "icon-Trash2"}}<span class="action-caption">Delete site {{.Name}} ({{.ID}})</span></button></form>{{end}}</td>{{end}}
+  </tr>{{end}}</tbody></table>
+  {{else}}<div class="directory-empty"><span class="folio-mark" aria-hidden="true"><i></i></span>
+    {{if .Directory.Total}}<h3>No matching sites</h3><p>Try another name or remove a filter.</p>
+    {{else if .InAdmin}}<h3>No sites in this workspace yet</h3>{{else}}<h3>No sites yet</h3><p>Sites you create or that belong to one of your groups will appear here.</p><p><a href="/quickstart">Connect your agent with Quickstart →</a></p>{{end}}
+  </div>{{end}}
+</section>
+{{end}}

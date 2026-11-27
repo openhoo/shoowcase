@@ -8,7 +8,7 @@ import {
 import { navigationTarget } from "@/lib/navigation";
 import { ArrowLeft, File, FolderOpen } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import type { SiteData } from "./sites-model";
+import { siteListURL, type SiteData } from "./sites-model";
 
 export const toolbar = "flex min-w-0 flex-wrap items-center gap-2.5";
 export const panel =
@@ -19,7 +19,7 @@ export const linkStyle =
 export function Hidden({ name, value }: { name: string; value: string }) {
   return <input type="hidden" name={name} value={value} />;
 }
-export function Token({ d }: { d: SiteData }) {
+export function Token({ d }: { d: Pick<SiteData, "C"> }) {
   return <Hidden name="csrf" value={d.C.Identity.CSRF} />;
 }
 export function Write({ d }: { d: SiteData }) {
@@ -53,14 +53,20 @@ export function ButtonLink({
     />
   );
 }
-export function Back({ d }: { d?: SiteData }) {
+export function Back({
+  d,
+  inAdmin = false,
+}: {
+  d?: SiteData;
+  inAdmin?: boolean;
+}) {
   return (
     <a
       className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      href={navigationTarget(d?.Base || "/sites")}
+      href={navigationTarget(d?.Base || siteListURL(inAdmin))}
     >
       <ArrowLeft aria-hidden="true" className="size-4" />
-      {d?.Base ? "Back to site" : "All sites"}
+      {d?.Base ? "Back to site" : inAdmin ? "All sites" : "Your sites"}
     </a>
   );
 }
