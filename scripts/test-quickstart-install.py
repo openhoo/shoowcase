@@ -12,8 +12,10 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "internal/web/quickstartassets"
-TAG = "v0.6.0"
+TAG = "v0.6.1"
 CODE = "synthetic-setup-code-for-installer-fixture"
+PROXY_PASSWORD = "synthetic-password-for-installer-fixture"
+PROXY = f"http://user:{PROXY_PASSWORD}@proxy.invalid:8080"
 
 # Run the real installer entrypoint without touching GitHub, the user's client,
 # the real home directory, or a network service. curl and the archive executable
@@ -22,23 +24,38 @@ FIXTURE = r'''package main
 import ("fmt"; "os"; "path/filepath"; "slices"; "strings")
 func main(){
   args:=os.Args[1:]
+  // The bootstrap gives curl and connect the protected value through their
+  // inherited environment only. Client-side configuration never needs it.
+  if want:=os.Getenv("FIXTURE_WANT_PROXY");want!="" {
+    if os.Getenv("HTTPS_PROXY")!=want || os.Getenv("NO_PROXY")!="intranet.invalid" { os.Exit(40) }
+    for _,arg:=range args {if strings.Contains(arg,os.Getenv("FIXTURE_PROXY_PASSWORD")){os.Exit(41)}}
+  }
   if strings.EqualFold(strings.TrimSuffix(filepath.Base(os.Args[0]),".exe"),"curl") {
-    base:="https://github.com/openhoo/shoowcase/releases/download/v0.6.0/"
+    base:="https://github.com/openhoo/shoowcase/releases/download/v0.6.1/"
     if len(args)<5 || args[0]!="-q" || !slices.Contains(args,"--proto-redir") {os.Exit(20)}
     for _,f:= range []string{"--proto","--proto-redir"}{i:=slices.Index(args,f); if i<0||i+1>=len(args)||args[i+1]!="=https"{os.Exit(21)}}
+    for _,f:=range []string{"--cacert","--proxy-cacert"}{
+      i:=slices.Index(args,f); ca:=os.Getenv("SHOOWCASE_CA_FILE")
+      if (ca=="" && i>=0) || (ca!="" && (i<0||i+1>=len(args)||args[i+1]!=ca)){os.Exit(26)}
+    }
+    if slices.Contains(args,"--insecure")||slices.Contains(args,"--proxy-insecure"){os.Exit(27)}
     name:=strings.TrimPrefix(args[len(args)-1],base)
     if name!="SHA256SUMS" && name!=os.Getenv("FIXTURE_ASSET"){os.Exit(22)}
     i:=slices.Index(args,"-o"); if i<0||i+1>=len(args){os.Exit(23)}
     b,e:=os.ReadFile(filepath.Join(os.Getenv("FIXTURE_ROOT"),name));if e!=nil{os.Exit(24)}
     if os.WriteFile(args[i+1],b,0600)!=nil{os.Exit(25)};return
   }
-  if slices.Equal(args,[]string{"version"}){fmt.Println("v0.6.0");return}
+  if slices.Equal(args,[]string{"version"}){fmt.Println("v0.6.1");return}
   if !slices.Equal(args,[]string{"connect","codex","--url","https://control.example/mcp","--setup-code",os.Getenv("FIXTURE_CODE")}){os.Exit(30)}
   p,e:=os.Executable();if e!=nil||os.WriteFile(os.Getenv("FIXTURE_RECEIPT"),[]byte(p),0600)!=nil {os.Exit(31)}
 }'''
 
 
 def main():
+    # Run the actual clipboard command through a real authenticated CONNECT
+    # proxy in the native shell on both installer CI operating systems.
+    subprocess.run(["go", "test", "internal/web/quickproxy_command.go",
+                    "internal/web/quickproxy_command_test.go"], cwd=ROOT, check=True)
     windows = os.name == "nt"
     system = {"Darwin": "darwin", "Linux": "linux", "Windows": "windows"}[platform.system()]
     arch = {"amd64": "amd64", "x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[platform.machine().lower()]
@@ -68,7 +85,9 @@ def main():
         sums = root / "SHA256SUMS"
         sums.write_text(sha + "  " + asset + "\n")
         receipt = root / "invoked"
-        env = dict(os.environ, HOME=str(home), LOCALAPPDATA=str(home),
+        clean = {k: v for k, v in os.environ.items() if k.upper() not in {
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "SHOOWCASE_CA_FILE", "CURL_CA_BUNDLE", "SSL_CERT_FILE"}}
+        env = dict(clean, HOME=str(home), LOCALAPPDATA=str(home),
                    PATH=str(root) + os.pathsep + os.environ["PATH"], FIXTURE_CODE=CODE,
                    FIXTURE_ASSET=asset, FIXTURE_ROOT=str(root), FIXTURE_RECEIPT=str(receipt))
         if windows:
@@ -88,8 +107,8 @@ def main():
             receipt.unlink(missing_ok=True)
             res = subprocess.run(args, input=data, env=env, capture_output=True, timeout=90)
             log = (res.stdout + res.stderr).decode(errors="replace")
-            if CODE in log:
-                raise AssertionError("installer printed the setup code")
+            if CODE in log or PROXY_PASSWORD in log:
+                raise AssertionError("installer printed a credential")
             if (res.returncode == 0) != expect_success:
                 raise AssertionError("unexpected installer status: " + log)
             if expect_success:
@@ -102,7 +121,11 @@ def main():
             assert not list(installed.parent.glob(".install.*")), "installer left staging files"
 
         invoke(True)
-        invoke(True)  # A client already using this exact path remains valid.
+        ca = root / "company CA.pem"
+        ca.write_text("synthetic fixture for the curl argument check")
+        env.update(HTTPS_PROXY=PROXY, NO_PROXY="intranet.invalid", SHOOWCASE_CA_FILE=str(ca),
+                   FIXTURE_WANT_PROXY=PROXY, FIXTURE_PROXY_PASSWORD=PROXY_PASSWORD)
+        invoke(True)  # Both release downloads and connect inherit the selected network settings.
         # Update an older install atomically at the same path.
         installed.write_bytes(b"old local version")
         invoke(True)
@@ -114,7 +137,7 @@ def main():
         archive.write_bytes(good_bytes)
         sums.write_text(f"{sha}  {asset}\n{sha}  {asset}\n")
         invoke(False)
-        print(f"PASS: {system}/{arch}: install, reuse, update, bad checksum and ambiguous manifest; stable path, cleanup and no code in output.")
+        print(f"PASS: {system}/{arch}: install, reuse, update, bad checksum and ambiguous manifest; stable path, symmetric proxy/CA settings, cleanup and no credentials in output.")
 
 
 if __name__ == "__main__":

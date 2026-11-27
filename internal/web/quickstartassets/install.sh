@@ -12,7 +12,7 @@ main() {
     case ${HOME:-} in /*) ;; *) fail 'Could not find your home directory.' ;; esac
     case $(uname -s) in Darwin) os=darwin ;; Linux) os=linux ;; *) fail 'Use the Windows PowerShell command, or run this on macOS or Linux.' ;; esac
     case $(uname -m) in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) fail 'Shoowcase requires a 64-bit Intel/AMD or ARM processor.' ;; esac
-    version=v0.6.0
+    version=v0.6.1
     asset="shoowcase-$version-$os-$arch.tar.gz"
     base="https://github.com/openhoo/shoowcase/releases/download/$version"
     root="$HOME/.local/share/shoowcase"
@@ -26,8 +26,15 @@ main() {
     trap 'rm -rf "$stage"' 0
     trap 'exit 1' HUP INT TERM
     # Ignore curl configuration files; prohibit HTTP, including on redirects.
-    curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 -o "$stage/SHA256SUMS" "$base/SHA256SUMS"
-    curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 -o "$stage/archive" "$base/$asset"
+    download() {
+        if [ -n "${SHOOWCASE_CA_FILE:-}" ]; then
+            set -- --cacert "$SHOOWCASE_CA_FILE" --proxy-cacert "$SHOOWCASE_CA_FILE" "$@"
+        fi
+        curl -q -fsL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 "$@" 2>/dev/null ||
+            fail 'Could not download the Shoowcase release. Check connectivity, proxy and certificate settings.'
+    }
+    download -o "$stage/SHA256SUMS" "$base/SHA256SUMS"
+    download -o "$stage/archive" "$base/$asset"
     expected=$(awk -v f="$asset" 'NF == 2 && $2 == f { n++; h=$1 } END { if (n != 1 || length(h) != 64 || h ~ /[^0-9a-f]/) exit 1; print h }' "$stage/SHA256SUMS") ||
         fail 'The release is missing an unambiguous checksum for this platform.'
     if command -v sha256sum >/dev/null 2>&1; then

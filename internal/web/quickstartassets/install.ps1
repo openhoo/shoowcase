@@ -2,7 +2,7 @@
 # will keep using this path after the setup command and terminal have closed.
 param([string]$Client, [string]$McpUrl, [string]$SetupCode)
 $ErrorActionPreference = 'Stop'
-$Version = 'v0.6.0'
+$Version = 'v0.6.1'
 $Stage = $null
 function Get-ShoowcaseHash([string]$Path) {
     $Stream = [IO.File]::OpenRead($Path)
@@ -35,9 +35,13 @@ try {
     $Zip = Join-Path $Stage 'release.zip'
     # curl.exe ships with current Windows. Ignore curlrc and reject HTTP downgrades.
     $Curl = (Get-Command curl.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-    & $Curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 -o $Sums "$Base/SHA256SUMS"
+    $Tls = @()
+    if ($env:SHOOWCASE_CA_FILE) {
+        $Tls = @('--cacert', $env:SHOOWCASE_CA_FILE, '--proxy-cacert', $env:SHOOWCASE_CA_FILE)
+    }
+    & $Curl -q -fsL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 @Tls -o $Sums "$Base/SHA256SUMS" 2>$null
     if ($LASTEXITCODE -ne 0) { throw 'Could not download Shoowcase release checksums.' }
-    & $Curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 -o $Zip "$Base/$Asset"
+    & $Curl -q -fsL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 @Tls -o $Zip "$Base/$Asset" 2>$null
     if ($LASTEXITCODE -ne 0) { throw 'Could not download the Shoowcase release.' }
     $Pattern = '^([0-9a-f]{64})  ' + [regex]::Escape($Asset) + '$'
     $Lines = @([IO.File]::ReadAllLines($Sums) | Where-Object { $_ -cmatch $Pattern })
