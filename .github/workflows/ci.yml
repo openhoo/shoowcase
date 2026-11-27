@@ -11,7 +11,7 @@ jobs:
   installers:
     name: Quickstart installer (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 8
+    timeout-minutes: 20
     strategy:
       matrix:
         os: [ubuntu-24.04, windows-2025]
@@ -27,6 +27,30 @@ jobs:
       - name: Check client registration and Windows credential protection
         if: runner.os == 'Windows'
         run: go test ./internal/agentsetup
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: runner.os == 'Windows'
+        with:
+          python-version: '3.12'
+      - name: Prepare the pinned Windows browser test environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m venv "$env:RUNNER_TEMP/shoowcase-browser"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP/shoowcase-browser/Scripts/python.exe" -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r scripts/browser-requirements.txt
+      - name: Run the copied PowerShell command and start a new Windows MCP relay
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $pin = [regex]::Match((Get-Content -Raw internal/web/quickstartassets/install.ps1), '(?m)^\$Version = ''(v[0-9]+\.[0-9]+\.[0-9]+)''\r?$')
+          if (!$pin.Success) { throw 'Missing Windows installer version' }
+          $version = $pin.Groups[1].Value
+          $binary = "$env:RUNNER_TEMP/shoowcase.exe"
+          go build -mod=readonly -buildvcs=false -trimpath -ldflags="-s -w -buildid= -X main.version=$version" -o $binary ./cmd/shoowcase
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP/shoowcase-browser/Scripts/python.exe" scripts/smoke-proxy.py --binary $binary --browser-channel chrome
   verify:
     name: verify
     runs-on: ubuntu-24.04

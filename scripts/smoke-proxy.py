@@ -3,7 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["httpx==0.28.1", "mcp==1.30.0", "playwright==1.65.2"]
 # ///
-"""Exercise the copied Unix command behind an authenticated, loopback-only corporate proxy.
+"""Exercise the copied Unix or Windows command through an authenticated, loopback-only proxy.
 
 Build with make build VERSION=<installer pin>. For a published build, supply the
 downloaded release directory (archive and SHA256SUMS) with --release-dir.
@@ -18,9 +18,11 @@ import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import import_module
 import json
+import os
 from pathlib import Path
 import platform
 import secrets
+import shutil
 import socket
 import ssl
 import subprocess
@@ -28,17 +30,23 @@ import tarfile
 import tempfile
 import threading
 from urllib.parse import urlsplit
+import zipfile
 
 from playwright.async_api import async_playwright
 from smoke import check
 
 quick = import_module("smoke-quickstart")
 fixture = import_module("smoke-browser")
+WINDOWS = os.name == "nt"
 
 
 def test_ca(root):
+    executable = shutil.which("openssl")
+    if not executable and WINDOWS:
+        executable = Path(os.environ["ProgramFiles"]) / "Git/usr/bin/openssl.exe"
+
     def openssl(*args, data=None):
-        return subprocess.run(["openssl", *args], cwd=root, input=data, stdout=subprocess.PIPE,
+        return subprocess.run([executable or "openssl", *args], cwd=root, input=data, stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, check=True).stdout
     openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=Fixture Root",
             "-keyout", "ca.key", "-out", "ca.pem", "-addext", "basicConstraints=critical,CA:TRUE")
@@ -55,16 +63,43 @@ def test_ca(root):
 
 def release_files(root, binary, published):
     version = subprocess.check_output([binary, "version"], text=True).strip()
-    arch = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "amd64"}[platform.machine()]
-    name = f"shoowcase-{version}-{platform.system().lower()}-{arch}.tar.gz"
+    arch = {"arm64": "arm64", "aarch64": "arm64", "amd64": "amd64", "x86_64": "amd64"}[platform.machine().lower()]
+    extension = "zip" if WINDOWS else "tar.gz"
+    name = f"shoowcase-{version}-{platform.system().lower()}-{arch}.{extension}"
     if not published:
-        with tarfile.open(root / name, "w:gz") as tar:
-            tar.add(binary, "shoowcase", recursive=False)
+        if WINDOWS:
+            with zipfile.ZipFile(root / name, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.write(binary, "shoowcase.exe")
+        else:
+            with tarfile.open(root / name, "w:gz") as archive:
+                archive.add(binary, "shoowcase", recursive=False)
         sha = hashlib.sha256((root / name).read_bytes()).hexdigest()
         (root / "SHA256SUMS").write_text(f"{sha}  {name}\n")
     directory = published or root
     return {f"/openhoo/shoowcase/releases/download/{version}/{n}": (directory / n).read_bytes()
             for n in ("SHA256SUMS", name)}
+
+
+def terminal(home):
+    env = quick.profile(home)
+    if not WINDOWS:
+        return env, ["/bin/sh"], "curl"
+
+    # Keep the runner's system tools, but isolate all user and client data.
+    for key in ("OS", "SystemRoot", "WINDIR", "ComSpec", "PATHEXT", "PROCESSOR_ARCHITECTURE",
+                "PROCESSOR_ARCHITEW6432", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    for key, path in {"USERPROFILE": home, "LOCALAPPDATA": home / "AppData/Local",
+                      "APPDATA": home / "AppData/Roaming", "TMP": home / "Temp", "TEMP": home / "Temp"}.items():
+        path.mkdir(parents=True, exist_ok=True)
+        env[key] = str(path)
+    system32 = Path(env["SystemRoot"]) / "System32"
+    env["PATH"] = str(system32) + os.pathsep + env["PATH"]
+    shell = [str(system32 / "WindowsPowerShell/v1.0/powershell.exe"), "-NoLogo", "-NoProfile", "-NonInteractive",
+             "-Command", "if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { exit 98 }; "
+                         "$ErrorActionPreference='Stop'; & ([ScriptBlock]::Create([Console]::In.ReadToEnd())); exit $LASTEXITCODE"]
+    return env, shell, str(system32 / "curl.exe")
 
 
 @contextmanager
@@ -161,14 +196,14 @@ async def main(args):
         async with fixture.local_server(str(binary), control_origin=base) as (internal, _, _), async_playwright() as pw:
             with proxy(tls, host, urlsplit(internal).port, assets, secret) as (port, counts):
                 home = root / "user"
-                clean = quick.profile(home)
+                clean, shell, curl = terminal(home)
                 net = {**clean, "HTTPS_PROXY": f"http://worker:{secret}@127.0.0.1:{port}",
                        "SHOOWCASE_CA_FILE": str(root / "ca.pem")}
                 for label, env in (("direct connection", clean), ("untrusted certificate", net),
                                    ("wrong proxy password", {**net, "HTTPS_PROXY": f"http://wrong@127.0.0.1:{port}"})):
                     # No CA passed to the untrusted-certificate probe.
                     ca = [] if label == "untrusted certificate" else ["--cacert", str(root / "ca.pem")]
-                    p = await asyncio.create_subprocess_exec("curl", "-qfsS", "--max-time", "4", *ca, base + "/healthz",
+                    p = await asyncio.create_subprocess_exec(curl, "-qfsS", "--max-time", "4", *ca, base + "/healthz",
                         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     check(await p.wait() != 0, label + " unexpectedly worked")
                 browser = await pw.chromium.launch(channel=args.browser_channel, args=["--ignore-certificate-errors-spki-list=" + spki],
@@ -182,18 +217,32 @@ async def main(args):
                     await page.get_by_role("button", name="Create account").click()
                     await page.get_by_role("link", name="Quickstart", exact=True).first.click()
                     await page.get_by_role("radio", name="Cursor", exact=True).check()
+                    await page.get_by_label("Where will you run the command?").select_option("windows" if WINDOWS else "unix")
                     await page.get_by_label("Use a company proxy").check()
                     await page.get_by_role("button", name="Create key and get command").click()
                     await page.get_by_role("button", name="Copy command", exact=True).click()
                     command = await page.evaluate("navigator.clipboard.readText()")
-                    check(command == await page.get_by_label("Terminal command").input_value(), "clipboard differs from receipt")
+                    check(command.replace("\r\n", "\n") == await page.get_by_label("Terminal command").input_value(),
+                          "clipboard differs from receipt")
                 finally:
                     await browser.close()
-                output = await quick.run(["/bin/sh"], net, home, stdin=command.encode())
+                installer = "/quickstart/install.ps1" if WINDOWS else "/quickstart/install.sh"
+                stages = (installer, "checksum", "archive", "/quickstart/redeem")
+                try:
+                    output = await quick.run(shell, net, home, stdin=command.encode())
+                except RuntimeError as err:
+                    # Counts identify the failed stage without exposing any part of the pasted command.
+                    raise RuntimeError(f"setup failed; requests: { {stage: counts[stage] for stage in stages} }") from err
                 reg, config = quick.registration("cursor", home, output)
                 check(Path(reg["command"]).read_bytes() == binary.read_bytes(), "installed bytes differ")
+                if WINDOWS:
+                    check(Path(reg["command"]) == Path(clean["LOCALAPPDATA"]) / "Shoowcase/bin/shoowcase.exe",
+                          "unexpected Windows installation path")
+                    sealed = (Path(clean["APPDATA"]) / "shoowcase/agents/cursor.json").read_bytes()
+                    check(sealed and secret.encode() not in sealed and base.encode() not in sealed,
+                          "Windows credential store contains plaintext")
                 check(secret not in config and secret.encode() not in output and secret not in command, "proxy credential exposed")
-                check(counts["/quickstart/install.sh"] == counts["checksum"] == counts["archive"] == counts["/quickstart/redeem"] == 1,
+                check(all(counts[stage] == 1 for stage in stages),
                       "installer, manifest, archive or redemption did not take the authenticated route")
                 before = counts["/mcp"]
                 await asyncio.wait_for(quick.bridge(reg, clean, home), 20)
@@ -204,7 +253,8 @@ async def main(args):
                     stdin=b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n')
                 check(json.loads(failed).get("error") and secret.encode() not in failed and counts["/mcp"] == after,
                       "refused proxy did not fail closed")
-                print(json.dumps({"setup_requests": 4, "mcp_requests": counts["/mcp"] - before,
+                print(json.dumps({"platform": platform.system(), "shell": "Windows PowerShell 5.1" if WINDOWS else "sh",
+                       "setup_requests": 4, "mcp_requests": counts["/mcp"] - before,
                        "fresh_process": True, "tools_list": True, "list_sites": True,
                        "direct_route_blocked": True, "bad_proxy_rejected": True, "unknown_ca_rejected": True, "relay_failed_closed": True,
                        "source": "published archive" if args.release_dir else "candidate archive"}))
