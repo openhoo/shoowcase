@@ -110,7 +110,7 @@ def proxy(tls, control, backend, assets, secret):
     expected = "Basic " + base64.b64encode(("worker:" + secret).encode()).decode()
     # This fixture covers one onboarding flow. Forward only literal routes
     # for that flow; client-controlled request targets never go to the backend.
-    paths = {p: p for p in ("/", "/ui.css", "/console.js", "/account", "/sites", "/quickstart",
+    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/account", "/sites", "/quickstart",
                             "/quickstart/install.sh", "/quickstart/install.ps1", "/quickstart/redeem", "/mcp")}
     paths["/auth/login"] = "/auth/login?next=%2Faccount"
 
@@ -199,13 +199,15 @@ async def main(args):
                 clean, shell, curl = terminal(home)
                 net = {**clean, "HTTPS_PROXY": f"http://worker:{secret}@127.0.0.1:{port}",
                        "SHOOWCASE_CA_FILE": str(root / "ca.pem")}
-                for label, env in (("direct connection", clean), ("untrusted certificate", net),
+                for label, env in (("trusted proxy", net), ("direct connection", clean), ("untrusted certificate", net),
                                    ("wrong proxy password", {**net, "HTTPS_PROXY": f"http://wrong@127.0.0.1:{port}"})):
                     # No CA passed to the untrusted-certificate probe.
                     ca = [] if label == "untrusted certificate" else ["--cacert", str(root / "ca.pem")]
                     p = await asyncio.create_subprocess_exec(curl, "-qfsS", "--max-time", "4", *ca, base + "/healthz",
                         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    check(await p.wait() != 0, label + " unexpectedly worked")
+                    status = await p.wait()
+                    check((status == 0) == (label == "trusted proxy"), f"{label}: unexpected curl exit {status}")
+                check(counts["/healthz"] == 1, "only the trusted probe should reach the backend")
                 browser = await pw.chromium.launch(channel=args.browser_channel, args=["--ignore-certificate-errors-spki-list=" + spki],
                         proxy={"server": f"http://127.0.0.1:{port}", "username": "worker", "password": secret, "bypass": "<-loopback>"})
                 try:
@@ -222,7 +224,8 @@ async def main(args):
                     await page.get_by_role("button", name="Create key and get command").click()
                     await page.get_by_role("button", name="Copy command", exact=True).click()
                     command = await page.evaluate("navigator.clipboard.readText()")
-                    check(command.replace("\r\n", "\n") == await page.get_by_label("Terminal command").input_value(),
+                    command_label = "PowerShell command" if WINDOWS else "Terminal command"
+                    check(command.replace("\r\n", "\n") == await page.get_by_label(command_label).input_value(),
                           "clipboard differs from receipt")
                 finally:
                     await browser.close()
