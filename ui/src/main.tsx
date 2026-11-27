@@ -193,6 +193,37 @@ function Console({ page }: { page: ConsolePage }) {
     </div>
   );
 }
+function hasFormEdits(native: HTMLElement) {
+  for (const field of native.querySelectorAll("input, textarea, select")) {
+    if (field instanceof HTMLSelectElement) {
+      // Let the browser resolve the original selection, including implicit
+      // defaults, disabled options and multiple selections. Reset only a copy.
+      const copy = field.cloneNode(true) as HTMLSelectElement;
+      copy.removeAttribute("form");
+      const form = document.createElement("form");
+      form.append(copy);
+      form.reset();
+      if (
+        Array.from(field.options).some(
+          (o, i) => o.selected !== copy.options[i].selected,
+        )
+      )
+        return true;
+    } else if (field instanceof HTMLTextAreaElement) {
+      if (field.value !== field.defaultValue) return true;
+    } else if (field instanceof HTMLInputElement) {
+      if (field.type === "checkbox" || field.type === "radio") {
+        if (field.checked !== field.defaultChecked) return true;
+      } else if (field.type === "file") {
+        if (field.files?.length) return true;
+      } else if (field.value !== field.defaultValue) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function mount() {
   const payload = document.getElementById("shoowcase-page");
   const host = document.getElementById("app");
@@ -207,10 +238,12 @@ function mount() {
   // Keep the native form, including the caret, selection and any chosen files,
   // if someone started using it while the bundle was downloading.
   if (
-    native?.contains(document.activeElement) ||
-    native?.querySelector(
-      "input:user-valid, input:user-invalid, textarea:user-valid, textarea:user-invalid",
-    )
+    native &&
+    (native.contains(document.activeElement) ||
+      hasFormEdits(native) ||
+      native.querySelector(
+        "input:user-valid, input:user-invalid, textarea:user-valid, textarea:user-invalid",
+      ))
   ) {
     const receipt = native.querySelector("[data-secret-receipt]");
     if (receipt)
