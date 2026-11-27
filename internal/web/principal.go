@@ -41,6 +41,7 @@ func (a *App) agentError(w http.ResponseWriter, err error) {
 }
 func (a *App) ticketActor(ctx context.Context, t ticket, browser *auth.Identity) (context.Context, sites.Actor, error) {
 	who := t.Who
+	at := t.AssertionTime
 	if browser != nil {
 		b := actor(*browser)
 		if who.Subject != b.Subject || who.Workspace != b.Workspace {
@@ -48,6 +49,8 @@ func (a *App) ticketActor(ctx context.Context, t ticket, browser *auth.Identity)
 		}
 		if browser.LocalGeneration > 0 {
 			ctx = sites.WithLocalSession(ctx, browser.LocalGeneration)
+		} else {
+			at = min(at, browser.IssuedAt)
 		}
 		effective, err := a.store.LimitActor(verified(ctx, *browser), b)
 		if err != nil {
@@ -64,6 +67,8 @@ func (a *App) ticketActor(ctx context.Context, t ticket, browser *auth.Identity)
 		who, err := a.store.ResolveKeyID(ctx, who, t.KeyID)
 		return keyContext(ctx, t.KeyID), who, err
 	}
+	// This is the age of the authority behind the ticket, not a new IdP role.
+	ctx = sites.WithActionAssertion(ctx, at)
 	who, err := a.store.LimitActor(ctx, who)
 	return ctx, who, err
 }

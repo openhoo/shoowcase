@@ -189,3 +189,68 @@ func TestAdminSelectionGroupAtomicityAndRoster(t *testing.T) {
 		t.Fatal("wrong groups deleted")
 	}
 }
+
+func TestAccountDeletionRequiresReviewAndWithdrawsPublishedSite(t *testing.T) {
+	app, s := handlerFixture(t, filepath.Join(t.TempDir(), "delete.sqlite"), "team-a", true)
+	cookie, csrf := joinMemberConsole(t, app)
+	ctx := t.Context()
+	owner := sites.Actor{Subject: "bob", Role: "publisher", Workspace: "team-a"}
+	if _, err := s.EnrollAccount(ctx, owner, "Bob Smith"); err != nil {
+		t.Fatal(err)
+	}
+	seedSiteFor(t, s, owner)
+
+	page := func(path string, want int) string {
+		t.Helper()
+		resp := hitRoute(t, app, "GET", testControl+path, cookie, nil)
+		requireMemberStatus(t, resp, want)
+		return resp.Body.String()
+	}
+	if !strings.Contains(page("/admin?member=bob", 200), "Delete account…") ||
+		strings.Contains(page("/admin?member=tester", 200), "delete-members") {
+		t.Fatal("unexpected delete action on member settings")
+	}
+	f := url.Values{"action": {"review-selection"}, "operation": {"delete-members"}, "selected": {"bob"}}
+	requireMemberStatus(t, memberPost(t, app, cookie, "/admin", f), 403)
+	f.Set("csrf", csrf)
+	f.Set("selected", "tester")
+	requireMemberStatus(t, memberPost(t, app, cookie, "/admin", f), 403)
+	f.Set("selected", "bob")
+	resp := memberPost(t, app, cookie, "/admin", f)
+	requireMemberStatus(t, resp, 200)
+	review := resp.Body.String()
+	for _, detail := range []string{"Bob Smith", "bob", "Field Notes", "Permanently delete accounts", "This cannot be undone."} {
+		if !strings.Contains(review, detail) {
+			t.Fatalf("confirmation omitted %q", detail)
+		}
+	}
+	f.Set("action", "apply-selection")
+	f.Set("review", memberControl(t, review, "name", "review"))
+	requireMemberStatus(t, memberPost(t, app, cookie, "/admin", f), 409)
+	f.Set("confirm", "yes")
+	f.Set("selected", "tester")
+	requireMemberStatus(t, memberPost(t, app, cookie, "/admin", f), 409)
+	asset := testSite + "/screen.css"
+	published := hitRoute(t, app, "GET", asset, nil, nil)
+	requireMemberStatus(t, published, 200)
+	etag := published.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("published asset has no validator")
+	}
+
+	f.Set("selected", "bob")
+	resp = memberPost(t, app, cookie, "/admin", f)
+	requireMemberStatus(t, resp, 303)
+	body := page(resp.Header().Get("Location"), 200)
+	if !strings.Contains(body, "Selected accounts and their sites were permanently deleted.") || strings.Contains(body, "Bob Smith") {
+		t.Fatal("member directory did not reflect account deletion")
+	}
+	page("/admin?member=bob", 404)
+	requireMemberStatus(t, memberPost(t, app, cookie, "/admin", f), 409)
+	for _, method := range []string{"GET", "HEAD"} {
+		after := hitRoute(t, app, method, asset, nil, map[string]string{"If-None-Match": etag})
+		if after.Code == 200 || after.Code == 304 || after.Header().Get("ETag") != "" || strings.Contains(after.Body.String(), "color:green") {
+			t.Fatalf("deleted account's asset remained available via %s: %d", method, after.Code)
+		}
+	}
+}

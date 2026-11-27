@@ -111,6 +111,74 @@ async def delete_groups_without_javascript(page, control, browser):
         await ctx.close()
 
 
+async def delete_password_account(admin, member, control, browser, fits, current_password):
+    # A real password user owns one site; the admin's Private guide and another
+    # member must survive both cancel and confirmed deletion.
+    owner = "studio-member"
+    neighbor = "Keep this member"
+    site_name, site_id = "Offboarding " + "A" * 62, "offboarding-guide"
+    await member.goto(control + "/sites/new")
+    await member.get_by_label("Site name").fill(site_name)
+    await member.get_by_label("Site address").fill(site_id)
+    await member.get_by_role("button", name="Create site").click()
+    await expect(member.get_by_role("heading", name=site_name, exact=True)).to_be_visible()
+
+    await admin.goto(control + "/admin")
+    await admin.get_by_text("Add a member", exact=True).click()
+    await admin.get_by_label("Sign-in ID", exact=True).fill("offboarding-neighbor")
+    await admin.get_by_label("Display name", exact=True).fill(neighbor)
+    await admin.get_by_role("button", name="Add member", exact=True).click()
+    await admin.set_viewport_size({"width": 320, "height": 780})
+    await admin.get_by_role("button", name=f"Delete account {owner}", exact=True).click()
+
+    async def reviewed(page):
+        await expect(page.get_by_role("heading", name="Review account deletion", exact=True)).to_be_visible()
+        entries = page.get_by_role("listitem")
+        await expect(entries).to_have_count(2)
+        await expect(entries.filter(has_text=owner)).to_be_visible()
+        await expect(entries.filter(has_text=site_name)).to_contain_text(site_id)
+        await expect(entries.filter(has_text=neighbor)).to_have_count(0)
+        await expect(page.get_by_text("This cannot be undone.", exact=False).first).to_be_visible()
+        # Long site names and opaque sign-in IDs must remain legible, even
+        # when there's no whitespace at which a mobile browser can wrap.
+        assert await entries.evaluate_all("""items => items.every(el => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            return [...range.getClientRects()].every(r => r.left >= 0 && r.right <= innerWidth + 1);
+        })"""), "account deletion review clips text at 320px"
+
+    await reviewed(admin)
+    await fits(admin, "account deletion review at 320px")
+    await admin.get_by_role("link", name="Cancel", exact=True).click()
+    await expect(admin.get_by_role("link", name=owner, exact=True)).to_be_visible()
+    await expect(admin.get_by_role("link", name=neighbor, exact=True)).to_be_visible()
+    await member.reload()
+    await expect(member.get_by_role("heading", name=site_name, exact=True)).to_be_visible()
+
+    plain = await browser.new_page(java_script_enabled=False, storage_state=await admin.context.storage_state(),
+                                   viewport={"width": 320, "height": 780})
+    try:
+        await plain.goto(control + "/admin")
+        await plain.get_by_role("link", name=owner, exact=True).click()
+        await plain.get_by_role("button", name="Delete account…", exact=True).click()
+        await reviewed(plain)
+        await plain.get_by_role("button", name="Permanently delete accounts", exact=True).press("Enter")
+        await expect(plain.get_by_role("status").filter(has_text="permanently deleted")).to_be_visible()
+        await expect(plain.get_by_role("link", name=owner, exact=True)).to_have_count(0)
+        await expect(plain.get_by_role("link", name=neighbor, exact=True)).to_be_visible()
+        await plain.goto(control + "/sites")
+        await expect(plain.get_by_role("link", name=site_name, exact=True)).to_have_count(0)
+        await expect(plain.get_by_role("link", name="Private guide", exact=True)).to_be_visible()
+        await member.goto(control + "/account")
+        await expect(member.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
+        await member.get_by_label("Username", exact=True).fill(owner)
+        await member.get_by_label("Password", exact=True).fill(current_password)
+        await member.get_by_role("button", name="Login", exact=True).click()
+        await expect(member.get_by_role("alert")).to_contain_text("incorrect")
+    finally:
+        await plain.context.close()
+
+
 async def revoke_keys(page, control):
     names = ["Revoke fixture key A", "Revoke fixture key B"]
     keep = "Keep fixture key"

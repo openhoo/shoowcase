@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/openhoo/shoowcase/internal/sites"
 	"io"
 	"log/slog"
 	"net"
@@ -540,7 +541,7 @@ func (s *Service) identity(t *oidc.IDToken) (Identity, error) {
 	if raw, ok := m["nbf"]; ok && (json.Unmarshal(raw, &nbf) != nil || nbf > s.now().Unix()) {
 		return Identity{}, errInvalid
 	}
-	if t.IssuedAt.IsZero() || t.IssuedAt.After(s.now().Add(time.Minute)) {
+	if t.IssuedAt.IsZero() || t.IssuedAt.After(s.now().Add(sites.MaxAssertionClockSkew)) {
 		return Identity{}, errInvalid
 	}
 	if s.cfg.OIDCAdminSubject != "" && t.Subject == s.cfg.OIDCAdminSubject {

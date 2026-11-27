@@ -487,11 +487,15 @@ function SelectionReview({ p }: { p: Review }) {
         <Head tag="Review selection" title={p.Title} />
         <p>{p.Effect}</p>
         <p>
-          <strong>Selected entries ({p.Names.length})</strong>
+          <strong>
+            {p.Selection.Action === "delete-members"
+              ? "Accounts and sites to delete"
+              : `Selected entries (${p.Names.length})`}
+          </strong>
         </p>
         <ul className={reviewList}>
           {p.Names.map((v, i) => (
-            <li key={p.Selection.IDs[i]}>{v}</li>
+            <li key={i}>{v}</li>
           ))}
         </ul>
         <Post

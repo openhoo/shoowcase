@@ -60,10 +60,10 @@ func TestMigrateExistingV5AndRollback(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := db.QueryRowContext(ctx, "SELECT MAX(version), (SELECT changes FROM sc_workspace WHERE id='existing') FROM sc_schema_migrations").Scan(&version, &n); err != nil || version != 8 || n != 18 {
+			if err := db.QueryRowContext(ctx, "SELECT MAX(version), (SELECT changes FROM sc_workspace WHERE id='existing') FROM sc_schema_migrations").Scan(&version, &n); err != nil || version != 9 || n != 18 {
 				t.Fatalf("upgraded version %d, saved changes %d (%v)", version, n, err)
 			}
-			if _, err := db.ExecContext(ctx, "INSERT INTO sc_schema_migrations VALUES(9)"); err != nil {
+			if _, err := db.ExecContext(ctx, "INSERT INTO sc_schema_migrations VALUES(10)"); err != nil {
 				t.Fatal(err)
 			}
 			if s, err := Open(ctx, driver, dsn); err == nil {
@@ -103,7 +103,7 @@ func TestConcurrentMigrationOnFreshDatabase(t *testing.T) {
 			}
 			db := migrationDB(t, driver, dsn)
 			var n, latest int
-			if err := db.QueryRowContext(ctx, "SELECT COUNT(*), MAX(version) FROM sc_schema_migrations WHERE version>0").Scan(&n, &latest); err != nil || n != 8 || latest != 8 {
+			if err := db.QueryRowContext(ctx, "SELECT COUNT(*), MAX(version) FROM sc_schema_migrations WHERE version>0").Scan(&n, &latest); err != nil || n != 9 || latest != 9 {
 				t.Fatalf("applied versions %d, latest %d (%v)", n, latest, err)
 			}
 		})

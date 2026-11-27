@@ -177,16 +177,19 @@ function RowAction({
   group,
   operation,
   label,
+  showLabel = false,
 }: {
   csrf: string;
   id: string;
   group?: string;
   operation: string;
   label: string;
+  showLabel?: boolean;
 }) {
   return (
     <Post fields={{ csrf, action: "review-selection", group, selected: id }}>
       <ActionButton
+        showLabel={showLabel}
         type="submit"
         variant="outline"
         name="operation"
@@ -195,7 +198,7 @@ function RowAction({
         icon={
           operation === "restore-members"
             ? RotateCcw
-            : operation === "delete-groups"
+            : operation === "delete-groups" || operation === "delete-members"
               ? Trash2
               : operation === "remove-members"
                 ? UserRoundMinus
@@ -416,6 +419,20 @@ function MemberDetails({ p }: { p: MemberData }) {
                 />
               </div>
             </Post>
+            <div className={stack + " border-t pt-4"}>
+              <h3 className="font-semibold">Delete account</h3>
+              <p>
+                Review the sites this account owns before deleting it
+                permanently.
+              </p>
+              <RowAction
+                csrf={p.CSRF}
+                id={m.Subject}
+                operation="delete-members"
+                label="Delete account…"
+                showLabel
+              />
+            </div>
           </>
         ) : (
           <p>
@@ -450,7 +467,7 @@ function MemberDirectory({ p }: { p: MemberData }) {
               selection={s}
               detail={
                 kinds.size > 1
-                  ? ". Select only active or only suspended members to continue."
+                  ? ". Suspend and restore each require members with the same status."
                   : undefined
               }
               fields={{ csrf: p.CSRF, action: "review-selection" }}
@@ -472,6 +489,14 @@ function MemberDirectory({ p }: { p: MemberData }) {
                 disabled={kinds.size !== 1 || !kinds.has("suspended")}
                 label="Restore selected"
                 icon={RotateCcw}
+              />
+              <BulkButton
+                name="operation"
+                value="delete-members"
+                disabledHint="Select at least one account."
+                disabled={!s.count}
+                label="Delete selected accounts…"
+                icon={Trash2}
               />
             </BulkForm>
             <RecordTable
@@ -542,17 +567,25 @@ function MemberDirectory({ p }: { p: MemberData }) {
                       {self ? (
                         "—"
                       ) : (
-                        <RowAction
-                          csrf={p.CSRF}
-                          id={m.Subject}
-                          operation={
-                            m.Disabled ? "restore-members" : "suspend-members"
-                          }
-                          label={
-                            (m.Disabled ? "Restore " : "Suspend ") +
-                            m.DisplayName
-                          }
-                        />
+                        <div className={toolbar}>
+                          <RowAction
+                            csrf={p.CSRF}
+                            id={m.Subject}
+                            operation={
+                              m.Disabled ? "restore-members" : "suspend-members"
+                            }
+                            label={
+                              (m.Disabled ? "Restore " : "Suspend ") +
+                              m.DisplayName
+                            }
+                          />
+                          <RowAction
+                            csrf={p.CSRF}
+                            id={m.Subject}
+                            operation="delete-members"
+                            label={"Delete account " + m.DisplayName}
+                          />
+                        </div>
                       )}
                     </Cell>
                   </RecordRow>

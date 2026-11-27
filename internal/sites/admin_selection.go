@@ -24,6 +24,7 @@ type reviewedTarget struct {
 	ID, Name, Role, SignInRole, Ceiling string
 	Disabled                            bool
 	Version                             int64
+	Sites                               []ReviewedSite `json:",omitempty"`
 }
 
 const MaxSelection = 128
@@ -51,7 +52,7 @@ func reviewAdminSelection(ctx context.Context, tx *sql.Tx, a Actor, sel AdminSel
 		row := reviewedTarget{ID: id}
 		label := ""
 		switch sel.Action {
-		case "suspend-members", "restore-members", "remove-members":
+		case "suspend-members", "restore-members", "remove-members", "delete-members":
 			if sel.Action != "remove-members" && id == a.Subject {
 				return review, nil, fail("forbidden", "You cannot change your own membership.")
 			}
@@ -64,7 +65,13 @@ func reviewAdminSelection(ctx context.Context, tx *sql.Tx, a Actor, sel AdminSel
 			}
 			row.Name, row.Role, row.SignInRole, row.Ceiling, row.Disabled = m.DisplayName, m.Role, m.IdentityRole, m.Ceiling, m.Disabled
 			label = m.DisplayName + " (" + m.Subject + ")"
-			if sel.Action == "remove-members" {
+			if sel.Action == "delete-members" {
+				row.Version = m.CreatedAt.UnixMilli()
+				row.Sites, err = accountSites(ctx, tx, a.Workspace, id)
+				if err != nil {
+					return review, nil, err
+				}
+			} else if sel.Action == "remove-members" {
 				var found bool
 				if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sc_group_members WHERE workspace=$1 AND group_id=$2 AND subject=$3)", a.Workspace, sel.Group, id).Scan(&found); err != nil {
 					return review, nil, err
@@ -88,6 +95,9 @@ func reviewAdminSelection(ctx context.Context, tx *sql.Tx, a Actor, sel AdminSel
 			return review, nil, bad("Choose a listed action.")
 		}
 		review.Names = append(review.Names, label)
+		for _, site := range row.Sites {
+			review.Names = append(review.Names, "Site: "+site.Name+" ("+site.Site+")")
+		}
 		rows = append(rows, row)
 	}
 	b, err := json.Marshal(rows)
@@ -120,6 +130,12 @@ func (s *Store) ApplyAdminSelection(ctx context.Context, a Actor, sel AdminSelec
 	}
 	if fingerprint != review.Fingerprint {
 		return conflict("The selected entries changed. Review them again before continuing.")
+	}
+	if sel.Action == "delete-members" {
+		if err := s.eraseAccounts(ctx, tx, a, rows); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
 	for _, r := range rows {
 		switch sel.Action {

@@ -139,6 +139,8 @@ func memberEventName(action string) string {
 		return "Agent key created"
 	case "key_revoked":
 		return "Agent key revoked"
+	case "account_deleted":
+		return "Account deleted"
 	case "account_suspended":
 		return "Member suspended"
 	case "account_reactivated":
@@ -340,7 +342,7 @@ func memberNext(path, view, cursor string) string {
 // mint a second active key. If issuance fails, the user opens a fresh form.
 func (a *App) spendKeyForm(w http.ResponseWriter, r *http.Request, c consoleContext) bool {
 	t, ok := a.ticketValue(r.PostForm.Get("creation_token"), "create-key")
-	if !ok || t.Who != c.Actor || t.Nonce == "" {
+	if !ok || !c.ownsTicket(t) || t.Nonce == "" {
 		consoleError(w, c, 409, "Key form expired", "Open Agent keys to get a new form.")
 		return false
 	}
@@ -419,7 +421,7 @@ func (a *App) memberKeys(w http.ResponseWriter, r *http.Request, c consoleContex
 	}
 	p.Keys = memberKeyRows(keys)
 	p.Next = memberNext("/keys", "", next)
-	p.Creation = a.sign(ticket{Kind: "create-key", Who: c.Actor, Nonce: rand.Text(), Expires: time.Now().Add(15 * time.Minute).Unix()})
+	p.Creation = a.signConsole(c, ticket{Kind: "create-key", Nonce: rand.Text(), Expires: time.Now().Add(15 * time.Minute).Unix()})
 	consoleView(w, c, status, "Agent keys", "keys", memberPages.Lookup("keys"), p)
 }
 

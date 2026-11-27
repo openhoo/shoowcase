@@ -106,7 +106,7 @@
     }
     ul,
     ol {
-      @apply list-inside list-disc;
+      @apply list-inside list-disc wrap-anywhere;
     }
     table {
       @apply w-full border-collapse text-left text-sm;

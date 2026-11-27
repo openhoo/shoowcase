@@ -62,6 +62,12 @@ func (s *Store) RevokeSessionAndAudit(ctx context.Context, key string, expires t
 	if n == 0 {
 		return nil
 	}
+	// A deleted user's browser can still log out. Save only the opaque replay marker.
+	if blocked, err := identityBlocked(ctx, tx, a); err != nil {
+		return err
+	} else if blocked {
+		return tx.Commit()
+	}
 	if err := appendAudit(ctx, tx, a, AuditEvent{Action: "auth.logout"}); err != nil {
 		return err
 	}

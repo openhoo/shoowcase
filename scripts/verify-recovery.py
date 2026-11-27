@@ -99,9 +99,12 @@ def audit_export(reader, port, after=0):
     return result
 
 
-SUPPORTED_PRIORS = {"0.1.1": 1, "0.2.0": 2, "0.3.2": 4, "0.6.0": 5, "0.9.0": 6, "0.10.0": 7, "0.10.1": 7, "0.10.5": 7}
-CURRENT_SCHEMA = 8
-MEMBER_SCHEMAS = {2, 4, 5, 6, 7, 8}
+SUPPORTED_PRIORS = {
+    "0.1.1": 1, "0.2.0": 2, "0.3.2": 4, "0.6.0": 5, "0.9.0": 6,
+    "0.10.0": 7, "0.10.1": 7, "0.10.2": 7, "0.10.3": 7, "0.10.4": 7, "0.10.5": 7, "0.10.6": 7,
+}
+CURRENT_SCHEMA = 9
+MEMBER_SCHEMAS = {2, 4, 5, 6, 7, 8, 9}
 MEMBER_NAME = "Restore rehearsal member"
 
 
@@ -300,6 +303,7 @@ def sqlite_upgrade(previous, candidate, previous_schema):
         verify_restored(candidate, "", token, state, specimen, before, get_audit)
         check(sql("SELECT max(version) FROM sc_schema_migrations") == [(CURRENT_SCHEMA,)], "wrong migrated SQLite schema")
         check(sql("SELECT count(*) FROM sc_sites s WHERE NOT EXISTS (SELECT 1 FROM sc_reserved_sites r WHERE r.id=s.id)") == [(0,)], "SQLite failed to reserve an existing site address")
+        check(sql("SELECT count(*) FROM sc_deleted_identities") == [(0,)], "SQLite migration marked a previously active identity as deleted")
         prior = verify_prior_database(previous, "", token, state, specimen, previous_schema)
         verify_prior_reads(previous, "", token, backup, specimen)
         print(f"PASS: SQLite schema {previous_schema}→{CURRENT_SCHEMA}; preserved two releases, private content, workspace audit revisions, cursor and replay; {prior}; pre-upgrade snapshot restored.")
@@ -350,6 +354,7 @@ def rehearse(pg, binary, previous_binary=None, previous_schema=None):
             if previous_binary:
                 check(int(pg.sql(restored, "SELECT MAX(version) FROM sc_schema_migrations")) == CURRENT_SCHEMA, "wrong migrated PostgreSQL schema")
                 check(int(pg.sql(restored, "SELECT count(*) FROM sc_sites s WHERE NOT EXISTS (SELECT 1 FROM sc_reserved_sites r WHERE r.id=s.id)")) == 0, "PostgreSQL failed to reserve an existing site address")
+                check(int(pg.sql(restored, "SELECT count(*) FROM sc_deleted_identities")) == 0, "PostgreSQL migration marked a previously active identity as deleted")
                 prior = verify_prior_database(previous_binary, dsn(restored), token, state, specimen, previous_schema)
                 verify_prior_reads(previous_binary, dsn(rollback_db), token, state, specimen)
                 print(f"PASS: PostgreSQL schema {previous_schema}→{CURRENT_SCHEMA}; {prior}; prior binary also served the private site from a separately restored snapshot.")
@@ -366,6 +371,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--previous-binary", type=Path, help="seed with a supported prior release, then verify SQLite/PostgreSQL upgrade and rollback")
+    parser.add_argument("--previous-schema", type=int, choices=(8,), help="expected schema for a schema 8 build whose version is not listed; checked against both seeded databases")
     parser.add_argument("--engine", choices=("podman", "docker"), default="podman")
     parser.add_argument("--container", required=True, help="disposable official PostgreSQL service, published on loopback")
     args = parser.parse_args()
@@ -377,14 +383,18 @@ if __name__ == "__main__":
     binary = checked_binary(args.binary, "--binary")
     previous = checked_binary(args.previous_binary, "--previous-binary") if args.previous_binary else None
     previous_schema = None
+    if args.previous_schema and not previous:
+        parser.error("--previous-schema requires --previous-binary")
     if previous:
         try:
             version = subprocess.check_output([previous, "version"], stderr=subprocess.DEVNULL, text=True, timeout=5).strip().removeprefix("v")
         except (OSError, UnicodeError, subprocess.SubprocessError):
             parser.error("--previous-binary did not report a Shoowcase version")
-        if version not in SUPPORTED_PRIORS:
+        if version in SUPPORTED_PRIORS and args.previous_schema and SUPPORTED_PRIORS[version] != args.previous_schema:
+            parser.error("--previous-schema disagrees with the known release")
+        if version not in SUPPORTED_PRIORS and not args.previous_schema:
             parser.error("--previous-binary must be a supported Shoowcase release: " + ", ".join("v" + v for v in SUPPORTED_PRIORS))
-        previous_schema = SUPPORTED_PRIORS[version]
+        previous_schema = SUPPORTED_PRIORS.get(version, args.previous_schema)
         sqlite_upgrade(previous, binary, previous_schema)
     rehearse(Postgres(args.engine, args.container), binary, previous, previous_schema)
     if previous_schema in MEMBER_SCHEMAS:

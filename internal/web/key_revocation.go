@@ -37,7 +37,7 @@ func (a *App) keyRevocation(w http.ResponseWriter, r *http.Request, c consoleCon
 			return
 		}
 		args, _ := json.Marshal(ids)
-		review := a.sign(ticket{Kind: "revoke-keys", Who: c.Actor, Tool: path, Args: args, Expires: time.Now().Add(15 * time.Minute).Unix()})
+		review := a.signConsole(c, ticket{Kind: "revoke-keys", Tool: path, Args: args, Expires: time.Now().Add(15 * time.Minute).Unix()})
 		page := struct {
 			CSRF, Path, Back, Review string
 			Admin                    bool
@@ -47,7 +47,7 @@ func (a *App) keyRevocation(w http.ResponseWriter, r *http.Request, c consoleCon
 		return
 	case "revoke-selected":
 		review, ok := a.ticketValue(r.PostForm.Get("review"), "revoke-keys")
-		if r.PostForm.Get("confirm") != "yes" || !ok || review.Who != c.Actor || review.Tool != path || json.Unmarshal(review.Args, &ids) != nil {
+		if r.PostForm.Get("confirm") != "yes" || !ok || !c.ownsTicket(review) || review.Tool != path || json.Unmarshal(review.Args, &ids) != nil {
 			consoleError(w, c, 409, "Selection expired", "Select the keys and review them again.")
 			return
 		}

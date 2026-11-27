@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -136,9 +137,12 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 	topRedirect(w, r, "/")
 }
 
-func (s *Service) audit(ctx context.Context, who Identity, action string) bool {
+func (s *Service) audit(ctx context.Context, who Identity, action string) error {
 	who.CSRF = ""
-	return s.cfg.Audit == nil || s.cfg.Audit(ctx, who, action) == nil
+	if s.cfg.Audit == nil {
+		return nil
+	}
+	return s.cfg.Audit(ctx, who, action)
 }
 
 func nextPath(raw string) (string, bool) {
@@ -369,8 +373,13 @@ func (s *Service) trustedIDAudience(aud []string, azp string) bool {
 }
 
 func (s *Service) completeLogin(w http.ResponseWriter, r *http.Request, d destination, who Identity, exp int64) {
-	if !s.audit(r.Context(), who, "auth.login") {
-		deny(w, 503)
+	if err := s.audit(r.Context(), who, "auth.login"); err != nil {
+		var denied interface{ ErrorCode() string }
+		if errors.As(err, &denied) && (denied.ErrorCode() == "forbidden" || denied.ErrorCode() == "unauthorized") {
+			deny(w, 403)
+		} else {
+			deny(w, 503)
+		}
 		return
 	}
 	family := random()

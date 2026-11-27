@@ -149,6 +149,11 @@ func (s *Store) ProvisionMember(ctx context.Context, a Actor, subject, name stri
 	if err = insertMember(ctx, tx, target, name, 0, time.Now()); err != nil {
 		return err
 	}
+	// Explicit provisioning creates an empty account. Credentials issued before
+	// (or in the same second as) this decision cannot act as its new owner.
+	if _, err = tx.ExecContext(ctx, `UPDATE sc_deleted_identities SET blocked=FALSE,cutoff=CASE WHEN cutoff>$3 THEN cutoff ELSE $3 END WHERE workspace=$1 AND identity_digest=$2`, a.Workspace, identityDigest(a.Workspace, subject), time.Now().Unix()); err != nil {
+		return err
+	}
 	if err = recordAccountEvent(ctx, tx, a, "member_provisioned", subject); err != nil {
 		return err
 	}
