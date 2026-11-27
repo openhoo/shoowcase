@@ -139,7 +139,7 @@ func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContex
 	p.UninstallUnix = fmt.Sprintf("script=$(curl -fsSL '%s/quickstart/uninstall.sh') && printf '%%s\\n' \"$script\" | sh", a.config.ControlURL)
 	p.UninstallWindows = fmt.Sprintf("& ([scriptblock]::Create((Invoke-RestMethod '%s/quickstart/uninstall.ps1')))", a.config.ControlURL)
 	p.Scopes = memberScopes(c.Actor.Role)
-	p.Scope, p.Days = "reader", "30"
+	p.Scope, p.Days = defaultKeyScope(p.Scopes), "30"
 	if strings.Contains(strings.ToLower(r.UserAgent()), "windows") {
 		p.Platform = "windows"
 	}
