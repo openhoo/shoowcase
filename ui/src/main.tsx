@@ -1,6 +1,6 @@
 import {
   ActionButton,
-  ActionLink,
+  NavigationLink,
   ActionTooltipProvider,
 } from "@/components/icon-action";
 import {
@@ -75,7 +75,7 @@ function Message({ page }: { page: ConsolePage }) {
       </CardHeader>
       <CardContent className="flex flex-wrap gap-3">
         {!provisioning && (
-          <ActionLink
+          <NavigationLink
             variant="outline"
             href={changed ? "/auth/login?next=/account" : "/"}
             label={
@@ -150,19 +150,17 @@ function Console({ page }: { page: ConsolePage }) {
               aria-label="Workspace"
               className="order-3 flex w-full flex-wrap items-center gap-0.5 sm:gap-1 lg:order-none lg:flex-1"
             >
-              <>
-                {links.map(({ name, id, icon: Icon }) => (
-                  <ActionLink
-                    key={id}
-                    variant={active === id ? "secondary" : "ghost"}
-                    className="aria-[current=page]:ring-1 aria-[current=page]:ring-primary"
-                    aria-current={active === id ? "page" : undefined}
-                    href={"/" + id}
-                    label={name}
-                    icon={Icon}
-                  />
-                ))}
-              </>
+              {links.map(({ name, id, icon: Icon }) => (
+                <NavigationLink
+                  key={id}
+                  variant={active === id ? "secondary" : "ghost"}
+                  className="has-[>svg]:px-2 aria-[current=page]:ring-1 aria-[current=page]:ring-primary sm:has-[>svg]:px-3"
+                  aria-current={active === id ? "page" : undefined}
+                  href={"/" + id}
+                  label={name}
+                  icon={Icon}
+                />
+              ))}
             </nav>
           )}
           {c.WorkspaceLabel && (

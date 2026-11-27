@@ -79,17 +79,20 @@ function DraftFiles({ d }: { d: SiteData }) {
       {d.CanEdit && (
         <div className={toolbar}>
           <ButtonLink
+            action
             primary
             href={d.Base + "/edit"}
             label="New file"
             icon={Plus}
           />
           <ButtonLink
+            action
             href={d.Base + "/upload"}
             label="Upload file"
             icon={Upload}
           />
           <ButtonLink
+            action
             href={d.Base + "/import"}
             label="Import ZIP"
             icon={Archive}

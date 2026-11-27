@@ -8,7 +8,7 @@
 {{template "endpoint" .}}
 <div class="field"><label for="agent-secret">Secret key</label><input id="agent-secret" data-secret-receipt readonly value="{{.Secret}}" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="secret-help"><small id="secret-help">You can only see this key here. Keep it in your agent’s credential settings.</small><button type="button" data-copy-target="agent-secret" hidden>{{template "icon-Copy"}}<span class="action-caption">Copy key</span></button></div>
 <ol><li>In your agent’s MCP settings, add a <strong>Streamable HTTP</strong> server using the URL above.</li><li>Choose bearer token authentication and paste the secret key. If your agent uses HTTP headers, set <code>Authorization</code> to <code>Bearer </code> followed by the key.</li><li>Connect the server and ask your agent to list your sites.</li></ol>
-<div><a class="button secondary" href="/keys">{{template "icon-ArrowLeft"}}<span class="action-caption">Back to agent keys</span></a></div></section>
+<div><a class="button secondary" href="/keys">{{template "icon-ArrowLeft"}}Back to agent keys</a></div></section>
 {{end}}
 
 {{define "keys"}}
@@ -69,6 +69,6 @@
 <ul>{{range .Keys}}<li><strong>{{.Name}}</strong>{{if $.Admin}} · Owner: <code>{{.Subject}}</code>{{end}} · ID: <code>{{.ID}}</code></li>{{end}}</ul>
 <form class="toolbar" method="post" action="{{.Path}}">
   <input type="hidden" name="action" value="revoke-selected"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="review" value="{{.Review}}">
-  <button type="submit" name="confirm" value="yes" class="danger">{{template "icon-Unplug"}}<span class="action-caption">{{if eq (len .Keys) 1}}Revoke key{{else}}Revoke keys{{end}}</span></button><a href="{{.Back}}">{{template "icon-X"}}<span class="action-caption">Cancel</span></a>
+  <button type="submit" name="confirm" value="yes" class="danger">{{template "icon-Unplug"}}<span class="action-caption">{{if eq (len .Keys) 1}}Revoke key{{else}}Revoke keys{{end}}</span></button><a href="{{.Back}}">Cancel</a>
 </form></section>
 {{end}}

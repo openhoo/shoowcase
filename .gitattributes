@@ -2,5 +2,6 @@
 # whitespace and line endings are part of the artifact; review runtime/src/.
 internal/web/runtimeassets/worker.js binary linguist-generated=true
 internal/web/runtimeassets/bridge.js linguist-generated=true
-internal/web/uiassets/* linguist-generated=true
+internal/web/uiassets/*.css linguist-generated=true
+internal/web/uiassets/*.js linguist-generated=true
 ui/src/components/ui/* linguist-vendored=true

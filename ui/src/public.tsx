@@ -1,4 +1,4 @@
-import { ActionButton, ActionLink } from "@/components/icon-action";
+import { ActionButton, NavigationLink } from "@/components/icon-action";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,7 +95,7 @@ function Shell({
             Shoowcase
           </a>
           {landing && (
-            <ActionLink
+            <NavigationLink
               variant="ghost"
               href={signIn}
               label="Sign in"
@@ -177,19 +177,19 @@ function Landing({ signup }: { signup?: string }) {
           </p>
           <div className="flex flex-wrap gap-3">
             {signup && (
-              <ActionLink
+              <NavigationLink
                 href={navigationTarget(signup, true)}
                 label="Create an account"
                 icon={UserRoundPlus}
               />
             )}
-            <ActionLink
+            <NavigationLink
               variant={signup ? "outline" : "default"}
               href={signIn}
               label="Sign in"
               icon={LogIn}
             />
-            <ActionLink
+            <NavigationLink
               variant="ghost"
               href="/quickstart"
               label="Connect an agent"
@@ -254,7 +254,7 @@ function Password({ p }: { p: PasswordPage }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ActionLink
+            <NavigationLink
               variant="outline"
               href={navigationTarget(p.OIDC)}
               label="Continue with single sign-on"
@@ -361,7 +361,7 @@ function Continue({ next }: { next: string }) {
         Opening your site.
       </Heading>
       <div>
-        <ActionLink
+        <NavigationLink
           href={navigationTarget(next)}
           label="Continue to your site"
           icon={ArrowRight}
@@ -476,7 +476,7 @@ function Receipt({ p }: { p: ReceiptPage }) {
       />
       <div className="flex flex-wrap gap-3">
         {p.Preview && (
-          <ActionLink
+          <NavigationLink
             variant="outline"
             href={navigationTarget(p.Preview, true)}
             label="Preview this revision"
@@ -484,7 +484,7 @@ function Receipt({ p }: { p: ReceiptPage }) {
           />
         )}
         {p.SiteURL && (
-          <ActionLink
+          <NavigationLink
             href={navigationTarget(p.SiteURL, true)}
             label="Open the live site"
             icon={ExternalLink}
@@ -518,7 +518,7 @@ export function Public({ page }: { page: PublicPage }) {
             original request.
           </Heading>
           <div>
-            <ActionLink
+            <NavigationLink
               href="/auth/login"
               target="_blank"
               rel="noopener noreferrer"
@@ -538,7 +538,7 @@ export function Public({ page }: { page: PublicPage }) {
             {page.Message}
           </Heading>
           <div>
-            <ActionLink
+            <NavigationLink
               variant="outline"
               href="/"
               label="Back to workspace"

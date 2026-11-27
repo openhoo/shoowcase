@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openhoo/shoowcase/internal/routes"
+	"github.com/openhoo/shoowcase/internal/web/uiassets"
 )
 
 func (a *App) controlRouter() *routes.Control {
@@ -69,27 +69,26 @@ func (a *App) signedUpload(w http.ResponseWriter, r *http.Request) {
 	a.upload(w, r)
 }
 
-//go:embed uiassets/app.js
-var controlJS string
-
-//go:embed uiassets/app.css
-var reactCSS string
-
-func serveUIAsset(w http.ResponseWriter, r *http.Request, mime, asset string) {
+func serveUIAsset(w http.ResponseWriter, r *http.Request, mime string, asset uiassets.Asset) {
 	if !readMethod(w, r) {
 		return
 	}
-	w.Header().Set("Cache-Control", "no-cache")
+	if r.URL.Path == asset.Path {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	w.Header().Set("ETag", asset.ETag)
 	w.Header().Set("Content-Type", mime)
-	http.ServeContent(w, r, "", time.Time{}, strings.NewReader(asset))
+	http.ServeContent(w, r, "", time.Time{}, strings.NewReader(asset.Content))
 }
 
 func (a *App) controlStyle(w http.ResponseWriter, r *http.Request) {
-	serveUIAsset(w, r, "text/css; charset=utf-8", reactCSS)
+	serveUIAsset(w, r, "text/css; charset=utf-8", uiassets.Style)
 }
 
 func (a *App) controlScript(w http.ResponseWriter, r *http.Request) {
-	serveUIAsset(w, r, "text/javascript; charset=utf-8", controlJS)
+	serveUIAsset(w, r, "text/javascript; charset=utf-8", uiassets.Script)
 }
 
 func (a *App) metrics(w http.ResponseWriter, r *http.Request) {

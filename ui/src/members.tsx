@@ -1,4 +1,8 @@
-import { ActionButton, ActionLink } from "@/components/icon-action";
+import {
+  ActionButton,
+  ActionLink,
+  NavigationLink,
+} from "@/components/icon-action";
 import {
   exportCSV,
   SelectAll,
@@ -436,7 +440,7 @@ function Admin({ p }: { p: MemberData }) {
         aria-label="Administration views"
       >
         {views.map(([view, title, Icon]) => (
-          <ActionLink
+          <NavigationLink
             key={view}
             variant={p.View === view ? "secondary" : "ghost"}
             className="aria-[current=page]:ring-1 aria-[current=page]:ring-primary"
