@@ -1,4 +1,4 @@
-import { ActionLink } from "@/components/icon-action";
+import { ActionLink, NavigationLink } from "@/components/icon-action";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
@@ -35,15 +35,18 @@ export function Write({ d }: { d: SiteData }) {
 export function ButtonLink({
   href,
   primary = false,
+  action = false,
   external = false,
   ...props
 }: ComponentProps<typeof ActionLink> & {
   href: string;
   primary?: boolean;
+  action?: boolean;
   external?: boolean;
 }) {
+  const Link = action ? ActionLink : NavigationLink;
   return (
-    <ActionLink
+    <Link
       {...props}
       variant={primary ? "default" : "outline"}
       href={navigationTarget(href, external)}

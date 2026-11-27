@@ -17,7 +17,7 @@
 <div class="field"><label for="storage-limit-{{$key}}">Maximum storage</label><input type="number" min="0" step="1" id="storage-limit-{{$key}}" name="storage_limit" value="{{.StorageLimit}}" aria-describedby="storage-help-{{$key}}"{{if .Workspace}} required{{end}}><small id="storage-help-{{$key}}">Enter a whole number and choose its unit.</small></div>
 <div class="field"><label for="storage-unit-{{$key}}">Storage unit</label><div class="select-wrap"><select id="storage-unit-{{$key}}" name="storage_unit"><option value="B"{{if eq .Unit "B"}} selected{{end}}>Bytes</option><option value="KiB"{{if eq .Unit "KiB"}} selected{{end}}>KiB</option><option value="MiB"{{if eq .Unit "MiB"}} selected{{end}}>MiB</option><option value="GiB"{{if eq .Unit "GiB"}} selected{{end}}>GiB</option></select></div></div>
 </div>
-<div class="toolbar"><button>{{template "icon-Save"}}<span class="action-caption">Save limits</span></button>{{if not .Workspace}}<a href="/admin?view=quotas#budget-{{.ID}}">{{template "icon-X"}}<span class="action-caption">Cancel</span></a>{{end}}</div></form>
+<div class="toolbar"><button>{{template "icon-Save"}}<span class="action-caption">Save limits</span></button>{{if not .Workspace}}<a href="/admin?view=quotas#budget-{{.ID}}">Cancel</a>{{end}}</div></form>
 {{end}}
 
 {{define "quotas"}}
@@ -62,7 +62,7 @@
 <p>Moving this site assigns its full revision history ({{quotaBytes .Bytes}}) to the new group. Its address and audience stay the same. If you choose a group, only its editors, its publishers and workspace admins can edit the draft.</p>
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="site-group"><input type="hidden" name="site" value="{{.ID}}"><input type="hidden" name="version" value="{{.Version}}">
 <div class="field"><label for="site-group">Group for {{.Name}}</label><div class="select-wrap"><select id="site-group" name="group"><option value=""{{if not .GroupID}} selected{{end}}>Unassigned</option>{{range $.Quota.Groups}}<option value="{{.ID}}"{{if eq $.Quota.Selected.GroupID .ID}} selected{{end}}>{{.Name}}</option>{{end}}</select></div></div>
-<div class="toolbar"><button>{{template "icon-Save"}}<span class="action-caption">Save assignment</span></button><a href="/admin?view=quotas#site-assignments">{{template "icon-X"}}<span class="action-caption">Cancel</span></a></div>
+<div class="toolbar"><button>{{template "icon-Save"}}<span class="action-caption">Save assignment</span></button><a href="/admin?view=quotas#site-assignments">Cancel</a></div>
 </form>{{end}}</div>
 {{if .Quota.HasAssignments}}
 <form class="selection-toolbar" id="select-site-assignments" method="post" action="/admin">
@@ -85,5 +85,5 @@
 <h1>{{.Title}}</h1><p>{{.Effect}}</p>
 <form method="post" action="/admin" class="stack"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="{{.Action}}"><input type="hidden" name="review" value="{{.Review}}">
 <ul>{{range .Rows}}<li>{{.Name}}<input type="hidden" name="selected" value="{{.Value}}"></li>{{end}}</ul>
-<div class="toolbar"><button class="danger-action" name="confirm" value="yes">{{template "icon-Check"}}<span class="action-caption">{{.Title}}</span></button><a href="/admin?view=quotas#{{.Cancel}}">{{template "icon-X"}}<span class="action-caption">Cancel</span></a></div>
+<div class="toolbar"><button class="danger-action" name="confirm" value="yes">{{template "icon-Check"}}<span class="action-caption">{{.Title}}</span></button><a href="/admin?view=quotas#{{.Cancel}}">Cancel</a></div>
 </form></section>{{end}}

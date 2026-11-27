@@ -67,10 +67,13 @@
     .danger-action {
       @apply bg-destructive text-white;
     }
-    :is(button, a, summary):has(> .action-icon):not([hidden]) {
+    :is(button, a, summary):has(> .action-caption):not([hidden]) {
       @apply relative inline-flex size-11 shrink-0 cursor-pointer list-none items-center justify-center rounded-md p-0 align-middle;
     }
-    nav [aria-current="page"]:has(> .action-icon) {
+    :is(nav a, a.button):has(> .action-icon):not(:has(> .action-caption)) {
+      @apply inline-flex min-h-11 items-center gap-2 rounded-md px-3 py-2;
+    }
+    nav [aria-current="page"] {
       @apply bg-accent text-accent-foreground;
     }
     summary:has(> .action-icon)::-webkit-details-marker {

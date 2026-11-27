@@ -85,6 +85,31 @@ export function ActionLink({
   );
 }
 
+// Links to destinations keep their names visible, including on small screens.
+export function NavigationLink({
+  label,
+  icon: Icon,
+  variant = "outline",
+  className,
+  ...props
+}: Omit<ComponentProps<"a">, "children" | "aria-label"> & ActionProps) {
+  return (
+    <Button
+      asChild
+      variant={variant}
+      className={cn(
+        "h-auto min-h-11 min-w-11 max-w-full justify-self-start gap-1.5 whitespace-normal",
+        className,
+      )}
+    >
+      <a {...props}>
+        <Icon aria-hidden="true" className="size-4" />
+        {label}
+      </a>
+    </Button>
+  );
+}
+
 export function ActionSummary({ label, icon: Icon, className }: ActionProps) {
   return (
     <summary

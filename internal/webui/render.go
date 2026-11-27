@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"html"
 	"net/http"
+
+	"github.com/openhoo/shoowcase/internal/web/uiassets"
 )
 
 // Render pairs a React page model with script-free forms. native is a body
@@ -23,7 +25,7 @@ func Render(w http.ResponseWriter, status int, title, kind string, page any, nat
 	var doc bytes.Buffer
 	doc.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>`)
 	doc.WriteString(html.EscapeString(title))
-	doc.WriteString(` · Shoowcase</title><link rel="stylesheet" href="/ui.css"><script defer src="/console.js"></script>`)
+	doc.WriteString(` · Shoowcase</title><link rel="stylesheet" href="` + uiassets.Style.Path + `"><script defer src="` + uiassets.Script.Path + `"></script>`)
 	if refresh != "" {
 		doc.WriteString(`<noscript><meta http-equiv="refresh" content="0;url=`)
 		doc.WriteString(html.EscapeString(refresh))

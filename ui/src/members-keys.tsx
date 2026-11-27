@@ -317,6 +317,7 @@ export function Keys({ p }: { p: MemberData }) {
         title="Agent keys"
         action={
           <ButtonLink
+            action
             primary
             href="#new-key"
             label="Create a key"

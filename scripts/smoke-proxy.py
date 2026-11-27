@@ -151,6 +151,19 @@ def proxy(tls, control, backend, assets, secret):
     paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/account", "/sites", "/quickstart",
                             "/quickstart/install.sh", "/quickstart/install.ps1", "/quickstart/redeem", "/mcp")}
     paths["/auth/login"] = "/auth/login?next=%2Faccount"
+    # Admit only the two immutable asset paths shipped by this fixture binary.
+    conn = http.client.HTTPConnection("127.0.0.1", backend, timeout=15)
+    try:
+        for name in ("ui.css", "console.js"):
+            conn.request("GET", "/" + name, headers={"Host": control})
+            asset = conn.getresponse()
+            check(asset.status == 200, f"fixture asset unavailable: {name}")
+            digest = hashlib.sha256(asset.read()).hexdigest()
+            path = f"/ui/{digest}/{name}"
+            paths[path] = path
+    finally:
+        conn.close()
+
 
     class Origin(BaseHTTPRequestHandler):
         def log_message(self, *args):

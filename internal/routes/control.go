@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/openhoo/shoowcase/internal/web/uiassets"
 )
 
 type Endpoint struct {
@@ -93,6 +95,10 @@ func NewControl(h Handlers) *Control {
 	} {
 		add(path, path, handler)
 	}
+	// Only this binary's exact content hashes are valid. Reuse the stable
+	// legacy labels so asset rebuilds do not add telemetry series.
+	add(uiassets.Style.Path, "/ui.css", h.CSS)
+	add(uiassets.Script.Path, "/console.js", h.Script)
 	for path := range authPaths {
 		add(path, path, h.Auth)
 	}
