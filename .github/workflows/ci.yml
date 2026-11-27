@@ -96,6 +96,7 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit
           npm run build
+          npm test
           git diff --exit-code -- ../internal/web/uiassets inventory.json UI-LICENSES.txt
       - name: Verify generated directory query
         run: |

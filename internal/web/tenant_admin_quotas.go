@@ -19,7 +19,7 @@ type quotaBudgetForm struct {
 
 type quotaSiteRow struct {
 	sites.QuotaSite
-	GroupName string
+	GroupName, Href string
 }
 
 type quotaPage struct {
@@ -119,7 +119,7 @@ func (a *App) quotaView(w http.ResponseWriter, r *http.Request, c consoleContext
 	}
 	selected := r.URL.Query().Get("site")
 	for _, site := range data.Sites {
-		row := quotaSiteRow{site, names[site.GroupID]}
+		row := quotaSiteRow{site, names[site.GroupID], directoryHref(site.ID)}
 		q.Sites = append(q.Sites, row)
 		if site.GroupID != "" {
 			q.HasAssignments = true

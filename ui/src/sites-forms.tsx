@@ -1,3 +1,4 @@
+import { postTarget, navigationTarget } from "@/lib/navigation";
 import { FileUp, FolderPlus, History, Save, Trash2, X } from "lucide-react";
 import { PanelSection } from "@/components/panel-section";
 
@@ -122,13 +123,17 @@ export function FileEditor({ d }: { d: SiteData }) {
         {d.Error && (
           <p>
             Copy any changes you want to keep before{" "}
-            <a className={linkStyle} href={d.Base}>
+            <a className={linkStyle} href={navigationTarget(d.Base)}>
               opening the current draft
             </a>
             .
           </p>
         )}
-        <form className="grid gap-5" method="post" action={d.Base + "/edit"}>
+        <form
+          className="grid gap-5"
+          method="post"
+          action={postTarget(d.Base + "/edit")}
+        >
           <Write d={d} />
           <Field
             id="file-path"
@@ -200,7 +205,7 @@ export function UploadSiteFile({ d }: { d: SiteData }) {
           className="grid gap-5"
           method="post"
           encType="multipart/form-data"
-          action={d.Base + "/" + (zip ? "import" : "upload")}
+          action={postTarget(d.Base + "/" + (zip ? "import" : "upload"))}
         >
           <Write d={d} />
           <Field
@@ -293,7 +298,10 @@ export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
             </li>
           ))}
         </ul>
-        <form method="post" action={sites ? "/sites" : d.Base + "/delete"}>
+        <form
+          method="post"
+          action={postTarget(sites ? "/sites" : d.Base + "/delete")}
+        >
           {sites ? (
             <>
               <Token d={d} />
@@ -347,10 +355,13 @@ export function RestoreRelease({ d }: { d: SiteData }) {
           <code className="break-all">{d.Rev}</code>. Your current draft and
           audience stay unchanged.
         </p>
-        <a className={linkStyle} href={d.RestorePreview}>
+        <a
+          className={linkStyle}
+          href={navigationTarget(d.RestorePreview, true)}
+        >
           Preview this revision
         </a>
-        <form method="post" action={d.Base + "/rollback"}>
+        <form method="post" action={postTarget(d.Base + "/rollback")}>
           <Token d={d} />
           <Hidden name="request_id" value={d.Request} />
           <Hidden name="release" value={d.RestoreID} />

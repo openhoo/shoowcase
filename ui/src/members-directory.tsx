@@ -155,7 +155,12 @@ function SearchDirectory({
         </Button>
       </form>
       {(d.Filtered || d.Sort !== "name") && (
-        <a className={linkStyle} href={"/admin?view=" + p.View}>
+        <a
+          className={linkStyle}
+          href={
+            p.View === "groups" ? "/admin?view=groups" : "/admin?view=members"
+          }
+        >
           Reset filters
         </a>
       )}

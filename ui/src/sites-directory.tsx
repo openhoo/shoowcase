@@ -1,3 +1,4 @@
+import { navigationTarget } from "@/lib/navigation";
 import { Folder, ListFilter, Plus, Search, Trash2 } from "lucide-react";
 import {
   RecordTable,
@@ -261,7 +262,10 @@ export function SiteDirectory({ d }: { d: SiteData }) {
                         aria-hidden="true"
                       />
                       <div className="min-w-0">
-                        <a className={linkStyle} href={s.Href}>
+                        <a
+                          className={linkStyle}
+                          href={navigationTarget(s.Href)}
+                        >
                           {s.Name}
                         </a>
                         <span className="block font-mono text-xs text-muted-foreground">

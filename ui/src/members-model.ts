@@ -65,6 +65,7 @@ export interface SiteQuota {
   Name: string;
   GroupID: string;
   GroupName: string;
+  Href: string;
   Bytes: number;
   Version: number;
 }

@@ -204,8 +204,13 @@ function Console({ page }: { page: ConsolePage }) {
 function mount() {
   const payload = document.getElementById("shoowcase-page");
   const host = document.getElementById("app");
-  if (!payload || !host) return;
-  const { kind, page } = JSON.parse(payload.textContent!);
+  if (
+    !(payload instanceof HTMLScriptElement) ||
+    payload.type !== "application/json" ||
+    !host
+  )
+    return;
+  const { kind, page } = JSON.parse(payload.text);
   payload.remove();
   document.getElementById("native-page")?.remove();
   createRoot(host).render(

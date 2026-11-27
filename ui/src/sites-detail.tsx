@@ -1,3 +1,4 @@
+import { postTarget } from "@/lib/navigation";
 import {
   Archive,
   Download,
@@ -95,7 +96,7 @@ function DraftFiles({ d }: { d: SiteData }) {
             <>
               <form
                 id="delete-files-selection"
-                action={d.Base + "/delete"}
+                action={postTarget(d.Base + "/delete")}
                 method="post"
               >
                 <Write d={d} />
@@ -225,7 +226,7 @@ function SiteAccess({ d }: { d: SiteData }) {
       {d.CanPublish && (
         <form
           method="post"
-          action={d.Base + "/access"}
+          action={postTarget(d.Base + "/access")}
           className="flex flex-wrap items-end gap-3"
         >
           <Token d={d} />
@@ -384,19 +385,19 @@ export function SiteDetail({ d }: { d: SiteData }) {
       </Head>
       <div className={toolbar}>
         {d.HasIndex && (
-          <ButtonLink href={d.PreviewURL}>
+          <ButtonLink external href={d.PreviewURL}>
             <Eye aria-hidden="true" />
             Preview draft
           </ButtonLink>
         )}
         {s.ReleaseID && s.Visibility !== "offline" && (
-          <ButtonLink href={d.SiteURL}>
+          <ButtonLink external href={d.SiteURL}>
             <ExternalLink aria-hidden="true" />
             Open live site
           </ButtonLink>
         )}
         {d.CanPublish && d.HasIndex && s.LiveRevision !== s.Revision && (
-          <form method="post" action={d.Base + "/publish"}>
+          <form method="post" action={postTarget(d.Base + "/publish")}>
             <Write d={d} />
             <Button type="submit">
               <Upload aria-hidden="true" />

@@ -1,3 +1,4 @@
+import { navigationTarget } from "@/lib/navigation";
 import { RotateCcw, Save, Unlink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -394,7 +395,7 @@ function Assignments({ p }: { p: MemberData }) {
                 </PickCell>
               )}
               <NameCell>
-                <a className={linkStyle} href={"/sites/" + urlValue(site.ID)}>
+                <a className={linkStyle} href={navigationTarget(site.Href)}>
                   {site.Name}
                 </a>
                 <span className={"site-address block " + secondaryText}>

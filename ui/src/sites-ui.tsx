@@ -1,3 +1,4 @@
+import { navigationTarget } from "@/lib/navigation";
 import type { ComponentProps, ReactNode } from "react";
 import { ArrowLeft, File, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,11 +36,16 @@ export function ButtonLink({
   href,
   children,
   primary = false,
+  external = false,
   ...rest
-}: ComponentProps<"a"> & { href: string; primary?: boolean }) {
+}: ComponentProps<"a"> & {
+  href: string;
+  primary?: boolean;
+  external?: boolean;
+}) {
   return (
     <Button asChild variant={primary ? "default" : "outline"}>
-      <a href={href} {...rest}>
+      <a href={navigationTarget(href, external)} {...rest}>
         {children}
       </a>
     </Button>
@@ -49,7 +55,7 @@ export function Back({ d }: { d?: SiteData }) {
   return (
     <a
       className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      href={d?.Base || "/sites"}
+      href={navigationTarget(d?.Base || "/sites")}
     >
       <ArrowLeft aria-hidden="true" className="size-4" />
       {d?.Base ? "Back to site" : "All sites"}

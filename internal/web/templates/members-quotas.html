@@ -73,7 +73,7 @@
 <thead><tr>{{if .Quota.HasAssignments}}<th scope="col" class="selection-cell">Select</th>{{end}}<th scope="col">Site</th><th scope="col">Group</th><th scope="col">Revision storage</th><th scope="col">Actions</th></tr></thead>
 <tbody>{{range .Quota.Sites}}<tr>
 {{if $.Quota.HasAssignments}}<td class="selection-cell">{{if .GroupID}}<input type="checkbox" form="select-site-assignments" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Select {{.Name}}" data-select-row>{{else}}<span aria-label="Not applicable">—</span>{{end}}</td>{{end}}
-<th scope="row" class="entry-name-cell"><a class="site-name" href="/sites/{{.ID}}">{{.Name}}</a><span class="site-address">{{.ID}}</span></th>
+<th scope="row" class="entry-name-cell"><a class="site-name" href="{{.Href}}">{{.Name}}</a><span class="site-address">{{.ID}}</span></th>
 <td><span class="mobile-label" aria-hidden="true">Group</span>{{.GroupName}}</td>
 <td><span class="mobile-label" aria-hidden="true">Revision storage</span>{{quotaBytes .Bytes}}</td>
 <td class="entry-wide"><div class="toolbar"><a href="/admin?view=quotas&amp;site={{.ID}}#assignment" aria-label="Change group for {{.Name}}">Change group</a>{{if .GroupID}}<form action="/admin" method="post">

@@ -1,3 +1,4 @@
+import { navigationTarget } from "@/lib/navigation";
 import {
   Activity,
   ArrowLeft,
@@ -144,7 +145,12 @@ function Account({ p }: { p: MemberData }) {
               Change password
             </ButtonLink>
           ) : p.OIDCAccountURL ? (
-            <ButtonLink href={p.OIDCAccountURL} rel="noreferrer" primary>
+            <ButtonLink
+              external
+              href={p.OIDCAccountURL}
+              rel="noreferrer"
+              primary
+            >
               <ExternalLink aria-hidden="true" />
               Change password at identity provider
             </ButtonLink>
@@ -490,7 +496,7 @@ interface Review {
 function SelectionReview({ p }: { p: Review }) {
   return (
     <>
-      <a href={p.Back} className={linkStyle}>
+      <a href={navigationTarget(p.Back)} className={linkStyle}>
         ← Back to directory
       </a>
       <section className={panel}>

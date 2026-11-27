@@ -1,3 +1,4 @@
+import { navigationTarget } from "@/lib/navigation";
 import { useEffect, type ReactNode } from "react";
 import {
   ArrowLeft,
@@ -178,7 +179,7 @@ function Landing({ signup }: { signup?: string }) {
           <div className="flex flex-wrap gap-3">
             {signup && (
               <Button asChild>
-                <a href={signup}>
+                <a href={navigationTarget(signup, true)}>
                   Create an account <ArrowRight aria-hidden="true" />
                 </a>
               </Button>
@@ -249,7 +250,7 @@ function Password({ p }: { p: PasswordPage }) {
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline">
-              <a href={p.OIDC}>
+              <a href={navigationTarget(p.OIDC)}>
                 Continue with single sign-on <ArrowRight aria-hidden="true" />
               </a>
             </Button>
@@ -321,7 +322,7 @@ function Password({ p }: { p: PasswordPage }) {
       </Card>
       {p.Register ? (
         <div>
-          <a className={link} href={p.Back}>
+          <a className={link} href={navigationTarget(p.Back)}>
             <ArrowLeft className="size-4" aria-hidden="true" />
             Back to sign in
           </a>
@@ -329,7 +330,7 @@ function Password({ p }: { p: PasswordPage }) {
       ) : (
         p.Open && (
           <div>
-            <a className={link} href={p.Signup}>
+            <a className={link} href={navigationTarget(p.Signup)}>
               Create a local account
             </a>
           </div>
@@ -343,7 +344,9 @@ function Continue({ next }: { next: string }) {
   // A POST from the password form must finish on the control origin. The
   // ordinary link below also completes the handoff without JavaScript.
   useEffect(() => {
-    if (next.startsWith("/auth/login?ticket=")) window.location.replace(next);
+    const target = navigationTarget(next);
+    if (target?.startsWith("/auth/login?ticket="))
+      window.location.replace(target);
   }, [next]);
   return (
     <Shell>
@@ -352,7 +355,7 @@ function Continue({ next }: { next: string }) {
       </Heading>
       <div>
         <Button asChild>
-          <a href={next}>
+          <a href={navigationTarget(next)}>
             Continue to your site <ArrowRight aria-hidden="true" />
           </a>
         </Button>
@@ -378,7 +381,7 @@ function Approval({ p }: { p: ApprovalPage }) {
       {p.Preview && (
         <div>
           <a
-            href={p.Preview}
+            href={navigationTarget(p.Preview, true)}
             className={link}
             target="_blank"
             rel="noopener noreferrer"
@@ -469,14 +472,14 @@ function Receipt({ p }: { p: ReceiptPage }) {
       <div className="flex flex-wrap gap-3">
         {p.Preview && (
           <Button asChild variant="outline">
-            <a href={p.Preview}>
+            <a href={navigationTarget(p.Preview, true)}>
               Preview this revision <ArrowRight aria-hidden="true" />
             </a>
           </Button>
         )}
         {p.SiteURL && (
           <Button asChild>
-            <a href={p.SiteURL}>
+            <a href={navigationTarget(p.SiteURL, true)}>
               Open the live site <ArrowRight aria-hidden="true" />
             </a>
           </Button>

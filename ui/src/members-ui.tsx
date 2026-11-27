@@ -1,3 +1,4 @@
+import { navigationTarget, postTarget } from "@/lib/navigation";
 import { type ComponentProps, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,7 +58,7 @@ export function Post({
   fields: Record<string, string | number | boolean | undefined>;
 }) {
   return (
-    <form method="post" action={path} {...props}>
+    <form method="post" {...props} action={postTarget(path)}>
       <Hidden fields={fields} />
       {children}
     </form>
@@ -244,12 +245,12 @@ export function Pager({
   return (
     <nav aria-label={label} className={toolbar + " justify-between"}>
       {prev && (
-        <a className={linkStyle} href={prev}>
+        <a className={linkStyle} href={navigationTarget(prev)}>
           ← Previous {noun}
         </a>
       )}
       {next && (
-        <a className={linkStyle} href={next}>
+        <a className={linkStyle} href={navigationTarget(next)}>
           {older ? "Older" : "Next"} {noun} →
         </a>
       )}
