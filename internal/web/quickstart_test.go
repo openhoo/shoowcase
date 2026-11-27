@@ -197,3 +197,28 @@ func TestQuickstartUninstallDownloads(t *testing.T) {
 		}
 	}
 }
+
+func TestQuickstartNameConflictAndRecovery(t *testing.T) {
+	app, _ := handlerFixture(t, filepath.Join(t.TempDir(), "setup.sqlite"), "team-a", false)
+	c, csrf := joinMemberConsole(t, app)
+	submit := func(name string) *httptest.ResponseRecorder {
+		form := hitRoute(t, app, "GET", testControl+"/quickstart", c, nil)
+		return memberPost(t, app, c, "/quickstart", url.Values{
+			"csrf": {csrf}, "creation_token": {memberControl(t, form.Body.String(), "name", "creation_token")},
+			"client": {"codex"}, "platform": {"unix"}, "scope": {"reader"}, "days": {"7"}, "name": {name},
+		})
+	}
+	requireMemberStatus(t, submit("Codex"), 200)
+	rejected := submit("  CODEX  ")
+	requireMemberStatus(t, rejected, 409)
+	if body := rejected.Body.String(); !strings.Contains(body, "You already have a key with this name.") ||
+		!strings.Contains(body, `value="CODEX"`) || !strings.Contains(body, `id="quick-name-error"`) ||
+		strings.Contains(body, `id="setup-command"`) {
+		t.Fatal("duplicate should reopen the form with the name and without a setup command")
+	}
+	automatic := submit("")
+	requireMemberStatus(t, automatic, 200)
+	if !strings.Contains(automatic.Body.String(), "<strong>Codex (2)</strong>") {
+		t.Fatal("setup receipt did not show the chosen unique name")
+	}
+}

@@ -7,8 +7,12 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 const MCPKeyPrefix = "sc_key_"
@@ -20,7 +24,30 @@ type AgentKey struct {
 	Revoked                  bool
 }
 
+func keyNameIndex(name string) string {
+	return norm.NFC.String(cases.Fold().String(strings.TrimSpace(name)))
+}
+
+func numberedKeyName(name string, n int) string {
+	suffix := " (" + strconv.Itoa(n) + ")"
+	runes := []rune(name)
+	if limit := 80 - len(suffix); len(runes) > limit {
+		name = strings.TrimSpace(string(runes[:limit]))
+	}
+	return name + suffix
+}
+
 func (s *Store) CreateKey(ctx context.Context, a Actor, name, scope string, days int) (AgentKey, string, error) {
+	return s.createKey(ctx, a, name, scope, days, false)
+}
+
+// CreateKeyWithSuggestedName gives automatic Quickstart names a unique suffix
+// if the suggested name is already in use. Explicit names are never changed.
+func (s *Store) CreateKeyWithSuggestedName(ctx context.Context, a Actor, name, scope string, days int) (AgentKey, string, error) {
+	return s.createKey(ctx, a, name, scope, days, true)
+}
+
+func (s *Store) createKey(ctx context.Context, a Actor, name, scope string, days int, suggested bool) (AgentKey, string, error) {
 	var zero AgentKey
 	name = strings.TrimSpace(name)
 	if !labelOK(name) {
@@ -64,8 +91,24 @@ func (s *Store) CreateKey(ctx context.Context, a Actor, name, scope string, days
 		return zero, "", e
 	}
 	secret := MCPKeyPrefix + key.ID + "." + base64.RawURLEncoding.EncodeToString(random[:])
-	if _, e = tx.ExecContext(ctx, "INSERT INTO sc_agent_keys(id,workspace,subject,name,scope,digest,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", key.ID, a.Workspace, a.Subject, name, scope, sum([]byte(secret)), now.Unix(), key.ExpiresAt.Unix()); e != nil {
-		return zero, "", e
+	for n := 2; ; n++ {
+		insert, e := tx.ExecContext(ctx, `INSERT INTO sc_agent_keys(id,workspace,subject,name,name_key,scope,digest,created_at,expires_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(workspace,subject,name_key) DO NOTHING`,
+			key.ID, a.Workspace, a.Subject, key.Name, keyNameIndex(key.Name), scope, sum([]byte(secret)), now.Unix(), key.ExpiresAt.Unix())
+		if e != nil {
+			return zero, "", e
+		}
+		nRows, e := insert.RowsAffected()
+		if e != nil {
+			return zero, "", e
+		}
+		if nRows == 1 {
+			break
+		}
+		if !suggested {
+			return zero, "", fail("key_name_taken", "You already have a key with this name. Choose a different name.")
+		}
+		key.Name = numberedKeyName(name, n)
 	}
 	if e = recordAccountChange(ctx, tx, a, "key_created", key.ID, "", scope); e != nil {
 		return zero, "", e

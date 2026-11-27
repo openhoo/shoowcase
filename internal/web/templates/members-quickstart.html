@@ -12,7 +12,7 @@
 <div class="field"><label for="quick-days">Key lifetime</label><div class="select-wrap"><select id="quick-days" name="days"><option value="7" {{if eq .Days "7"}}selected{{end}}>7 days</option><option value="30" {{if eq .Days "30"}}selected{{end}}>30 days</option><option value="90" {{if eq .Days "90"}}selected{{end}}>90 days</option></select></div></div></div>
 <div><label><input type="checkbox" name="company_proxy" aria-describedby="proxy-help" {{if .CompanyProxy}}checked{{end}}> Use a company proxy</label>
 <p class="muted" id="proxy-help">Choose this if your computer needs a proxy to reach the internet. The installer uses your terminal’s proxy settings or asks for the address locally.</p></div>
-<details><summary>Name this connection (optional)</summary><div class="field"><label for="quick-name">Name in Agent keys</label><input type="text" id="quick-name" name="name" value="{{.NameValue}}" maxlength="80" placeholder="e.g. My work laptop"></div></details>
+<details{{if .NameError}} open{{end}}><summary>Name this connection (optional)</summary><div class="field"><label for="quick-name">Name in Agent keys</label><input type="text" id="quick-name" name="name" value="{{.NameValue}}" maxlength="80" placeholder="e.g. My work laptop"{{if .NameError}} aria-invalid="true" aria-describedby="quick-name-error"{{end}}>{{if .NameError}}<p id="quick-name-error" class="notice" role="alert">{{.NameError}}</p>{{end}}</div></details>
 <div class="toolbar"><button type="submit">{{template "icon-KeyRound"}}<span class="action-label">Create key and get command</span></button></div>
 <p class="muted">Does your agent run in the cloud or only accept a server URL? <a href="/keys">Set up a remote HTTP connection instead.</a></p>
 </form>
@@ -24,7 +24,7 @@
 {{end}}
 
 {{define "quick-ready"}}
-<header><p class="eyebrow">Quickstart · {{.ClientName}}</p><h1>Connect {{.ClientName}}</h1><p>Your {{role .Scope}} key is ready. It expires in {{.Days}} days.</p></header>
+<header><p class="eyebrow">Quickstart · {{.ClientName}}</p><h1>Connect {{.ClientName}}</h1><p>Your {{role .Scope}} key <strong>{{.NameValue}}</strong> is ready. It expires in {{.Days}} days.</p></header>
 <section class="panel stack quick-result"><h2>1. Run this command</h2>
 {{if .CompanyProxy}}<p>Your agent will start a local MCP relay that remembers how to reach Shoowcase through your proxy. If your IT team gave you a PEM certificate bundle, set <code>SHOOWCASE_CA_FILE</code> to its local path before running the command. Enter proxy details only in your terminal.</p>{{end}}
 <p>Open {{if eq .Platform "windows"}}PowerShell{{else}}a terminal{{end}} on the computer where you use {{.ClientName}}. {{if eq .Client "stdio"}}This installs the connector and prints the command and arguments to enter in your client’s local MCP server settings.{{else}}This installs the Shoowcase connector and registers it for your user.{{end}}</p>

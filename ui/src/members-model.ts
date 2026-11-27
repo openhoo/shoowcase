@@ -87,6 +87,7 @@ export interface MemberData {
   Days: string;
   Secret: string;
   Err: string;
+  NameError: string;
   Notice: string;
   Creation: string;
   Scopes: string[];
