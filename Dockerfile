@@ -19,7 +19,7 @@ LABEL org.opencontainers.image.title="Shoowcase" \
       org.opencontainers.image.version="${VERSION}"
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /out/shoowcase /shoowcase
-COPY LICENSE NOTICE runtime/THIRD-PARTY-LICENSES.txt /usr/share/licenses/shoowcase/
+COPY LICENSE NOTICE runtime/THIRD-PARTY-LICENSES.txt ui/UI-LICENSES.txt /usr/share/licenses/shoowcase/
 USER 65532:65532
 ENV SHOOWCASE_LISTEN=:7878
 EXPOSE 7878

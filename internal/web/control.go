@@ -2,9 +2,11 @@ package web
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/openhoo/shoowcase/internal/routes"
@@ -67,12 +69,27 @@ func (a *App) signedUpload(w http.ResponseWriter, r *http.Request) {
 	a.upload(w, r)
 }
 
-func (a *App) controlStyle(w http.ResponseWriter, r *http.Request) {
+//go:embed uiassets/app.js
+var controlJS string
+
+//go:embed uiassets/app.css
+var reactCSS string
+
+func serveUIAsset(w http.ResponseWriter, r *http.Request, mime, asset string) {
 	if !readMethod(w, r) {
 		return
 	}
-	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	_, _ = io.WriteString(w, controlCSS)
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Type", mime)
+	http.ServeContent(w, r, "", time.Time{}, strings.NewReader(asset))
+}
+
+func (a *App) controlStyle(w http.ResponseWriter, r *http.Request) {
+	serveUIAsset(w, r, "text/css; charset=utf-8", reactCSS)
+}
+
+func (a *App) controlScript(w http.ResponseWriter, r *http.Request) {
+	serveUIAsset(w, r, "text/javascript; charset=utf-8", controlJS)
 }
 
 func (a *App) metrics(w http.ResponseWriter, r *http.Request) {

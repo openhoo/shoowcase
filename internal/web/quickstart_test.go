@@ -24,6 +24,9 @@ func quickCommandFrom(t *testing.T, page string) string {
 			t.Fatal("no setup command")
 		case html.StartTagToken:
 			n := z.Token()
+			if n.Data == "noscript" {
+				z.NextIsNotRawText()
+			}
 			if n.Data == "textarea" {
 				for _, a := range n.Attr {
 					if a.Key == "id" && a.Val == "setup-command" && z.Next() == html.TextToken {

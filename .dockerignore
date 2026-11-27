@@ -13,3 +13,7 @@
 !runtime/
 runtime/**
 !runtime/THIRD-PARTY-LICENSES.txt
+
+!ui/
+ui/**
+!ui/UI-LICENSES.txt

@@ -1,0 +1,31 @@
+/* With scripts disabled the same native form actions, colors and focus styles apply. */
+@layer components {
+  #native-page {
+    main, header.mast, footer { @apply mx-auto block max-w-6xl px-4 py-5; }
+    h1 { @apply my-3 text-3xl font-semibold; }
+    h2 { @apply my-2 text-xl font-semibold; }
+    h3, dt { @apply mt-2 font-semibold; }
+    nav, .toolbar, .mast-inner, .directory-filters, .directory-options, .desk-stats, .selection-toolbar { @apply flex flex-wrap items-center gap-3; }
+    form, p, .field, .directory-body { @apply my-3; }
+    fieldset, .directory, .panel, main > form { @apply my-4 min-w-0 rounded-xl border bg-card p-4; }
+    .stack > *, .field > label { @apply block; }
+    a { @apply text-primary underline underline-offset-2; }
+    .sr-only, .visually-hidden, .skip:not(:focus) { @apply sr-only; }
+    .search-box svg, .illustration, .folio-mark { @apply hidden; }
+    button, .button { @apply inline-flex rounded-md bg-primary px-3 py-2 text-primary-foreground no-underline; }
+    .danger, .danger-action { @apply bg-destructive text-white; }
+    select, textarea, input:not([type=hidden],[type=checkbox],[type=radio]) { @apply max-w-full rounded-md border border-input bg-card px-2 py-1.5; }
+    input[type=checkbox], input[type=radio] { @apply accent-primary; }
+    textarea { @apply block min-h-32 w-full; }
+    ul, ol { @apply list-inside list-disc; }
+    table { @apply w-full border-collapse text-left text-sm; }
+    td, th { @apply border-b p-2 break-words; }
+    .mobile-label { @apply hidden; }
+    @media (width < 48rem) {
+      table, tbody, tbody tr, tbody td, tbody th { @apply block; }
+      tbody tr { @apply my-3 rounded-lg border p-2; }
+      thead { @apply sr-only; }
+      .mobile-label { @apply mr-2 inline text-muted-foreground; }
+    }
+  }
+}

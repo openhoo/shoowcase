@@ -197,7 +197,7 @@ async def main(args):
                     await page.get_by_role("link", name="Agent keys", exact=True).last.click()
                     row = page.get_by_role("table", name="Your keys").get_by_role("row").filter(has=page.get_by_role("rowheader", name=NAMES[client], exact=True))
                     await row.locator("summary").click()
-                    await row.get_by_role("checkbox").check()
+                    await row.get_by_role("checkbox", name="Disconnect agents using this key.", exact=True).check()
                     await row.get_by_role("button", name="Revoke key").click()
                     async with httpx.AsyncClient(trust_env=False) as http:
                         r = await http.post(endpoint, headers={"Authorization": "Bearer " + token},

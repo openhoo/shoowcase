@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/openhoo/shoowcase/internal/sites"
+	"github.com/openhoo/shoowcase/internal/webui"
 )
 
 // LocalAccounts stores credentials separately from identity-provider assertions.
@@ -36,7 +37,7 @@ func (s *Service) identityActive(ctx context.Context, i Identity) bool {
 
 //go:embed password.html
 var passwordHTML string
-var passwordContinue = template.Must(template.New("continue").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url={{.}}"><title>Opening your site · Shoowcase</title></head><body><main><h1>Signed in</h1><a href="{{.}}">Continue to your site</a></main></body></html>`))
+var passwordContinue = template.Must(template.New("continue").Parse(`<main><h1>Signed in</h1><a href="{{.Next}}">Continue to your site</a></main>`))
 
 var passwordPage = template.Must(template.New("password").Parse(passwordHTML))
 
@@ -65,9 +66,11 @@ func (s *Service) passwordForm(w http.ResponseWriter, r *http.Request, d destina
 	// Browsers send Origin: null on form POSTs from a no-referrer page.
 	// Send only the origin (never a flow ticket) so same-origin CSRF checks work.
 	w.Header().Set("Referrer-Policy", "strict-origin")
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	_ = passwordPage.Execute(w, map[string]any{"Register": register, "Open": s.cfg.PublicRegistration, "Flow": intent, "Message": message, "OIDC": "/auth/login?" + q.Encode(), "Signup": signup, "Back": back})
+	title := "Sign in"
+	if register {
+		title = "Create an account"
+	}
+	webui.Public(w, status, title, "password", passwordPage, map[string]any{"Register": register, "Open": s.cfg.PublicRegistration, "Flow": intent, "Message": message, "OIDC": "/auth/login?" + q.Encode(), "Signup": signup, "Back": back})
 }
 
 func (s *Service) passwordRoute(w http.ResponseWriter, r *http.Request) {

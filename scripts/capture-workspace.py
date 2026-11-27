@@ -129,6 +129,9 @@ async def capture(binary, output, channel):
             await expect(toggle).to_have_attribute("aria-expanded", "false")
             await page.evaluate("document.activeElement.blur(); scrollTo(0, 0)")
             await workspace.fits(page, "mobile directory")
+            # Frame the directory itself on a phone so readers can see the card rows.
+            await page.get_by_role("region", name="Site directory").evaluate("el => el.scrollIntoView({block: 'start'})")
+            await expect(page.get_by_role("rowheader").first).to_be_in_viewport()
             mobile = output / "workspace-mobile.png"
             await page.screenshot(path=mobile, animations="disabled")
             await page.set_viewport_size({"width": 320, "height": 740})

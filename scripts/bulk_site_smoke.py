@@ -23,6 +23,9 @@ async def check_bulk_sites(page, control, browser):
         await page.get_by_label("File contents").fill(text)
         await page.get_by_role("button", name="Save file").click()
     await page.get_by_role("button", name="Publish draft").click()
+    # Check the JS-enabled browser exercised React rather than accidentally
+    # running the native fallback in both contexts.
+    await expect(page.locator("#app").get_by_role("heading", name=released, exact=True)).to_be_visible()
     files = page.get_by_role("region", name="Draft files")
     releases = page.get_by_role("region", name="Releases")
     await files.get_by_role("checkbox", name="Select file a.css").check()

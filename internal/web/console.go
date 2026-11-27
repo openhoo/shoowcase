@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"html/template"
-	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -14,6 +14,7 @@ import (
 	"github.com/openhoo/shoowcase/internal/auth"
 	"github.com/openhoo/shoowcase/internal/routes"
 	"github.com/openhoo/shoowcase/internal/sites"
+	"github.com/openhoo/shoowcase/internal/webui"
 )
 
 type consoleContext struct {
@@ -27,8 +28,15 @@ type consoleContext struct {
 var consoleHTML string
 var frame = template.Must(template.New("console").Parse(consoleHTML))
 
-//go:embed console.js
-var consoleJS string
+// MarshalJSON limits the browser context to fields used by the control UI.
+func (c consoleContext) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Enrolled             bool
+		Name, WorkspaceLabel string
+		Actor                sites.Actor
+		Identity             struct{ Subject, CSRF string }
+	}{c.Enrolled, c.Name, c.WorkspaceLabel, c.Actor, struct{ Subject, CSRF string }{c.Identity.Subject, c.Identity.CSRF}})
+}
 
 func consoleView(w http.ResponseWriter, c consoleContext, status int, title, active string, tmpl *template.Template, data any) {
 	var out bytes.Buffer
@@ -48,10 +56,9 @@ func consoleView(w http.ResponseWriter, c consoleContext, status int, title, act
 		http.Error(w, "Workspace unavailable", 500)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-	w.WriteHeader(status)
-	_, _ = out.WriteTo(w)
+	webui.Render(w, status, title, "console", map[string]any{
+		"title": title, "active": active, "view": tmpl.Name(), "context": c, "data": data,
+	}, out.Bytes(), "")
 }
 func consoleError(w http.ResponseWriter, c consoleContext, status int, title, detail string) {
 	consoleView(w, c, status, title, "", frame.Lookup("error-page"), map[string]string{"Title": title, "Detail": detail, "CSRF": c.Identity.CSRF})
@@ -82,7 +89,7 @@ func (a *App) console(w http.ResponseWriter, r *http.Request, route routes.Endpo
 			} else if signup == "" {
 				signup = "/auth/login?next=/account"
 			}
-			render(w, frame.Lookup("landing"), map[string]string{"Signup": signup})
+			webui.Public(w, http.StatusOK, "Team sites", "landing", frame.Lookup("landing"), map[string]any{"Signup": signup})
 			return
 		}
 		a.login(w, r)
@@ -189,14 +196,4 @@ func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Ide
 		return
 	}
 	a.membersConsole(w, r, c)
-}
-
-func (a *App) controlScript(w http.ResponseWriter, r *http.Request) {
-	if !readMethod(w, r) {
-		return
-	}
-	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	if r.Method == "GET" {
-		_, _ = io.WriteString(w, consoleJS)
-	}
 }

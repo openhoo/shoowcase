@@ -241,6 +241,9 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 				return
 			}
 			d.Source = *f.Text
+			// The editor has its own field; do not duplicate a potentially large
+			// file body in the JSON view model.
+			d.S.File = nil
 		} else {
 			d.Path = "index.html"
 			d.Source = "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Welcome</title>\n</head>\n<body>\n  <main><h1>Welcome</h1></main>\n</body>\n</html>\n"

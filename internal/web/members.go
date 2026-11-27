@@ -70,6 +70,7 @@ type memberPage struct {
 	Members                                               []sites.Account
 	Directory                                             adminDirectory
 	Events                                                []sites.AuditEvent
+	EventNames                                            map[string]string
 	Settings                                              sites.WorkspaceSettings
 	Groups                                                []sites.Group
 	Group                                                 *sites.Group
@@ -518,6 +519,10 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 		}
 		var more bool
 		p.Events, more, err = a.store.AuditPage(ctx, who, cursor, false, 25)
+		p.EventNames = make(map[string]string, len(p.Events))
+		for _, event := range p.Events {
+			p.EventNames[event.Action] = memberEventName(event.Action)
+		}
 		if more {
 			p.Next = memberNext("/admin", "activity", strconv.FormatInt(p.Events[len(p.Events)-1].Sequence, 10))
 		}

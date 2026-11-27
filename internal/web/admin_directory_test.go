@@ -15,7 +15,7 @@ import (
 // Read names and links as a browser would, including query escaping.
 func directoryPageLinks(t *testing.T, page string) (names []string, links map[string]string) {
 	t.Helper()
-	doc, err := html.Parse(strings.NewReader(page))
+	doc, err := html.ParseWithOptions(strings.NewReader(page), html.ParseOptionEnableScripting(false))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,6 +24,7 @@ type quotaSiteRow struct {
 
 type quotaPage struct {
 	HasGroupLimits, HasAssignments bool
+	MaxSites, MaxBytes             int64
 	Workspace                      quotaBudgetForm
 	Groups                         []quotaBudgetForm
 	EditBudget                     *quotaBudgetForm
@@ -97,6 +98,7 @@ func (a *App) quotaView(w http.ResponseWriter, r *http.Request, c consoleContext
 		return false
 	}
 	q := &p.Quota
+	q.MaxSites, q.MaxBytes = sites.MaxSitesPerWorkspace, sites.MaxWorkspaceManifestBytes
 	q.Workspace = budgetForm(data.Workspace, data.Workspace.Limits, p.CSRF, true)
 	names := map[string]string{"": "Unassigned"}
 	budgetID := r.URL.Query().Get("budget")

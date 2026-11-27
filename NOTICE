@@ -5,6 +5,9 @@ Licensed under the Apache License, Version 2.0.
 The optional interactive runtime bundles QuickJS and quickjs-emscripten.
 See THIRD-PARTY-LICENSES.txt (runtime/ in the source repository).
 
+The management interface bundles React, shadcn/ui, Tailwind CSS and Lucide.
+See UI-LICENSES.txt (ui/ in the source repository).
+
 The connector includes github.com/tailscale/hujson for reading and updating
 client settings with comments. Its license follows.
 

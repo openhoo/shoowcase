@@ -76,6 +76,8 @@ Choose **Preview draft**. When you’re ready, choose **Publish draft**. Use **A
   <img src="docs/media/workspace.png" alt="Shoowcase publishing desk with search and filters, showing site names, release status, audience, file counts and recent changes." width="1120">
 </picture>
 
+The management interface uses React, Tailwind CSS and shadcn/ui. Search and filter the directories, select visible rows, then review exactly which items a bulk action will change. Audit events and release history support selection for CSV export. Password settings are under **Account**. To build the interface locally, see [the UI guide](ui/README.md).
+
 ### Give a project a budget
 
 Open **Workspace admin → Quotas** to see how many sites each group owns and how much storage its saved revisions use. For example, give the **Onboarding** group **5 sites and 250 MiB**. Its sixth site or an edit that would exceed 250 MiB is refused in both the browser and MCP. All groups also share the workspace limit. You can assign an existing site to a group with its full history. See [Set project budgets](docs/tenant-access.md#set-project-budgets) for setup and upgrade behavior.

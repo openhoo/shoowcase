@@ -22,6 +22,7 @@ import (
 	"github.com/openhoo/shoowcase/internal/mcpserver"
 	"github.com/openhoo/shoowcase/internal/routes"
 	"github.com/openhoo/shoowcase/internal/sites"
+	"github.com/openhoo/shoowcase/internal/webui"
 )
 
 type Config struct {
@@ -278,21 +279,15 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	a.control.ServeHTTP(w, r)
 }
-func render(w http.ResponseWriter, t *template.Template, data any) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if e := t.Execute(w, data); e != nil {
-		slog.Error("template rendering failed")
-	}
-}
 
 // Long signed actions can exceed a safe OIDC state-cookie size. Leave the
 // exact request in this tab and authenticate separately; no opaque action is
 // copied into a cookie, returned through the identity provider or cached per replica.
-var separateSignInPage = template.Must(template.New("signin").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/ui.css"><title>Sign in to continue · Shoowcase</title><main><h1>Sign in to continue</h1><p>Keep this page open. <a href="/auth/login" target="_blank" rel="noopener noreferrer">Sign in in a new tab</a> with the account that requested this action, then close that tab and reload this page. You can then review the original request.</p><p>If the link expires, request a new one from your agent.</p></main></html>`))
+var separateSignInPage = template.Must(template.New("signin").Parse(`<main><h1>Sign in to continue</h1><p>Keep this page open. <a href="/auth/login" target="_blank" rel="noopener noreferrer">Sign in in a new tab</a> with the account that requested this action, then close that tab and reload this page. You can then review the original request.</p><p>If the link expires, request a new one from your agent.</p></main>`))
 
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	if strings.EqualFold(r.Host, a.origin.Host) && (r.URL.Path == "/approve" || r.URL.Path == "/upload") && len(r.URL.RequestURI()) > auth.MaxReturnPath {
-		render(w, separateSignInPage, nil)
+		webui.Public(w, http.StatusOK, "Sign in to continue", "separate-sign-in", separateSignInPage, nil)
 		return
 	}
 	http.Redirect(w, r, "/auth/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
@@ -389,7 +384,7 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var approvalPage = template.Must(template.New("approval").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/ui.css"><title>Review public release · Shoowcase</title><main><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Approve public release</button></form></main></html>`))
+var approvalPage = template.Must(template.New("approval").Parse(`<main><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Approve public release</button></form></main>`))
 
 func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	if !a.config.Public {
@@ -398,7 +393,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	}
 	t, ok := a.ticket(r, "approval")
 	if !ok || t.Generation < 1 {
-		http.Error(w, "Expired or invalid approval; ask your agent for a new link", 400)
+		signedPageError(w, r, "Expired or invalid approval; ask your agent for a new link", 400)
 		return
 	}
 	i, ok := a.auth.Browser(r)
@@ -408,16 +403,16 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	}
 	who := actor(i)
 	if who.Subject != t.Who.Subject || who.Workspace != t.Who.Workspace {
-		http.Error(w, "Wrong account for this approval", 403)
+		signedPageError(w, r, "Wrong account for this approval", 403)
 		return
 	}
 	ctx, who, err := a.ticketActor(r.Context(), t, &i)
 	if err != nil {
-		writeError(w, err)
+		signedDomainError(w, r, err)
 		return
 	}
 	if who.Role != "publisher" && who.Role != "admin" {
-		http.Error(w, "Publisher access is required for this approval", 403)
+		signedPageError(w, r, "Publisher access is required for this approval", 403)
 		return
 	}
 	var v struct {
@@ -426,7 +421,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 		Release  string `json:"release_id"`
 	}
 	if json.Unmarshal(t.Args, &v) != nil {
-		http.Error(w, "Invalid approval", 400)
+		signedPageError(w, r, "Invalid approval", 400)
 		return
 	}
 	if r.Method == "GET" {
@@ -435,7 +430,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 			var e error
 			review, e = a.store.ReleaseRevision(ctx, who, v.Site, v.Release)
 			if e != nil {
-				writeError(w, e)
+				signedDomainError(w, r, e)
 				return
 			}
 		}
@@ -443,7 +438,7 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 		if review != "" {
 			preview = a.siteURL("pv-" + review)
 		}
-		render(w, approvalPage, map[string]string{"Site": v.Site, "Revision": review, "Preview": preview, "Tool": t.Tool, "CSRF": i.CSRF})
+		webui.Public(w, http.StatusOK, "Review public release", "approve", approvalPage, map[string]any{"Site": v.Site, "Revision": review, "Preview": preview, "Tool": t.Tool, "CSRF": i.CSRF})
 		return
 	}
 	if r.Method != "POST" {
@@ -453,12 +448,12 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	if r.ParseForm() != nil || !a.auth.ValidCSRF(r, r.PostForm.Get("csrf")) {
-		http.Error(w, "Invalid form", 403)
+		signedPageError(w, r, "Invalid form", 403)
 		return
 	}
 	res, e := a.store.Execute(sites.WithApproval(ctx, t.Generation), who, t.Tool, t.Args)
 	if e != nil {
-		writeError(w, e)
+		signedDomainError(w, r, e)
 		return
 	}
 	a.browserResult(w, r, res, "Approval recorded", "This receipt identifies the release you approved. The site address always opens the current live release.")
@@ -467,7 +462,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
-func writeError(w http.ResponseWriter, e error) {
+func publicErrorDetails(e error) (string, int) {
 	c := errorCode(e)
 	s := 400
 	switch c {
@@ -480,8 +475,12 @@ func writeError(w http.ResponseWriter, e error) {
 	case "quota_exceeded", "rate_limited":
 		s = 429
 	case "":
-		http.Error(w, "Service temporarily unavailable", 503)
-		return
+		return "Service temporarily unavailable", http.StatusServiceUnavailable
 	}
-	http.Error(w, c+": "+e.Error(), s)
+	return c + ": " + e.Error(), s
+}
+
+func writeError(w http.ResponseWriter, e error) {
+	message, status := publicErrorDetails(e)
+	http.Error(w, message, status)
 }

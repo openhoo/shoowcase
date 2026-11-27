@@ -90,7 +90,16 @@ async def create_key(page, endpoint):
     await fits(page, "key receipt")
     secret = await page.get_by_label("Secret key", exact=True).input_value()
     check(bool(secret), "no key on receipt")
+    # Observe a real navigation. Save only the result, never the key, so this
+    # also catches a credential kept in defaultValue or serialized markup.
+    await page.evaluate("""() => window.addEventListener('pagehide', () => {
+        const f = document.querySelector('[data-secret-receipt]');
+        sessionStorage.setItem('receipt-cleared', String(Boolean(f) &&
+            !f.value && !f.defaultValue && !f.hasAttribute('value') && !f.textContent));
+    }, {once: true})""")
     await page.get_by_role("link", name="Back to agent keys").click()
+    check(await page.evaluate("sessionStorage.getItem('receipt-cleared')") == "true",
+          "leaving the key receipt preserved a credential in the document")
     await check_record_tables(page, "Your keys")
     check(secret not in await page.content(), "key visible after leaving the receipt")
     return secret
@@ -495,11 +504,13 @@ async def password_accounts(binary, browser):
                 expected_revision=site["revision"], files=[{"path":"index.html", "text":"<h1>Private guide</h1>"}],
                 request_id=browser_smoke.rid())
         private = await browser.new_page()
-        await private.goto(draft["preview_url"])
-        await private.get_by_label("Username", exact=True).fill("studio-member")
-        await private.get_by_label("Password", exact=True).fill(first)
-        await private.get_by_role("button", name="Sign in with password").click()
-        await expect(private.get_by_role("heading", name="Private guide")).to_be_visible()
+        native_private = await browser.new_page(java_script_enabled=False)
+        for visitor in (private, native_private):
+            await visitor.goto(draft["preview_url"])
+            await visitor.get_by_label("Username", exact=True).fill("studio-member")
+            await visitor.get_by_label("Password", exact=True).fill(first)
+            await visitor.get_by_role("button", name="Sign in with password").click()
+            await expect(visitor.get_by_role("heading", name="Private guide")).to_be_visible()
         await member.set_viewport_size({"width": 320, "height": 780})
         await member.get_by_role("link", name="Sites", exact=True).click()
         await member.get_by_role("link", name="Account", exact=True).click()
@@ -512,15 +523,16 @@ async def password_accounts(binary, browser):
         await member.get_by_label("New password").fill(second)
         await member.get_by_role("button", name="Change password").click()
         await expect(member.get_by_role("heading", name="Password changed")).to_be_visible()
-        await private.reload()
-        await expect(private.get_by_role("button", name="Sign in with password")).to_be_visible()
+        for visitor in (private, native_private):
+            await visitor.reload()
+            await expect(visitor.get_by_role("button", name="Sign in with password")).to_be_visible()
         await other.reload()
         await expect(other.get_by_role("button", name="Sign in with password")).to_be_visible()
         await signin(member, control, first)
         await expect(member.get_by_role("alert")).to_contain_text("incorrect")
         await signin(member, control, second)
         await expect(member.get_by_role("heading", name="Your account")).to_be_visible()
-        for page in (admin, member, other, private):
+        for page in (admin, member, other, private, native_private):
             await page.context.close()
     async with browser_smoke.local_server(binary, password_registration=True) as (endpoint, _, _):
         page = await browser.new_page()
