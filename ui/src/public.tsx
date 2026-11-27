@@ -1,6 +1,7 @@
 import { ActionButton, NavigationLink } from "@/components/icon-action";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,7 +99,7 @@ function Shell({
             <NavigationLink
               variant="ghost"
               href={signIn}
-              label="Sign in"
+              label="Login"
               icon={LogIn}
             />
           )}
@@ -186,7 +187,7 @@ function Landing({ signup }: { signup?: string }) {
             <NavigationLink
               variant={signup ? "outline" : "default"}
               href={signIn}
-              label="Sign in"
+              label="Login"
               icon={LogIn}
             />
             <NavigationLink
@@ -318,11 +319,18 @@ function Password({ p }: { p: PasswordPage }) {
               )}
             </div>
             <div>
-              <ActionButton
-                type="submit"
-                label={p.Register ? "Create account" : "Sign in with password"}
-                icon={p.Register ? UserRoundPlus : LogIn}
-              />
+              {p.Register ? (
+                <ActionButton
+                  type="submit"
+                  label="Create account"
+                  icon={UserRoundPlus}
+                />
+              ) : (
+                <Button type="submit" className="min-h-11">
+                  <LogIn aria-hidden="true" />
+                  Login
+                </Button>
+              )}
             </div>
           </form>
         </CardContent>

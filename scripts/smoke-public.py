@@ -146,13 +146,20 @@ async def check_browser(browser, origin, live, screenshots=None):
                     if path.startswith("/auth/"):
                         await expect(page.get_by_label("Username", exact=True)).to_be_visible()
                         await expect(page.get_by_label("Password", exact=True)).to_have_attribute("type", "password")
-                        form = page.get_by_role("button", name="Create account" if "register" in path else "Sign in with password").locator("xpath=ancestor::form")
+                        button = page.get_by_role("button", name="Create account" if "register" in path else "Login", exact=True)
+                        if "register" not in path:
+                            await expect(button).to_have_text("Login", use_inner_text=True)
+                        form = button.locator("xpath=ancestor::form")
                         await expect(form).to_have_attribute("method","post")
                         await expect(form).to_have_attribute("action","/auth/register" if "register" in path else "/auth/local")
                         assert await form.locator("input[name=flow]").input_value(), "Missing signed form flow"
                         if live:
                             await expect(page.get_by_role("link",name="Create a local account")).to_have_count(0)
                     if path == "/":
+                        for region in ("banner", "main"):
+                            login = page.get_by_role(region).get_by_role("link", name="Login", exact=True)
+                            await expect(login).to_have_text("Login", use_inner_text=True)
+                            await expect(login).to_have_attribute("href", "/auth/login?next=/sites")
                         await page.keyboard.press("Tab")
                         await expect(page.get_by_role("link",name="Skip to content")).to_be_focused()
                         await page.keyboard.press("Enter")
