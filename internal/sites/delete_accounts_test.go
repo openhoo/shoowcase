@@ -24,8 +24,11 @@ func TestEraseAccounts(t *testing.T) {
 				}
 			}
 			const password = "disposable fixture password"
-			m, err := s.CreateLocalAccount(ctx, admin, "test-user", password, "publisher")
+			m, err := s.CreateLocalAccount(ctx, admin, "test-user", password, "editor")
 			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.SetLocalRole(ctx, admin, m.Subject, "publisher", "editor", "", false); err != nil {
 				t.Fatal(err)
 			}
 			local, generation, err := s.AuthenticateLocal(ctx, admin.Workspace, m.DisplayName, password)
@@ -169,6 +172,9 @@ func TestEraseAccounts(t *testing.T) {
 			}
 			for _, table := range []string{"sc_members", "sc_local_credentials", "sc_group_members", "sc_agent_keys", "sc_requests", "sc_audit", "sc_workspace_audit", "sc_account_events"} {
 				count(0, "SELECT COUNT(*) FROM "+table+" WHERE workspace=$1 AND subject IN ($2,$3)", admin.Workspace, local.Subject, oidc.Subject)
+			}
+			for _, table := range []string{"sc_account_events", "sc_workspace_audit"} {
+				count(0, "SELECT COUNT(*) FROM "+table+" WHERE workspace=$1 AND action='local_role_changed' AND target=$2", admin.Workspace, local.Subject)
 			}
 			_, err = peer.RedeemSetupKey(ctx, token, expires)
 			wantErr(t, err, "unauthorized")
