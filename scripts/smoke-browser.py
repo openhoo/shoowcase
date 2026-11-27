@@ -21,6 +21,7 @@ import tempfile
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from mcp import ClientSession
@@ -52,7 +53,7 @@ def rid():
 
 
 @asynccontextmanager
-async def local_server(binary, *, fixture_workspace=None, fixture_paths=False, password_registration=None):
+async def local_server(binary, *, fixture_workspace=None, fixture_paths=False, password_registration=None, control_origin=None):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -62,6 +63,9 @@ async def local_server(binary, *, fixture_workspace=None, fixture_paths=False, p
         # The trial must never touch an existing database or inherit a production token.
         env = {k: v for k, v in os.environ.items() if not k.startswith(("SHOOWCASE_", "OTEL_"))}
         env.update(SHOOWCASE_LISTEN=f"127.0.0.1:{port}", SHOOWCASE_PUBLIC="true", SHOOWCASE_STATE_DIR=state)
+        if control_origin:
+            env["SHOOWCASE_CONTROL_URL"] = control_origin
+        probe_headers = {"Host": urlsplit(control_origin).netloc} if control_origin else {}
         if password_registration is not None:
             env["SHOOWCASE_LOCAL_WORKSPACE"] = fixture_workspace or "local"
             env["SHOOWCASE_PUBLIC_REGISTRATION"] = str(password_registration).lower()
@@ -71,7 +75,7 @@ async def local_server(binary, *, fixture_workspace=None, fixture_paths=False, p
             try:
                 for _ in range(200):
                     try:
-                        if http.request("GET", control + "/healthz").status == 200:
+                        if http.request("GET", control + "/healthz", headers=probe_headers).status == 200:
                             break
                     except OSError:
                         pass

@@ -156,7 +156,7 @@ func TestEndpointAndRedirects(t *testing.T) {
 	}
 	in := strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n")
 	var out bytes.Buffer
-	if err := bridge(t.Context(), httpClient(), credential{ep.String(), testToken}, in, &out); err != nil || !strings.Contains(out.String(), "\"error\"") || strings.Contains(out.String(), testToken) {
+	if err := bridge(t.Context(), httpClient(), credential{URL: ep.String(), Token: testToken}, in, &out); err != nil || !strings.Contains(out.String(), "\"error\"") || strings.Contains(out.String(), testToken) {
 		t.Fatal("stdio did not report safe failure")
 	}
 	if hits.Load() != 0 {
@@ -187,7 +187,7 @@ func TestBridgeWithRealSDK(t *testing.T) {
 			done := make(chan error, 1)
 			go func() {
 				defer out.Close()
-				done <- bridge(ctx, httpClient(), credential{s.URL + "/mcp", testToken}, in, out)
+				done <- bridge(ctx, httpClient(), credential{URL: s.URL + "/mcp", Token: testToken}, in, out)
 			}()
 			defer in.Close()
 			defer reader.Close()

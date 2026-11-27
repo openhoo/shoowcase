@@ -40,8 +40,9 @@ func endpoint(raw string) (*url.URL, error) {
 }
 
 type credential struct {
-	URL   string `json:"url"`
-	Token string `json:"token"`
+	URL     string        `json:"url"`
+	Token   string        `json:"token"`
+	Network *relayNetwork `json:"network,omitempty"`
 }
 
 func credentialDir() (string, error) {
@@ -71,7 +72,7 @@ func redeem(ctx context.Context, cli *http.Client, ep url.URL, name, code string
 	req.Header.Set("Accept", "application/json")
 	res, err := cli.Do(req)
 	if err != nil {
-		return "", errors.New("could not connect to the Shoowcase control host")
+		return "", errors.New("could not reach Shoowcase; check connectivity, proxy settings and certificate trust")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
@@ -111,6 +112,15 @@ func Connect(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	network, err := networkForSetup(ep)
+	if err != nil {
+		return err
+	}
+	cli, err := relayHTTPClient(network)
+	if err != nil {
+		return err
+	}
+	defer cli.CloseIdleConnections()
 	dir, err := credentialDir()
 	if err != nil {
 		return err
@@ -158,11 +168,11 @@ func Connect(ctx context.Context, args []string, out io.Writer) error {
 	if err := register(ctx, localID, binary); err != nil {
 		return err
 	}
-	token, err := redeem(ctx, httpClient(), *ep, name, *code)
+	token, err := redeem(ctx, cli, *ep, name, *code)
 	if err != nil {
 		return err
 	}
-	b, _ := json.Marshal(credential{URL: ep.String(), Token: token})
+	b, _ := json.Marshal(credential{URL: ep.String(), Token: token, Network: network})
 	b, err = seal(b)
 	if err != nil {
 		return errors.New("cannot protect credentials; revoke the new key in Shoowcase")
@@ -200,7 +210,7 @@ func Stdio(ctx context.Context, args []string, in io.Reader, out io.Writer) erro
 		return errors.New("cannot open the Shoowcase credential")
 	}
 	defer f.Close()
-	b, err := readBounded(f, 16384)
+	b, err := readBounded(f, 64<<10)
 	if err == nil {
 		b, err = unseal(b)
 	}
@@ -208,10 +218,23 @@ func Stdio(ctx context.Context, args []string, in io.Reader, out io.Writer) erro
 	if err != nil || json.Unmarshal(b, &c) != nil || sites.KeyID(c.Token) == "" {
 		return errors.New("invalid private Shoowcase credential; reconnect this agent")
 	}
-	if _, err := endpoint(c.URL); err != nil {
+	ep, err := endpoint(c.URL)
+	if err != nil {
 		return err
 	}
-	return bridge(ctx, httpClient(), c, in, out)
+	if c.Network == nil {
+		// Credentials from older releases follow the current environment.
+		c.Network, err = networkForSetup(ep)
+		if err != nil {
+			return err
+		}
+	}
+	cli, err := relayHTTPClient(c.Network)
+	if err != nil {
+		return err
+	}
+	defer cli.CloseIdleConnections()
+	return bridge(ctx, cli, c, in, out)
 }
 
 // stdioSlot accepts only names generated during registration. Never treat
