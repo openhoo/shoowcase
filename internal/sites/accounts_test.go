@@ -96,8 +96,7 @@ func TestAccountAndAgentKeyLifecycle(t *testing.T) {
 			site := mustOp(t, s, WithKeyID(ctx, key.ID), pub, "create_site", args{"name": "App", "slug": "my-app", "request_id": "first"})
 			err = s.SetMember(ctx, other, pub.Subject, "reader", false, "", false)
 			wantErr(t, err, "not_found")
-			err = s.SetMember(ctx, admin, peerAdmin.Subject, "reader", false, "", false)
-			wantErr(t, err, "forbidden")
+			wantErr(t, s.SetMember(ctx, peerAdmin, peerAdmin.Subject, "reader", false, "", false), "forbidden")
 			err = s.SetMember(ctx, admin, admin.Subject, "", true, "", false)
 			wantErr(t, err, "forbidden")
 			err = s.SetMember(ctx, viewer, pub.Subject, "reader", false, "", false)
@@ -340,8 +339,6 @@ func TestPeerAdminSuspensionAcrossReplicas(t *testing.T) {
 			}
 			e = db.SetMember(ctx, admins[loser], admins[loser].Subject, "", false, "", true)
 			wantErr(t, e, "forbidden")
-			e = db.SetMember(ctx, admins[winner], admins[loser].Subject, "reader", false, "", true)
-			wantErr(t, e, "forbidden")
 			if e = db.SetMember(ctx, admins[winner], admins[loser].Subject, "", false, "", true); e != nil {
 				t.Fatal(e)
 			}
@@ -363,6 +360,58 @@ func TestPeerAdminSuspensionAcrossReplicas(t *testing.T) {
 			if seen["account_suspended"] != 1 || seen["account_reactivated"] != 1 {
 				t.Fatal("missing exact peer-admin audit", seen)
 			}
+		})
+	}
+}
+
+func TestSSOAdminRoleLimit(t *testing.T) {
+	for _, backend := range []string{"sqlite", "postgres"} {
+		t.Run(backend, func(t *testing.T) {
+			ctx := WithIdentityIssuedAt(t.Context(), 100)
+			dsn := testDSN(t, backend)
+			s, peer := openTest(t, backend, dsn), openTest(t, backend, dsn)
+			manager := Actor{"ops", "design", "admin"}
+			target := Actor{"staff", "design", "admin"}
+			for _, a := range []Actor{manager, target} {
+				if _, err := s.EnrollAccount(ctx, a, a.Subject); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.SetMember(ctx, manager, target.Subject, "reader", false, "", false); err != nil {
+				t.Fatal(err)
+			}
+			current, ok, err := peer.AccountFor(WithIdentityIssuedAt(ctx, 200), target)
+			if err != nil || !ok || current.IdentityRole != "admin" || current.Role != "reader" {
+				t.Fatalf("IdP grant after fresh sign-in: %+v (%v)", current, err)
+			}
+			_, err = peer.WorkspaceSettings(ctx, target)
+			wantErr(t, err, "forbidden")
+			wantErr(t, peer.SetMember(ctx, target, target.Subject, "", false, "reader", false), "forbidden")
+			if err := s.SetMember(ctx, manager, target.Subject, "", false, "reader", false); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := peer.WorkspaceSettings(ctx, target); err != nil {
+				t.Fatal(err)
+			}
+			// Even a previously issued admin assertion cannot exceed a newer IdP demotion.
+			if err := s.SetMember(ctx, manager, target.Subject, "reader", false, "", false); err != nil {
+				t.Fatal(err)
+			}
+			demoted := target
+			demoted.Role = "editor"
+			if _, _, err := peer.AccountFor(WithIdentityIssuedAt(ctx, 300), demoted); err != nil {
+				t.Fatal(err)
+			}
+			wantErr(t, s.SetMember(ctx, manager, target.Subject, "publisher", false, "reader", false), "invalid_argument")
+			if err := s.SetMember(ctx, manager, target.Subject, "", false, "reader", false); err != nil {
+				t.Fatal(err)
+			}
+			got, err := peer.LimitActor(WithIdentityIssuedAt(ctx, 200), target)
+			if err != nil || got.Role != "editor" {
+				t.Fatalf("effective access after clearing limit: %+v (%v)", got, err)
+			}
+			_, err = peer.WorkspaceSettings(ctx, target)
+			wantErr(t, err, "forbidden")
 		})
 	}
 }

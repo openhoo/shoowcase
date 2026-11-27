@@ -45,7 +45,7 @@ func (a *App) membersView(w http.ResponseWriter, r *http.Request, c consoleConte
 			memberError(w, c, err)
 			return false
 		}
-		p.Member = &memberRow{Account: m, Manage: m.Subject != who.Subject, Ceilings: memberCeilings(m)}
+		p.Member = &memberRow{Account: m, Manage: m.Subject != who.Subject, Local: p.LocalAdmin && strings.HasPrefix(m.Subject, sites.LocalSubjectPrefix), Ceilings: memberCeilings(m)}
 		return true
 	}
 	d, ok := parseAdminDirectory(w, r, c, true)

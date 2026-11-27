@@ -89,7 +89,8 @@ export interface MemberData {
   Creation: string;
   Scopes: string[];
   Keys: AgentKey[] | null;
-  Member: (Account & { Manage: boolean; Ceilings: string[] }) | null;
+  Member:
+    (Account & { Manage: boolean; Local: boolean; Ceilings: string[] }) | null;
   Members: Account[] | null;
   Directory: Directory;
   EventNames: Record<string, string>;

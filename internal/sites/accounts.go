@@ -362,14 +362,11 @@ func changeMember(ctx context.Context, tx *sql.Tx, a Actor, subject, ceiling str
 	if !ok {
 		return fail("not_found", "Account not found in this workspace.")
 	}
-	if m.IdentityRole == "admin" && ceiling != m.Ceiling {
-		return fail("forbidden", "An administrator’s role is managed by the identity provider.")
-	}
 	if m.Ceiling != expectedCeiling || m.Disabled != expectedDisabled {
 		return conflict("This membership changed. Reload it and review the current settings.")
 	}
 	if ceiling != m.Ceiling && ceiling != "" && (roleLevel(ceiling) < 1 || roleLevel(ceiling) > 3 || roleLevel(ceiling) > roleLevel(m.IdentityRole)) {
-		return bad("Choose a role within this member’s identity-provider permissions.")
+		return bad("Choose a role within this member’s sign-in permissions.")
 	}
 	if m.Ceiling == ceiling && m.Disabled == disabled {
 		return nil

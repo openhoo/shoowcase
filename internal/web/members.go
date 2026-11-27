@@ -51,8 +51,8 @@ func memberRole(r string) string {
 
 type memberRow struct {
 	sites.Account
-	Manage   bool
-	Ceilings []string
+	Manage, Local bool
+	Ceilings      []string
 }
 
 type memberKeyRow struct {
@@ -99,6 +99,8 @@ func memberEventName(action string) string {
 		return "Member removed from group"
 	case "local_account_created":
 		return "Password account created"
+	case "local_role_changed":
+		return "Password account role changed"
 	case "local_password_changed":
 		return "Password changed"
 	case "member_provisioned":
@@ -442,42 +444,52 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 			a.keyRevocation(w, r, c, true)
 			return
 		}
-		if action != "suspend" && action != "restore" && action != "role" {
+		if action != "suspend" && action != "restore" && action != "role" && action != "local-role" {
 			consoleError(w, c, 400, "Unknown action", "Reopen workspace administration and try again.")
 			return
 		}
 		expected, ok := r.PostForm["expected_ceiling"]
 		before := r.PostForm.Get("expected_disabled")
-		if !ok || len(expected) != 1 || (before != "false" && before != "true") {
+		if !ok || len(expected) != 1 || len(r.PostForm["expected_disabled"]) != 1 || (before != "false" && before != "true") {
 			consoleError(w, c, 400, "Missing member settings", "Reload workspace administration and try again.")
 			return
 		}
+		subject := r.PostForm.Get("subject")
 		ceiling, disabled := expected[0], before == "true"
+		var err error
 		switch action {
+		case "local-role":
+			if !p.LocalAdmin {
+				consoleError(w, c, 403, "Local accounts are disabled", "Contact your instance operator.")
+				return
+			}
+			if len(r.PostForm["role"]) != 1 || len(r.PostForm["expected_role"]) != 1 || r.PostForm.Get("expected_role") == "" {
+				consoleError(w, c, 400, "Missing account role", "Reload this member’s settings and select a role.")
+				return
+			}
+			err = a.store.SetLocalRole(ctx, who, subject, r.PostForm.Get("role"), r.PostForm.Get("expected_role"), ceiling, disabled)
 		case "role":
-			value, ok := r.PostForm["ceiling"]
-			if !ok || len(value) != 1 {
+			value := r.PostForm["ceiling"]
+			if len(value) != 1 {
 				consoleError(w, c, 400, "Choose a role limit", "Select a role limit for this member.")
 				return
 			}
-			ceiling = value[0]
-		case "suspend":
-			if r.PostForm.Get("confirm") != "yes" {
+			err = a.store.SetMember(ctx, who, subject, value[0], disabled, ceiling, disabled)
+		case "suspend", "restore":
+			if action == "suspend" && r.PostForm.Get("confirm") != "yes" {
 				consoleError(w, c, 400, "Confirm suspension", "Select the confirmation checkbox to suspend this member and revoke their keys.")
 				return
 			}
-			disabled = true
-		case "restore":
-			disabled = false
+			err = a.store.SetMember(ctx, who, subject, ceiling, action == "suspend", ceiling, disabled)
 		}
-		if err := a.store.SetMember(ctx, who, r.PostForm.Get("subject"), ceiling, disabled, expected[0], before == "true"); err != nil {
+		if err != nil {
 			memberError(w, c, err)
 			return
 		}
 		http.Redirect(w, r, "/admin?"+url.Values{"member": {r.PostForm.Get("subject")}, "done": {action}}.Encode(), 303)
 		return
 	}
-	p.Notice = map[string]string{"create-local": "Password account created. The member can sign in now.", "workspace-quota": "Workspace limits saved.", "quota-cleared": "Selected changes saved.", "group-quota": "Group limits saved.", "site-group": "Site assignment saved.", "provision": "Member added.", "workspace-save": "Workspace settings saved.", "group-create": "Group created.", "group-update": "Group updated.", "group-delete": "Group deleted.", "group-add-member": "Member added to group.", "group-remove-member": "Member removed from group.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved."}[r.URL.Query().Get("done")]
+	p.Notice = map[string]string{"create-local": "Password account created. The member can sign in now.", "workspace-quota": "Workspace limits saved.", "quota-cleared": "Selected changes saved.", "group-quota": "Group limits saved.", "site-group": "Site assignment saved.", "provision": "Member added.", "workspace-save": "Workspace settings saved.", "group-create": "Group created.", "group-update": "Group updated.", "group-delete": "Group deleted.", "group-add-member": "Member added to group.", "group-remove-member": "Member removed from group.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved.", "local-role": "Password account role saved."}[r.URL.Query().Get("done")]
 	if notice := keyRevocationNotice(r.URL.Query().Get("done")); notice != "" {
 		p.Notice = notice
 	}
