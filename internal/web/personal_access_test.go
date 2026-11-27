@@ -190,7 +190,7 @@ func TestConsolePeerAdminOffboarding(t *testing.T) {
 	b, _ := handlerIdentityFixture(t, dbPath, "bob", "team-a", false)
 	alice, csrf := joinMemberConsole(t, a)
 	bob, bCSRF := joinMemberConsole(t, b)
-	get := hitRoute(t, a, "GET", testControl+"/admin", alice, nil)
+	get := hitRoute(t, a, "GET", testControl+"/admin?member=bob", alice, nil)
 	if get.Code != 200 || !strings.Contains(get.Body.String(), "Suspend member") || strings.Contains(get.Body.String(), "Save role limit") {
 		t.Fatal("unexpected peer admin controls", get.Code)
 	}

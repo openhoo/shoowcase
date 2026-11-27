@@ -12,25 +12,44 @@
 {{end}}
 
 {{define "keys"}}
-<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Agent keys</h1><p>Give an agent access to your sites. Use a separate key for each connection.</p><p><a href="/quickstart">Set up an agent with Quickstart →</a></p></header>
+<header class="desk-head"><div><p class="eyebrow">Workspace <span aria-hidden="true">/</span> {{.Workspace}}</p><h1>Agent keys</h1><p>Use a separate key for each agent connection.</p><p><a href="/quickstart">Set up an agent with Quickstart →</a></p></div><a class="button new-site-action" href="#new-key">Create a key</a></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
-<section class="panel stack" aria-labelledby="new-key"><h2 id="new-key">Create a key</h2>
+{{template "key-list" .}}
+<section class="panel stack" aria-labelledby="new-key"><h2 id="new-key" tabindex="-1">Create a key</h2>
 <form method="post" action="/keys" class="stack"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="create"><input type="hidden" name="creation_token" value="{{.Creation}}">
 {{if .Err}}<p class="notice" id="key-error" role="alert">{{.Err}}</p>{{end}}
 <div class="field"><label for="key-name">Key name</label><input id="key-name" name="name" type="text" value="{{.NameValue}}" required maxlength="80" placeholder="e.g. Design team agent"{{if .Err}} aria-describedby="key-error"{{end}}></div>
 <div class="grid"><div class="field"><label for="key-scope">Access</label><div class="select-wrap"><select id="key-scope" name="scope" required>{{range .Scopes}}<option value="{{.}}"{{if eq $.Scope .}} selected{{end}}>{{if eq . "reader"}}Viewer · Read sites{{else if eq . "editor"}}Editor · Create and edit{{else}}Publisher · Publish and manage public access{{end}}</option>{{end}}</select></div></div>
 <div class="field"><label for="key-days">Expires in</label><div class="select-wrap"><select id="key-days" name="days"><option value="7"{{if eq .Days "7"}} selected{{end}}>7 days</option><option value="30"{{if eq .Days "30"}} selected{{end}}>30 days</option><option value="90"{{if eq .Days "90"}} selected{{end}}>90 days</option></select></div></div></div>
 <div><button type="submit">Create key</button></div></form></section>
-<section class="panel stack" aria-labelledby="your-keys"><h2 id="your-keys">Your keys</h2>{{template "key-list" .}}</section>
 <details class="panel"><summary>Connect an existing key</summary><div class="stack"><p>In your agent’s MCP settings, choose Streamable HTTP. Enter the server URL and use your key as the bearer token.</p>{{template "endpoint" .}}</div></details>
 {{end}}
 
 {{define "key-list"}}
-{{if .Keys}}<ul class="list">{{range .Keys}}<li class="stack"><div class="row"><strong>{{.Name}}</strong> <span class="badge">{{.State}}</span></div>
-<div class="muted">{{role .Scope}}{{if $.Admin}} · Owner: <code>{{.Subject}}</code>{{end}} · Created <time datetime="{{isoDate .CreatedAt}}">{{shortDate .CreatedAt}}</time> · {{if eq .State "Expired"}}Expired{{else}}Expires{{end}} <time datetime="{{isoDate .ExpiresAt}}" title="{{longDate .ExpiresAt}}">{{shortDate .ExpiresAt}}</time></div>
-{{if eq .State "Active"}}<details><summary>Revoke <span>{{.Name}}</span></summary><form class="stack" action="{{if $.Admin}}/admin{{else}}/keys{{end}}" method="post"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{.ID}}">
-<label><input type="checkbox" name="confirm" value="yes" required> Disconnect agents using this key.</label>
-<div><button type="submit" class="danger">Revoke key</button></div></form></details>{{end}}</li>{{end}}</ul>
-{{else}}<p class="muted">{{if .Admin}}No keys on this page.{{else}}No keys on this page. Create a key to connect an agent.{{end}}</p>{{end}}
-{{if .Next}}<a href="{{.Next}}">Next keys →</a>{{end}}
+<section class="directory" aria-labelledby="{{if .Admin}}workspace-keys{{else}}your-keys{{end}}">
+  <div class="directory-title">
+    <h2 id="{{if .Admin}}workspace-keys{{else}}your-keys{{end}}">{{if .Admin}}Workspace keys{{else}}Your keys{{end}}</h2>
+    <span class="directory-count">{{len .Keys}} {{if eq (len .Keys) 1}}key{{else}}keys{{end}} on this page</span>
+  </div>
+  {{if .Admin}}<div class="directory-body"><p>Revoking a key disconnects every agent using it.</p></div>{{end}}
+  {{if .Keys}}
+  <table class="directory-table" role="table" aria-labelledby="{{if .Admin}}workspace-keys{{else}}your-keys{{end}}">
+    <thead><tr><th scope="col">Key{{if .Admin}} / owner{{end}}</th><th scope="col">Status</th><th scope="col">Access</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Action</th></tr></thead>
+    <tbody>{{range .Keys}}<tr>
+      <th scope="row" class="entry-name-cell"><span>{{.Name}}</span>{{if $.Admin}}<span class="site-address">{{.Subject}}</span>{{end}}</th>
+      <td><span class="mobile-label" aria-hidden="true">Status</span><span class="status-chip {{if eq .State "Active"}}state-published{{else}}state-offline{{end}}"><i class="dot {{if eq .State "Active"}}published{{else}}offline{{end}}" aria-hidden="true"></i>{{.State}}</span></td>
+      <td><span class="mobile-label" aria-hidden="true">Access</span>{{role .Scope}}</td>
+      <td><span class="mobile-label" aria-hidden="true">Created</span><time datetime="{{isoDate .CreatedAt}}" title="{{longDate .CreatedAt}}">{{shortDate .CreatedAt}}</time></td>
+      <td><span class="mobile-label" aria-hidden="true">Expires</span><time datetime="{{isoDate .ExpiresAt}}" title="{{longDate .ExpiresAt}}">{{shortDate .ExpiresAt}}</time></td>
+      <td class="entry-wide"><span class="mobile-label" aria-hidden="true">Action</span>{{if eq .State "Active"}}<details><summary>Revoke {{.Name}}</summary>
+        <form class="stack" action="{{if $.Admin}}/admin{{else}}/keys{{end}}" method="post">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{.ID}}">
+          <label><input type="checkbox" name="confirm" value="yes" required> Disconnect agents using this key.</label>
+          <div><button type="submit" class="danger">Revoke key</button></div>
+        </form></details>{{else}}—{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+  {{else}}<div class="directory-empty"><h3>No keys on this page</h3>{{if not .Admin}}<p>Create a key to connect an agent.</p>{{end}}</div>{{end}}
+  {{if .Next}}<nav class="directory-pages" aria-label="Key pages"><a href="{{.Next}}">Next keys →</a></nav>{{end}}
+</section>
 {{end}}

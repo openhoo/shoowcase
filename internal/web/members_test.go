@@ -165,9 +165,20 @@ func TestMemberConsoleAdminActionsAndConflicts(t *testing.T) {
 		}
 	}
 	get := hitRoute(t, app, "GET", testControl+"/admin", c, nil)
-	if !strings.Contains(get.Body.String(), "Manage Bob Smith") || strings.Contains(get.Body.String(), "Manage Ada") || strings.Contains(get.Body.String(), `<option value="publisher"`) {
-		t.Fatal("member controls do not match role boundaries")
+	if !strings.Contains(get.Body.String(), "member=bob") || strings.Contains(get.Body.String(), `value="suspend"`) {
+		t.Fatal("directory is missing the link to member settings or includes an inline suspension form")
 	}
+	detail := hitRoute(t, app, "GET", testControl+"/admin?member=bob", c, nil)
+	requireMemberStatus(t, detail, 200)
+	if !strings.Contains(detail.Body.String(), "Role limit for Bob Smith") || strings.Contains(detail.Body.String(), `<option value="publisher"`) {
+		t.Fatal("member settings do not match the member's sign-in role")
+	}
+	self := hitRoute(t, app, "GET", testControl+"/admin?member=tester", c, nil)
+	requireMemberStatus(t, self, 200)
+	if strings.Contains(self.Body.String(), `value="suspend"`) || strings.Contains(self.Body.String(), `value="role"`) {
+		t.Fatal("administrators must not manage their own access")
+	}
+	requireMemberStatus(t, hitRoute(t, app, "GET", testControl+"/admin?member=other", c, nil), 404)
 	role := url.Values{"csrf": {csrf}, "action": {"role"}, "subject": {"bob"}, "ceiling": {"reader"}, "expected_ceiling": {""}, "expected_disabled": {"false"}}
 	requireMemberStatus(t, memberPost(t, app, c, "/admin", role), 303)
 	if actor, e := s.ResolveKey(t.Context(), secret); e != nil || actor.Role != "reader" {

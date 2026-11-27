@@ -80,7 +80,7 @@ func TestAccountAndAgentKeyLifecycle(t *testing.T) {
 			if _, _, err = s.ListKeys(ctx, viewer, true, ""); err == nil {
 				t.Fatal("viewer asked for workspace keys")
 			}
-			if _, _, err = s.ListAccounts(ctx, viewer, ""); err == nil {
+			if _, err = s.WorkspaceAccounts(ctx, viewer); err == nil {
 				t.Fatal("viewer membership list")
 			}
 			if pages, _, err := s.ListKeys(ctx, viewer, false, ""); err != nil || len(pages) != 0 {

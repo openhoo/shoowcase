@@ -374,22 +374,6 @@ input:focus-visible {
 .workspace :is(input, textarea, select)[readonly] {
   background: #f4f5ed;
 }
-.list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.list > li {
-  padding: 0.85rem 0;
-  border-bottom: 1px solid #d6dfd5;
-}
-.list > li:first-child {
-  padding-top: 0.15rem;
-}
-.list > li:last-child {
-  border: 0;
-  padding-bottom: 0;
-}
 .row {
   flex-wrap: wrap;
   justify-content: space-between;
@@ -644,7 +628,8 @@ input:focus-visible {
   padding-left: 0;
   border-left: 0;
 }
-.desk-stats span {
+.desk-stats span,
+.desk-stats dt {
   font-size: 0.82rem;
   font-weight: 620;
   color: #3a5650;
@@ -722,38 +707,38 @@ input:focus-visible {
   font-size: 0.9rem;
   margin: -0.5rem 1.4rem 1rem;
 }
-.site-table {
+.directory-table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
   font-size: 0.92rem;
 }
-.site-table thead th {
+.directory-table thead th {
   background: #eef2e9;
   border-block: 1px solid #d7dfd4;
   color: #496158;
   font-size: 0.78rem;
   font-weight: 650;
 }
-.site-table th,
-.site-table td {
+.directory-table th,
+.directory-table td {
   padding: 0.95rem 0.85rem;
   vertical-align: middle;
 }
-.site-table tr > :first-child {
+.directory-table tr > :first-child {
   padding-left: 1.4rem;
 }
-.site-table tr > :last-child {
+.directory-table tr > :last-child {
   padding-right: 1.4rem;
 }
-.site-table thead th {
+.directory-table thead th {
   padding-block: 0.62rem;
 }
-.site-table tbody tr + tr {
+.directory-table tbody tr + tr {
   border-top: 1px solid #dce3d8;
 }
-.site-table tbody tr:hover,
-.site-table tbody tr:focus-within {
+.directory-table tbody tr:hover,
+.directory-table tbody tr:focus-within {
   background: #f6f8ef;
 }
 .site-name-wrap {
@@ -909,6 +894,69 @@ input:focus-visible {
 .creation-panel {
   max-width: 42rem;
 }
+.admin-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.admin-stats dd {
+  margin: 0;
+}
+.admin-views a {
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.35rem;
+}
+.admin-views [aria-current] {
+  color: var(--paper);
+  background: var(--green);
+  text-decoration: none;
+}
+.directory-actions {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+}
+.directory-actions details {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--paper);
+}
+.directory-actions details[open] {
+  width: min(100%, 38rem);
+  padding-bottom: 1rem;
+}
+.directory-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 2.35rem;
+  height: 2.65rem;
+  color: #365f4d;
+  background: #e6ecdf;
+  border-radius: 0.35rem;
+}
+.directory-body {
+  padding: 0.4rem 1.4rem 1.1rem;
+}
+.directory-body + .directory-body {
+  padding-top: 0;
+}
+.directory-pages {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1.4rem;
+  border-top: 1px solid var(--line);
+}
+@media (min-width: 58.01rem) {
+  .directory-filters.group-filters {
+    grid-template-columns: minmax(12rem, 2fr) 1fr 1fr auto;
+  }
+}
 @media (max-width: 58rem) {
   .directory-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(12.25rem, 1fr);
@@ -918,14 +966,14 @@ input:focus-visible {
   }
 }
 @media (max-width: 55rem) {
-  .site-table th,
-  .site-table td {
+  .directory-table th,
+  .directory-table td {
     padding-inline: 0.45rem;
   }
-  .site-table tr > :first-child {
+  .directory-table tr > :first-child {
     padding-left: 0.85rem;
   }
-  .site-table tr > :last-child {
+  .directory-table tr > :last-child {
     padding-right: 0.85rem;
   }
 }
@@ -952,6 +1000,10 @@ input:focus-visible {
   .desk-stats span {
     font-size: 0.78rem;
   }
+  .directory-body,
+  .directory-pages {
+    padding-inline: 0.85rem;
+  }
   .directory-title {
     padding: 1rem 0.85rem 0.65rem;
   }
@@ -972,11 +1024,11 @@ input:focus-visible {
   .directory-filters .filter-action {
     width: 100%;
   }
-  .site-table,
-  .site-table tbody {
+  .directory-table,
+  .directory-table tbody {
     display: block;
   }
-  .site-table thead {
+  .directory-table thead {
     position: absolute;
     clip-path: inset(50%);
     width: 1px;
@@ -984,28 +1036,30 @@ input:focus-visible {
     overflow: hidden;
     white-space: nowrap;
   }
-  .site-table tbody tr {
+  .directory-table tbody tr {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.45rem 0.6rem;
     padding: 1rem 0.85rem;
     border-top: 1px solid #dce3d8;
   }
-  .site-table tbody tr > th,
-  .site-table tbody tr > td {
+  .directory-table tbody tr > th,
+  .directory-table tbody tr > td {
+    min-width: 0;
     padding: 0;
   }
-  .site-table .site-name-cell {
+  .directory-table .entry-name-cell,
+  .directory-table .entry-wide {
     grid-column: 1/-1;
   }
-  .site-table .site-name {
+  .directory-table .site-name {
     font-size: 1.05rem;
     text-decoration: underline;
   }
   .site-name-wrap {
     gap: 0.6rem;
   }
-  .site-table .state-cell {
+  .directory-table .state-cell {
     grid-column: 1/-1;
     margin: 0.1rem 0 0.15rem;
   }
@@ -1014,10 +1068,10 @@ input:focus-visible {
     font-size: 0.72rem;
     color: #5a6c60;
   }
-  .site-table .updated-cell {
+  .directory-table .updated-cell {
     grid-column: 1/-1;
   }
-  .site-table .updated-cell .mobile-label {
+  .directory-table .updated-cell .mobile-label {
     display: inline-block;
     margin-right: 0.4rem;
   }

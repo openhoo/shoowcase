@@ -194,7 +194,11 @@ func run() error {
 	if *dev && metricsWorkspace == "" {
 		metricsWorkspace = env("DEV_WORKSPACE", "local")
 	}
-	app, e := web.New(web.Config{MetricsWorkspace: metricsWorkspace, DisableApps: apps == "false", SignupURL: os.Getenv("SHOOWCASE_SIGNUP_URL"), Version: version, ControlURL: strings.TrimSuffix(control, "/"), SitesDomain: zone, Key: authn.ActionKey(), Public: public == "true"}, s, authn)
+	app, e := web.New(web.Config{
+		ControlURL: strings.TrimSuffix(control, "/"), SitesDomain: zone, Version: version, Key: authn.ActionKey(),
+		MetricsWorkspace: metricsWorkspace, DisableApps: apps == "false", Public: public == "true",
+		SignupURL: env("SIGNUP_URL", ""), OIDCAccountURL: env("OIDC_ACCOUNT_URL", ""),
+	}, s, authn)
 	if e != nil {
 		return e
 	}

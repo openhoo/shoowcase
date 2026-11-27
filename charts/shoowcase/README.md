@@ -37,6 +37,7 @@ config:
   oidc:
     adminSubject: "0123456789" # Exact sub issued to this browser client
     adminWorkspace: team
+    accountUrl: "https://login.example.org/account" # Your provider’s self-service password page
   localAccounts:
     workspace: team
     publicRegistration: false

@@ -111,7 +111,14 @@ func (a *App) groupView(w http.ResponseWriter, r *http.Request, c consoleContext
 			memberError(w, c, err)
 			return false
 		}
+		return true
 	}
+	d, ok := parseAdminDirectory(w, r, c, false)
+	if !ok {
+		return false
+	}
+	p.Directory = d
+	p.Groups = p.Directory.groups(p.Groups)
 	return true
 }
 

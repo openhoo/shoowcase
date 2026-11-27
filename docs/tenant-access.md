@@ -15,6 +15,14 @@ In either mode a suspended account is denied private access. An intentionally pu
 
 ![Workspace settings with Managed members and groups selected.](media/admin/access-mode.png)
 
+## Find a member or group
+
+Open **Workspace admin → Members** to search by display name or sign-in ID. You can filter by active or suspended status and effective role, and sort by name or sign-in ID. Select someone’s name to manage their role limit or access. Your own name opens **Account**.
+
+Under **Groups**, search by name, filter by group role, or sort by member count. Select a group to see its members, change its role, or manage membership. On a small screen, **Filter and sort** opens the additional options in either directory.
+
+![Member directory with search, status and role filters, and a row for each member.](media/admin/members.png)
+
 ## Set up a managed tenant
 
 1. Sign in with a workspace administrator account and complete enrollment. The administrator role comes from the identity provider or the configured OIDC subject mapping.
@@ -40,9 +48,9 @@ After a group removal, role change or switch to managed mode, Shoowcase rechecks
 
 When an operator enables password sign-in for this workspace, open **Workspace admin** to create an account. Enter a username and an initial password, choose reader, editor or publisher, and give the credentials privately to the new member. Usernames are case insensitive and use 3–64 letters (A–Z), digits, periods, underscores or hyphens, starting with a letter or digit. Passwords need at least 12 characters and may contain spaces.
 
-On the sign-in page the member chooses the username and password form. Under **Account**, they can change their password by providing the current and new passwords. After a change, they sign in again; their previous browser sessions no longer work. Personal agent keys are managed separately under **Agent keys**. Suspending a password account revokes its keys and sessions. Re-enabling it lets the member sign in again.
+On the sign-in page the member chooses the username and password form. Under **Account → Change password**, they enter the current and new passwords. After a change, they sign in again; their previous browser sessions no longer work. Personal agent keys are managed separately under **Agent keys**. Suspending a password account revokes its keys and sessions. Re-enabling it lets the member sign in again.
 
-An administrator can create password accounts with public registration turned off. If the operator explicitly opens public registration, visitors can create reader accounts. Managed workspaces always require an administrator to add the member. The local username belongs only to its workspace. OIDC users change their passwords at the identity provider.
+An administrator can create password accounts with public registration turned off. If the operator explicitly opens public registration, visitors can create reader accounts. Managed workspaces always require an administrator to add the member. The local username belongs only to its workspace. OIDC users change their passwords at the identity provider; **Account → Change password at identity provider** takes them there when the operator has [configured the link](oidc.md#use-oidc-alongside-password-accounts).
 
 ## Set project budgets
 

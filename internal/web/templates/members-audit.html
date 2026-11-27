@@ -1,0 +1,23 @@
+{{define "audit-log"}}
+<section class="directory" aria-labelledby="activity">
+  <div class="directory-title"><h2 id="activity">Audit log</h2><span class="directory-count">{{len .Events}} {{if eq (len .Events) 1}}event{{else}}events{{end}} on this page</span></div>
+  <div class="directory-body"><p>Sign-ins and changes to workspace access, keys, drafts and releases. Most recent first.</p><a href="/api/audit">Open JSON export</a></div>
+  {{if .Events}}
+  <table class="directory-table" role="table" aria-labelledby="activity">
+    <thead><tr><th scope="col">Event</th><th scope="col">When (UTC)</th><th scope="col">By</th><th scope="col">Details</th></tr></thead>
+    <tbody>{{range .Events}}<tr>
+      <th scope="row" class="entry-name-cell"><span>{{eventName .Action}}</span><span class="site-address">#{{.Sequence}}</span></th>
+      <td><span class="mobile-label" aria-hidden="true">When (UTC)</span><time datetime="{{isoDate .At}}">{{longDate .At}}</time></td>
+      <td><span class="mobile-label" aria-hidden="true">By</span><code>{{.Subject}}</code></td>
+      <td class="entry-wide"><span class="mobile-label" aria-hidden="true">Details</span>
+        {{if .Target}}<div>For <code>{{.Target}}</code></div>{{end}}
+        {{if .Previous}}<div>From <code>{{.Previous}}</code></div>{{end}}
+        {{if .Value}}<div>To <code>{{.Value}}</code></div>{{end}}
+        {{if not (or .Target .Previous .Value)}}—{{end}}
+      </td>
+    </tr>{{end}}</tbody>
+  </table>
+  {{else}}<div class="directory-empty"><h3>No events on this page</h3><p>Sign-ins and workspace changes appear in this log.</p></div>{{end}}
+  {{if .Next}}<nav class="directory-pages" aria-label="Audit log pages"><a href="{{.Next}}">Older events →</a></nav>{{end}}
+</section>
+{{end}}

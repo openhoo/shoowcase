@@ -34,6 +34,9 @@ func TestQuotaConsoleLimitsAndSiteAssignment(t *testing.T) {
 	if memberControl(t, page, "id", "storage-limit-workspace") != "2" {
 		t.Fatal("default 2 GiB limit missing from form")
 	}
+	if strings.Contains(page, `id="budget-editor"`) || !strings.Contains(get(quotas+"&budget="+g.ID), `id="budget-editor"`) {
+		t.Fatal("the quota editor must open only for the selected group")
+	}
 	post := func(f url.Values, code int) string {
 		t.Helper()
 		w := memberPost(t, app, cookie, "/admin", f)
@@ -102,6 +105,7 @@ func TestQuotaConsoleScopesGroupsAndSitesToWorkspace(t *testing.T) {
 		t.Fatal("quota overview disclosed another workspace")
 	}
 	requireMemberStatus(t, hitRoute(t, app, "GET", testControl+"/admin?view=quotas&site=field", c, nil), 404)
+	requireMemberStatus(t, hitRoute(t, app, "GET", testControl+"/admin?view=quotas&budget="+g.ID, c, nil), 404)
 	requireMemberStatus(t, memberPost(t, app, c, "/admin", url.Values{"csrf": {csrf}, "action": {"group-quota"}, "group": {g.ID}, "version": {"1"}, "site_limit": {"0"}, "storage_limit": {"0"}, "storage_unit": {"B"}}), 404)
 	requireMemberStatus(t, memberPost(t, app, c, "/admin", url.Values{"csrf": {csrf}, "action": {"site-group"}, "site": {"field"}, "group": {""}, "version": {"1"}}), 404)
 }

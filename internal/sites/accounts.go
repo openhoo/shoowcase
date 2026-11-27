@@ -395,35 +395,42 @@ func (s *Store) SetMember(ctx context.Context, a Actor, subject, ceiling string,
 	return tx.Commit()
 }
 
-func (s *Store) ListAccounts(ctx context.Context, a Actor, after string) ([]Account, string, error) {
-	if len(after) > 255 {
-		return nil, "", bad("Invalid account cursor.")
-	}
-	tx, e := s.readSnapshot(ctx)
-	if e != nil {
-		return nil, "", e
+// WorkspaceAccounts reads directory metadata in one admin-authorized snapshot.
+// The workspace member limit bounds this result; paginate after matching the
+// effective roles computed by scanMember, so searches include every member.
+func (s *Store) WorkspaceAccounts(ctx context.Context, a Actor) ([]Account, error) {
+	tx, err := s.adminRead(ctx, a)
+	if err != nil {
+		return nil, err
 	}
 	defer tx.Rollback()
-	if _, e = authorizeMember(ctx, tx, a, 4); e != nil {
-		return nil, "", e
-	}
-	rows, e := tx.QueryContext(ctx, "SELECT "+memberColumns+memberFrom+" WHERE m.workspace=$1 AND m.subject>$2 ORDER BY m.subject LIMIT $3", a.Workspace, after, accountPage+1)
-	if e != nil {
-		return nil, "", e
+	rows, err := tx.QueryContext(ctx, "SELECT "+memberColumns+memberFrom+" WHERE m.workspace=$1", a.Workspace)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
-	out := []Account{}
+	var accounts []Account
 	for rows.Next() {
-		if len(out) == accountPage {
-			return out, out[accountPage-1].Subject, nil
+		m, err := scanMember(rows)
+		if err != nil {
+			return nil, err
 		}
-		m, e := scanMember(rows)
-		if e != nil {
-			return nil, "", e
-		}
-		out = append(out, m)
+		accounts = append(accounts, m)
 	}
-	return out, "", rows.Err()
+	return accounts, rows.Err()
+}
+
+func (s *Store) WorkspaceAccount(ctx context.Context, a Actor, subject string) (Account, error) {
+	tx, err := s.adminRead(ctx, a)
+	if err != nil {
+		return Account{}, err
+	}
+	defer tx.Rollback()
+	m, ok, err := member(ctx, tx, Actor{Workspace: a.Workspace, Subject: subject})
+	if err == nil && !ok {
+		return Account{}, fail("not_found", "Member not found in this workspace.")
+	}
+	return m, err
 }
 
 func (s *Store) WorkspaceStats(ctx context.Context, a Actor) (WorkspaceSummary, error) {
