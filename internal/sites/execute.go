@@ -388,7 +388,7 @@ func releaseChange(ctx context.Context, tx *sql.Tx, r *record, p mutation, tool 
 			return fail("forbidden", "Public publishing is disabled on this instance.")
 		}
 		if !hasApproval {
-			return &Error{Code: "approval_required", Message: "Confirm the exact public change in your browser.", approvalGeneration: r.generation}
+			return &Error{Code: "approval_required", Message: "Confirm the exact change to the public site.", approvalGeneration: r.generation}
 		}
 		return nil
 	}

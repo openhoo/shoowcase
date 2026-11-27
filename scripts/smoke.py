@@ -148,7 +148,7 @@ def exercise(port, token, version):
     check(agent.version == version, "MCP advertises a different version than the binary")
     catalog = {t["name"] for t in agent.rpc("tools/list", {})["tools"]}
     check({"create_site", "get_site", "upload_files", "prepare_upload", "list_sites", "publish_site",
-           "set_site_access", "rollback_site", "list_site_groups"}.issubset(catalog), "incomplete tools/list")
+           "set_site_access", "rollback_site", "list_site_groups", "approve_public_change"}.issubset(catalog), "incomplete tools/list")
     choices = agent.call("list_site_groups", {})
     check(choices["groups"] == [] and choices["allow_unassigned"], "empty workspace budget choices")
     rid = lambda: str(uuid.uuid4())
@@ -208,6 +208,7 @@ def exercise(port, token, version):
     # Reasserting workspace access after review makes an already-open approval obsolete.
     peer.call("set_site_access", {**key, "visibility": "workspace", "revision": revision1, "request_id": rid()})
     person.request("POST", approval, urlencode({"csrf": parser.csrf}), form).expect(409, "superseded approval")
+    agent.call("approve_public_change", {"approval_token": pending["approval_token"]}, "conflict")
     anonymous.request("HEAD", asset).expect(303, "stale approval did not change the audience")
     fresh = peer.call("set_site_access", public_args, "approval_required")["approval_url"]
     page = person.navigate(fresh).expect(200, "renewed approval")
@@ -218,6 +219,32 @@ def exercise(port, token, version):
     check(receipt.headers.get("content-type", "").startswith("text/html") and stable.encode() in receipt.body
           and full["preview_url"].encode() in receipt.body and second["preview_url"].encode() not in receipt.body,
           "approval receipt should link to the reviewed live revision, even if the draft differs")
+    # A publisher can also perform each public change entirely through MCP.
+    peer.call("set_site_access", {**key, "visibility": "workspace", "revision": revision1, "request_id": rid()})
+    anonymous.request("GET", stable).expect(303, "workspace site before agent sharing")
+
+    def approve_tool(tool, args):
+        pending = peer.call(tool, args, "approval_required")
+        approve_args = {"approval_token": pending["approval_token"]}
+        result = peer.call("approve_public_change", approve_args)
+        check(agent.call("approve_public_change", approve_args) == result, "approval retry changed its receipt")
+        return result
+
+    shared = approve_tool("set_site_access", {**public_args, "request_id": rid()})
+    check(shared["visibility"] == "public" and shared["live_revision"] == revision1
+          and anonymous.request("GET", stable).expect(200, "agent-shared site").body == draft1["text"].encode(),
+          "agent shared the wrong revision")
+    updated = approve_tool("publish_site", {**key, "revision": second["revision"], "request_id": rid()})
+    check(updated["live_revision"] == second["revision"]
+          and anonymous.request("GET", stable).expect(200, "updated public site").body == draft2["text"].encode(),
+          "public update did not serve the new revision")
+    restored = approve_tool("rollback_site", {**key, "release_id": release1["release_id"],
+                           "expected_release_id": updated["release_id"], "request_id": rid()})
+    check(restored["live_revision"] == revision1 and restored["release_id"] == release1["release_id"]
+          and anonymous.request("GET", stable).expect(200, "rolled-back public site").body == draft1["text"].encode(),
+          "public rollback restored the wrong revision")
+    history = peer.call("get_site", {**key, "view": "releases"})
+    check(len(history["releases"]) == 3, "approval retry created a duplicate release")
     public = anonymous.request("GET", asset).expect(200, "anonymous public asset")
     check(public.body == image and public.headers["etag"].strip('"') == digest, "served public bytes/ETag differ")
     head = anonymous.request("HEAD", asset).expect(200, "asset metadata")
@@ -272,7 +299,7 @@ def main():
                     app.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     app.kill()
-    print("PASS: two independent MCP clients, revision retry/conflict, scoped binary upload, workspace sign-in, publish/rollback, public approval/CSRF, withdrawal with old ETag")
+    print("PASS: two independent MCP clients, revision retry/conflict, scoped binary upload, workspace sign-in, publish/rollback, agent approvals and browser CSRF, withdrawal with old ETag")
 
 
 if __name__ == "__main__":

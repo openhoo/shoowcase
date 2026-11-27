@@ -92,7 +92,7 @@ Try the [workshop tally](examples/counter/): import the three files and click **
 | **Release** | Publishing points the stable address at an exact revision. Rolling back restores a previous release while preserving the draft, address and audience. |
 | **Audience** | **Workspace** requires a work sign-in. **Public** lets anyone with the address read the site. **Offline** withdraws the live site and preserves its history. |
 
-Public sharing is disabled by default. If an operator enables it, making a site public, publishing a new public release or rolling a public site back requires a publisher to review the exact change in their browser. Merely opening the review link does not grant access. Making a site private blocks new anonymous reads. Taking it offline also blocks signed-in reads at the live address. Neither action can recall a downloaded copy.
+Public sharing is disabled by default. If an operator enables it, an agent with publisher access can make a site public, publish a new public revision or roll back a public site without opening a browser. Each request returns a short-lived token for that exact change. The agent completes it with `approve_public_change`. Publishers can also use the browser review link. Making a site private blocks new anonymous reads. Taking it offline also blocks signed-in reads at the live address. Neither action can recall a downloaded copy.
 
 ## What the agent can do
 
@@ -107,6 +107,7 @@ Public sharing is disabled by default. If an operator enables it, making a site 
 | `publish_site` | Make the named current draft revision live at the stable address. |
 | `set_site_access` | Change the audience of the live site. |
 | `rollback_site` | Restore a prior release while checking that the expected release is still live. |
+| `approve_public_change` | Complete a requested public change using the returned `approval_token` with the same publisher access. |
 
 Agents reuse the same request ID and arguments when retrying a mutation. A stale revision returns a conflict so an agent can read the current draft before changing anyone else’s work. A completed mutation returns its original receipt; `get_site` reports current state.
 
@@ -114,7 +115,7 @@ Agents reuse the same request ID and arguments when retrying a mutation. A stale
 
 ## Run it for an organization
 
-The **control host** handles MCP, sign-in, uploads and human approvals. **Site and preview hosts** live on a separate registrable domain with wildcard DNS and TLS. **PostgreSQL** stores file bytes, manifests, releases, audit events and retry records. Replicas share the database and signing key. OIDC claims identify the workspace and role for work accounts. Operators can also enable password accounts for a fixed workspace. Workspace policy can further restrict access.
+The **control host** handles MCP, sign-in, uploads and public release approvals. **Site and preview hosts** live on a separate registrable domain with wildcard DNS and TLS. **PostgreSQL** stores file bytes, manifests, releases, audit events and retry records. Replicas share the database and signing key. OIDC claims identify the workspace and role for work accounts. Operators can also enable password accounts for a fixed workspace. Workspace policy can further restrict access.
 
 | Role | Permissions |
 | --- | --- |

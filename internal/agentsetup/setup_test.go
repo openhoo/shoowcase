@@ -208,7 +208,7 @@ func TestBridgeWithRealSDK(t *testing.T) {
 			for _, tool := range tools.Tools {
 				names = append(names, tool.Name)
 			}
-			if !slices.Contains(names, "list_sites") || len(names) != 9 {
+			if !slices.Contains(names, "list_sites") || !slices.Contains(names, "approve_public_change") {
 				t.Fatal(names)
 			}
 			call, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_sites"})

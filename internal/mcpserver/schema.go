@@ -62,14 +62,17 @@ func definitions() []toolDef {
 		{"prepare_upload", "Prepare a five-minute upload for one HTML, CSS, JavaScript, PNG, JPEG or GIF file. Use it for binary assets; Text files are limited to 256 KiB. The returned upload_url accepts the exact bytes via PUT; browser_upload_url lets the same signed-in person select them. Completing the upload creates a draft revision.", "Supply site_id, expected_revision, path, sha256 (64 lowercase hex digits), size in bytes, and request_id.", false, object(properties{
 			"site_id": site, "expected_revision": revision, "path": path, "sha256": digest, "size": &schema{Type: "integer", Minimum: ptr(1.0), Maximum: ptr(float64(2 << 20))}, "request_id": requestID,
 		}, "site_id", "expected_revision", "path", "sha256", "size", "request_id")},
-		{"publish_site", "Publish the reviewed draft revision at the site's stable address with its existing visibility. Public changes require approval.", "Supply site_id, revision and request_id.", false, object(properties{
+		{"publish_site", "Publish the reviewed draft revision at the site's stable address with its existing visibility. For a public change, confirm the returned approval_token with approve_public_change.", "Supply site_id, revision and request_id.", false, object(properties{
 			"site_id": site, "revision": revision, "request_id": requestID,
 		}, "site_id", "revision", "request_id")},
-		{"set_site_access", "Set workspace, public or offline access for the site. Public access requires a human to review the exact revision.", "Supply site_id, visibility, revision and request_id.", false, object(properties{
+		{"set_site_access", "Set workspace, public or offline access for the site. To enable public access, confirm the returned approval_token with approve_public_change.", "Supply site_id, visibility, revision and request_id.", false, object(properties{
 			"site_id": site, "visibility": choices("Who may read the published site.", "workspace", "public", "offline"), "revision": revision, "request_id": requestID,
 		}, "site_id", "visibility", "revision", "request_id")},
-		{"rollback_site", "Restore a prior release at the stable address. Pins the current release to detect changes; public rollbacks require approval.", "Supply site_id, the target release_id, the current expected_release_id, and request_id.", false, object(properties{
+		{"rollback_site", "Restore a prior release at the stable address. Pins the current release to detect changes. For a public rollback, confirm the returned approval_token with approve_public_change.", "Supply site_id, the target release_id, the current expected_release_id, and request_id.", false, object(properties{
 			"site_id": site, "release_id": release, "expected_release_id": release.CloneSchemas(), "request_id": requestID,
 		}, "site_id", "release_id", "expected_release_id", "request_id")},
+		{"approve_public_change", "Apply the exact public access, publication or rollback requested by the same publisher. Use the approval_token returned by that call within five minutes, with the same credential. Returns the original operation's receipt.", "Supply only the returned approval_token.", false, object(properties{
+			"approval_token": stringField("Opaque token from the approval_required response for the intended public change.", 1, 16384),
+		}, "approval_token")},
 	}
 }

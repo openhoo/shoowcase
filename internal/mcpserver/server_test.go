@@ -47,7 +47,7 @@ func TestSDKClientsNegotiateAndCall(t *testing.T) {
 				names = append(names, tool.Name)
 			}
 			slices.Sort(names)
-			if want := []string{"create_site", "get_site", "list_site_groups", "list_sites", "prepare_upload", "publish_site", "rollback_site", "set_site_access", "upload_files"}; !slices.Equal(names, want) {
+			if want := []string{"approve_public_change", "create_site", "get_site", "list_site_groups", "list_sites", "prepare_upload", "publish_site", "rollback_site", "set_site_access", "upload_files"}; !slices.Equal(names, want) {
 				t.Fatalf("catalog: got %v", names)
 			}
 			out, err := c.CallTool(t.Context(), &mcp.CallToolParams{Name: "list_sites", Arguments: map[string]any{"limit": 1}})
@@ -102,7 +102,7 @@ func TestInputBoundariesAndActionableErrors(t *testing.T) {
 	h := New(func(ctx context.Context, name string, args json.RawMessage) (map[string]any, error) {
 		calls.Add(1)
 		if name == "publish_site" {
-			return map[string]any{"approval_url": "https://control.example/approve"}, &Error{Code: "approval_required", Message: "This revision needs review."}
+			return map[string]any{"approval_url": "https://control.example/approve", "approval_token": "example-token"}, &Error{Code: "approval_required", Message: "This revision needs review."}
 		}
 		return nil, errors.New("private database connection string")
 	})
@@ -119,6 +119,8 @@ func TestInputBoundariesAndActionableErrors(t *testing.T) {
 		{"upload_files", `{"site_id":"a","expected_revision":"r","request_id":"123","files":[{"path":"/etc/passwd","text":"x"}]}`},
 		{"prepare_upload", `{"site_id":"a","expected_revision":"r","path":"img.png","size":1,"request_id":"123","sha256":"wrong"}`},
 		{"publish_site", `{"site_id":"a","request_id":"123"}`},
+		{"approve_public_change", `{}`},
+		{"approve_public_change", `{"approval_token":"example-token","site_id":"other"}`},
 	} {
 		r, err := c.CallTool(t.Context(), &mcp.CallToolParams{Name: tc.name, Arguments: json.RawMessage(tc.args)})
 		if err != nil || !r.IsError || !strings.Contains(r.Content[0].(*mcp.TextContent).Text, "invalid_argument") {
@@ -134,7 +136,9 @@ func TestInputBoundariesAndActionableErrors(t *testing.T) {
 	}
 	out := r.StructuredContent.(map[string]any)
 	perr := out["error"].(map[string]any)
-	if perr["code"] != "approval_required" || perr["action"] == "" || out["approval_url"] != "https://control.example/approve" {
+	action, _ := perr["action"].(string)
+	if perr["code"] != "approval_required" || !strings.Contains(action, "approve_public_change") ||
+		out["approval_token"] != "example-token" || out["approval_url"] != "https://control.example/approve" {
 		t.Fatalf("lost approval details: %v", out)
 	}
 	r, err = c.CallTool(t.Context(), &mcp.CallToolParams{Name: "list_sites"})

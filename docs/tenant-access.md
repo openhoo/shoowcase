@@ -29,7 +29,7 @@ In either mode a suspended account is denied private access. An intentionally pu
 | --- | --- |
 | Reader | List sites, inspect revisions and read private previews and workspace releases. |
 | Editor | Reader permissions plus creating sites and changing drafts. |
-| Publisher | Editor permissions plus publishing, rolling back and changing visibility. Public changes still require browser approval. |
+| Publisher | Editor permissions plus publishing, rolling back and changing visibility. A publisher can complete public changes over MCP or in the browser. |
 | Administrator | Publisher permissions plus member, group, workspace and audit administration. This role cannot be granted by a group or personal key. |
 
 Group roles apply across the workspace. Group budgets restrict draft edits; private viewing and publishing still use workspace roles. There are no nested groups. Each workspace supports 2,000 member records and 128 groups. An account’s IdP role follows its most recently verified assertion; live IdP directory changes are observed on sign-in or token use. For immediate local offboarding, suspend the member. This also revokes their personal keys. Restoring an account does not reactivate those keys.
