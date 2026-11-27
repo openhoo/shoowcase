@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -11,7 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/openhoo/shoowcase/internal/sites"
 )
 
 type identityKey struct{}
@@ -58,6 +61,29 @@ func TestSDKClientsNegotiateAndCall(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The tool catalog adds path, paging, and view constraints beyond Go's type
+// system. Every property and its optionality must still match the typed query.
+func TestGetSiteCatalogMatchesDomainQuery(t *testing.T) {
+	typed, err := jsonschema.For[sites.GetSiteQuery](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range definitions() {
+		if tool.name != "get_site" {
+			continue
+		}
+		got, want := slices.Sorted(maps.Keys(tool.input.Properties)), slices.Sorted(maps.Keys(typed.Properties))
+		if !slices.Equal(got, want) {
+			t.Fatalf("get_site catalog properties %v, typed query %v", got, want)
+		}
+		if !slices.Equal(slices.Sorted(slices.Values(tool.input.Required)), slices.Sorted(slices.Values(typed.Required))) {
+			t.Fatalf("get_site required properties: catalog %v, typed query %v", tool.input.Required, typed.Required)
+		}
+		return
+	}
+	t.Fatal("get_site missing from catalog")
 }
 
 func connect(t *testing.T, url, version string) *mcp.ClientSession {

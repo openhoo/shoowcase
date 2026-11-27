@@ -23,7 +23,7 @@ func TestManagedConsoleEnrollmentGuidance(t *testing.T) {
 	page := func(i auth.Identity, method, path string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequestWithContext(t.Context(), method, testControl+path, nil)
-		app.signedInConsole(w, r, i)
+		signedInPage(app, w, r, i)
 		return w
 	}
 	for _, path := range []string{"/", "/sites", "/sites/sample/edit", "/keys", "/account", "/admin"} {

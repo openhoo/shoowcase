@@ -111,119 +111,11 @@ func Open(ctx context.Context, driver, dsn string) (*Store, error) {
 			}
 		}
 	}
-	tx, e := db.BeginTx(ctx, nil)
-	if e != nil {
-		db.Close()
-		return nil, e
-	}
-	defer tx.Rollback()
-	if driver == "pgx" {
-		_, e = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(4637380929301)")
-		if e != nil {
-			db.Close()
-			return nil, e
-		}
-	}
-	for _, q := range schema {
-		if _, e = tx.ExecContext(ctx, q); e != nil {
-			tx.Rollback()
-			db.Close()
-			return nil, fmt.Errorf("initialize store: %w", e)
-		}
-	}
-	if e = migrate(ctx, tx); e != nil {
-		tx.Rollback()
+	if e = migrate(ctx, db, driver); e != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate store: %w", e)
 	}
-	if e = tx.Commit(); e != nil {
-		db.Close()
-		return nil, e
-	}
 	return &Store{db: db, driver: driver}, nil
-}
-
-var schema = []string{
-	"CREATE TABLE IF NOT EXISTS sc_workspace (id TEXT PRIMARY KEY, used_bytes BIGINT NOT NULL DEFAULT 0, changes BIGINT NOT NULL DEFAULT 0)",
-	"CREATE TABLE IF NOT EXISTS sc_sites (id TEXT PRIMARY KEY, workspace TEXT NOT NULL REFERENCES sc_workspace(id), name TEXT NOT NULL, visibility TEXT NOT NULL, draft TEXT NOT NULL, live TEXT NOT NULL, release_id TEXT NOT NULL)",
-	"CREATE INDEX IF NOT EXISTS sc_sites_workspace ON sc_sites(workspace,id)",
-	"CREATE TABLE IF NOT EXISTS sc_revisions (id TEXT PRIMARY KEY, site TEXT NOT NULL REFERENCES sc_sites(id), created_at BIGINT NOT NULL)",
-	"CREATE INDEX IF NOT EXISTS sc_revisions_site ON sc_revisions(site,id)",
-	"CREATE TABLE IF NOT EXISTS sc_blobs (digest TEXT PRIMARY KEY, body BYTEA NOT NULL)",
-	"CREATE TABLE IF NOT EXISTS sc_files (revision TEXT NOT NULL REFERENCES sc_revisions(id), path TEXT NOT NULL, digest TEXT NOT NULL REFERENCES sc_blobs(digest), size BIGINT NOT NULL, content_type TEXT NOT NULL, PRIMARY KEY(revision,path))",
-	"CREATE TABLE IF NOT EXISTS sc_releases (id TEXT PRIMARY KEY, site TEXT NOT NULL REFERENCES sc_sites(id), revision TEXT NOT NULL REFERENCES sc_revisions(id), created_at BIGINT NOT NULL)",
-	"CREATE INDEX IF NOT EXISTS sc_releases_site ON sc_releases(site,id)",
-	"CREATE TABLE IF NOT EXISTS sc_requests (workspace TEXT NOT NULL, subject TEXT NOT NULL, request_id TEXT NOT NULL, hash TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(workspace,subject,request_id))",
-	"CREATE TABLE IF NOT EXISTS sc_audit (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, site TEXT NOT NULL, subject TEXT NOT NULL, action TEXT NOT NULL, revision TEXT NOT NULL, release_id TEXT NOT NULL, live_revision TEXT NOT NULL, visibility TEXT NOT NULL, request_id TEXT NOT NULL, created_at BIGINT NOT NULL)",
-	"CREATE INDEX IF NOT EXISTS sc_audit_workspace ON sc_audit(workspace,created_at)",
-	"CREATE INDEX IF NOT EXISTS sc_audit_site_activity ON sc_audit(workspace,site,created_at)",
-	"CREATE TABLE IF NOT EXISTS sc_replay (key TEXT PRIMARY KEY, expires_at BIGINT NOT NULL)",
-	"CREATE INDEX IF NOT EXISTS sc_replay_expiry ON sc_replay(expires_at)",
-}
-
-// Every change here runs in the same transaction as schema initialization.
-// Never alter an existing migration: old installations and fresh databases
-// pass through the same numbered steps.
-func migrate(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS sc_schema_migrations (version INTEGER PRIMARY KEY)"); err != nil {
-		return err
-	}
-	var version int
-	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version),0) FROM sc_schema_migrations").Scan(&version); err != nil {
-		return err
-	}
-	if version > 5 {
-		return errors.New("unsupported newer schema version")
-	}
-	if version < 1 {
-		if _, err := tx.ExecContext(ctx, "ALTER TABLE sc_sites ADD COLUMN publication_generation BIGINT NOT NULL DEFAULT 1"); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(1)"); err != nil {
-			return err
-		}
-	}
-	if version < 2 {
-		for _, stmt := range accountSchema {
-			if _, err := tx.ExecContext(ctx, stmt); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(2)"); err != nil {
-			return err
-		}
-	}
-	if version < 3 {
-		for _, statements := range [][]string{tenantSchema, {issuerBindingSchema}, auditSchema} {
-			for _, stmt := range statements {
-				if _, err := tx.ExecContext(ctx, stmt); err != nil {
-					return err
-				}
-			}
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(3)"); err != nil {
-			return err
-		}
-	}
-	if version < 4 {
-		for _, stmt := range quotaSchema {
-			if _, err := tx.ExecContext(ctx, stmt); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(4)"); err != nil {
-			return err
-		}
-	}
-	if version < 5 {
-		if _, err := tx.ExecContext(ctx, localCredentialSchema); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO sc_schema_migrations(version) VALUES(5)"); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func id() string          { var buf [16]byte; _, _ = rand.Read(buf[:]); return hex.EncodeToString(buf[:]) }
@@ -271,12 +163,14 @@ func effectiveAudience(ctx context.Context, out map[string]any) map[string]any {
 		configured, _ = out["visibility"].(string)
 	}
 	out["configured_visibility"] = configured
-	if configured == "public" && privateOnly(ctx) {
-		out["visibility"] = "workspace"
-	} else {
-		out["visibility"] = configured
-	}
+	out["visibility"] = visibleAudience(ctx, configured)
 	return out
+}
+func visibleAudience(ctx context.Context, configured string) string {
+	if configured == "public" && privateOnly(ctx) {
+		return "workspace"
+	}
+	return configured
 }
 func readSite(ctx context.Context, tx *sql.Tx, a Actor, site string) (record, error) {
 	var r record

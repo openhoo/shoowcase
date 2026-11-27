@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"github.com/openhoo/shoowcase/internal/ratelimit"
 	"html/template"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/openhoo/shoowcase/internal/auth"
 	"github.com/openhoo/shoowcase/internal/mcpserver"
+	"github.com/openhoo/shoowcase/internal/routes"
 	"github.com/openhoo/shoowcase/internal/sites"
 )
 
@@ -37,6 +37,7 @@ type App struct {
 	origin                          *url.URL
 	store                           *sites.Store
 	auth                            *auth.Service
+	control                         *routes.Control
 	mcp                             http.Handler
 	rate                            ratelimit.Window
 	heavy                           chan struct{}
@@ -62,6 +63,7 @@ func New(c Config, db *sites.Store, a *auth.Service) (*App, error) {
 	}
 	x := &App{config: c, origin: u, store: db, auth: a, heavy: make(chan struct{}, 8), archiveGate: make(chan struct{}, 2)}
 	x.mcp = mcpserver.NewForHost(x.execute, u.Host, c.Version)
+	x.control = x.controlRouter()
 	return x, nil
 }
 func actor(i auth.Identity) sites.Actor {
@@ -88,13 +90,12 @@ func (a *App) decorate(r map[string]any) map[string]any {
 		}
 	}
 	if s, ok := r["site_id"].(string); ok && s != "" {
-		r["site_url"] = a.siteURL(s)
-		rev, _ := r["selected_revision"].(string)
-		if rev == "" {
-			rev, _ = r["revision"].(string)
-		}
-		if rev != "" {
-			r["preview_url"] = a.siteURL("pv-" + rev)
+		draft, _ := r["revision"].(string)
+		selected, _ := r["selected_revision"].(string)
+		live, preview := a.siteLinks(s, draft, selected)
+		r["site_url"] = live
+		if preview != "" {
+			r["preview_url"] = preview
 		}
 	}
 	return r
@@ -112,22 +113,13 @@ func errorCode(e error) string {
 	}
 	return ""
 }
-func (a *App) execute(ctx context.Context, tool string, args json.RawMessage) (out map[string]any, err error) {
-	if !a.config.Public {
-		ctx = sites.WithPrivateDelivery(ctx)
-	}
-	who, _ := ctx.Value(whoKey{}).(sites.Actor)
-	if who.Subject == "" {
-		return nil, problem("unauthorized", "Sign in to Shoowcase.")
-	}
-	defer func() {
-		if err != nil && errorCode(err) == "forbidden" {
-			a.auditDenied(ctx, who, tool)
-		}
-	}()
-	if !a.rate.Allow("agent:"+who.Workspace+"\x00"+who.Subject, 300) {
-		return nil, problem("rate_limited", "Wait a minute before retrying.")
-	}
+func (a *App) execute(ctx context.Context, tool string, args json.RawMessage) (map[string]any, error) {
+	return withToolAccess(ctx, a, tool, func(ctx context.Context, who sites.Actor) (map[string]any, error) {
+		return a.executeAs(ctx, who, tool, args)
+	})
+}
+
+func (a *App) executeAs(ctx context.Context, who sites.Actor, tool string, args json.RawMessage) (map[string]any, error) {
 	if tool == "prepare_upload" {
 		return a.prepare(ctx, who, args)
 	}
@@ -216,42 +208,10 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unknown host", http.StatusMisdirectedRequest)
 		return
 	}
-	host := strings.ToLower(r.Host)
-	if host == a.origin.Host && r.URL.Path == "/healthz" {
-		if !readMethod(w, r) {
+	if !strings.EqualFold(r.Host, a.origin.Host) {
+		if a.auth.Handle(w, r) {
 			return
 		}
-		w.WriteHeader(200)
-		_, _ = io.WriteString(w, "ok\n")
-		return
-	}
-	if host == a.origin.Host && r.URL.Path == "/readyz" {
-		if !readMethod(w, r) {
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		if a.store.Ping(ctx) != nil {
-			http.Error(w, "storage unavailable", 503)
-			return
-		}
-		_, _ = io.WriteString(w, "ready\n")
-		return
-	}
-	if a.auth.Handle(w, r) {
-		return
-	}
-	if host == a.origin.Host && (r.URL.Path == "/mcp" || r.URL.Path == "/upload" || strings.HasPrefix(r.URL.Path, "/sites/")) && (r.Method == "POST" || r.Method == "PUT") {
-		select {
-		case a.heavy <- struct{}{}:
-			defer func() { <-a.heavy }()
-		default:
-			w.Header().Set("Retry-After", "2")
-			http.Error(w, "Server busy; retry shortly", 429)
-			return
-		}
-	}
-	if host != a.origin.Host {
 		if strings.HasPrefix(r.URL.Path, "/auth/runtime/") {
 			if a.config.DisableApps {
 				http.NotFound(w, r)
@@ -263,81 +223,17 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.deliver(w, r)
 		return
 	}
-	switch r.URL.Path {
-	case "/mcp":
-		// Browser clients must originate on the management origin. Native MCP clients omit Origin.
-		if o := r.Header.Get("Origin"); o != "" && o != a.config.ControlURL {
-			http.Error(w, "Origin denied", 403)
+	if (r.URL.Path == "/mcp" || r.URL.Path == "/upload" || strings.HasPrefix(r.URL.Path, "/sites/")) && (r.Method == "POST" || r.Method == "PUT") {
+		select {
+		case a.heavy <- struct{}{}:
+			defer func() { <-a.heavy }()
+		default:
+			w.Header().Set("Retry-After", "2")
+			http.Error(w, "Server busy; retry shortly", 429)
 			return
 		}
-		who, ctx, e := a.agent(r)
-		if e != nil {
-			a.denied.Add(1)
-			a.agentError(w, e)
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
-		a.mcp.ServeHTTP(w, r.WithContext(context.WithValue(ctx, whoKey{}, who)))
-	case "/approve":
-		// Browsers derive the Origin of a form POST from the page referrer policy.
-		// Send only the control origin, never the signed query or path.
-		w.Header().Set("Referrer-Policy", "strict-origin")
-		a.approve(w, r)
-	case "/upload":
-		w.Header().Set("Referrer-Policy", "strict-origin")
-		a.upload(w, r)
-	case "/ui.css":
-		if !readMethod(w, r) {
-			return
-		}
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		_, _ = io.WriteString(w, controlCSS)
-	case "/api/audit":
-		a.exportAudit(w, r)
-	case "/metrics":
-		if a.config.MetricsWorkspace == "" {
-			http.NotFound(w, r)
-			return
-		}
-		if !readMethod(w, r) {
-			return
-		}
-		i, e := a.auth.Bearer(r)
-		if e != nil {
-			a.auth.Challenge(w)
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-			return
-		}
-		if i.Workspace != a.config.MetricsWorkspace {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		principal, err := a.store.LimitActor(verified(r.Context(), i), actor(i))
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if principal.Role != "admin" {
-			http.Error(w, "Forbidden", 403)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprintf(w, "shoowcase_requests_total %d\nshoowcase_site_responses_total %d\nshoowcase_site_bytes_total %d\nshoowcase_denials_total %d\n", a.requests.Load(), a.visits.Load(), a.bytes.Load(), a.denied.Load())
-	case "/quickstart/redeem":
-		a.quickRedeem(w, r)
-	case "/quickstart/install.sh", "/quickstart/install.ps1":
-		serveInstaller(w, r)
-	case "/", "/sites", "/keys", "/account", "/admin", "/quickstart":
-		a.console(w, r)
-	case "/console.js":
-		a.controlScript(w, r)
-	default:
-		if strings.HasPrefix(r.URL.Path, "/sites/") {
-			a.console(w, r)
-			return
-		}
-		http.NotFound(w, r)
 	}
+	a.control.ServeHTTP(w, r)
 }
 func render(w http.ResponseWriter, t *template.Template, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

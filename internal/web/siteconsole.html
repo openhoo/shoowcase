@@ -60,32 +60,32 @@
 
 {{define "detail"}}
 <p><a href="/sites">← All sites</a></p>
-<header class="hero"><p class="eyebrow">Site</p><h1>{{.S.name}}</h1>
-<p>{{if not .S.release_id}}Unpublished{{else if eq .S.visibility "offline"}}Offline{{else if eq .S.live_revision .S.revision}}Published{{else}}Unpublished changes{{end}} <span aria-hidden="true">·</span> {{audience .S.visibility}}</p>
-<div class="toolbar">{{if .HasIndex}}<a class="button secondary" href="{{.S.preview_url}}">Preview draft</a>{{end}}{{if and .S.release_id (ne .S.visibility "offline")}}<a class="button secondary" href="{{.S.site_url}}">Open live site</a>{{end}}{{if and .CanPublish .HasIndex (ne .S.live_revision .S.revision)}}<form method="post" action="{{.Base}}/publish">{{template "write" .}}<button type="submit">Publish draft</button></form>{{end}}</div></header>
+<header class="hero"><p class="eyebrow">Site</p><h1>{{.S.Name}}</h1>
+<p>{{if not .S.ReleaseID}}Unpublished{{else if eq .S.Visibility "offline"}}Offline{{else if eq .S.LiveRevision .S.Revision}}Published{{else}}Unpublished changes{{end}} <span aria-hidden="true">·</span> {{audience .S.Visibility}}</p>
+<div class="toolbar">{{if .HasIndex}}<a class="button secondary" href="{{.PreviewURL}}">Preview draft</a>{{end}}{{if and .S.ReleaseID (ne .S.Visibility "offline")}}<a class="button secondary" href="{{.SiteURL}}">Open live site</a>{{end}}{{if and .CanPublish .HasIndex (ne .S.LiveRevision .S.Revision)}}<form method="post" action="{{.Base}}/publish">{{template "write" .}}<button type="submit">Publish draft</button></form>{{end}}</div></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 <section class="panel stack" aria-labelledby="draft-title"><h2 id="draft-title">Draft files</h2>
-{{with .S.storage_restriction}}<p class="notice">{{.}}</p>{{end}}
+{{with .S.StorageRestriction}}<p class="notice">{{.}}</p>{{end}}
 {{if .CanEdit}}<div class="toolbar"><a class="button" href="{{.Base}}/edit">New file</a><a class="button secondary" href="{{.Base}}/upload">Upload file</a><a class="button secondary" href="{{.Base}}/import">Import ZIP</a></div>{{end}}
-{{if .S.files}}<ul class="list">{{range .S.files}}<li class="row"><div>{{if and $.CanEdit (editable .Path)}}<a href="{{$.Base}}/edit?path={{.Path}}"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{humanBytes .Size}}</small></div>{{if $.CanEdit}}<a href="{{$.Base}}/delete?path={{.Path}}" aria-label="Remove {{.Path}}">Remove</a>{{end}}</li>{{end}}</ul>
+{{if .S.Files}}<ul class="list">{{range .S.Files}}<li class="row"><div>{{if and $.CanEdit (editable .Path)}}<a href="{{$.Base}}/edit?path={{.Path}}"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{humanBytes .Size}}</small></div>{{if $.CanEdit}}<a href="{{$.Base}}/delete?path={{.Path}}" aria-label="Remove {{.Path}}">Remove</a>{{end}}</li>{{end}}</ul>
 {{else}}<p>No files yet. {{if .CanEdit}}Create <code>index.html</code> in the editor or import a ZIP with your site files.{{end}}</p>{{end}}
-{{if and .S.files (not .HasIndex)}}<p class="notice">Add a file named <code>index.html</code> before publishing. It is the page visitors open first.</p>{{end}}
+{{if and .S.Files (not .HasIndex)}}<p class="notice">Add a file named <code>index.html</code> before publishing. It is the page visitors open first.</p>{{end}}
 </section>
 <section class="panel stack" aria-labelledby="audience-title"><h2 id="audience-title">Access</h2>
-{{if eq .S.visibility "public"}}<p>Anyone with the address can open this site.</p>{{else if eq .S.visibility "offline"}}<p>The live address is offline. Workspace members can still open draft previews.</p>{{else}}<p>Only signed-in workspace members can open this site.</p>{{end}}
-{{if and (eq .S.configured_visibility "public") (not .AllowPublic)}}<p class="notice">Public sharing is disabled on this server. Set this site to Workspace to keep it private if public sharing is enabled later.</p>{{end}}
-{{if .CanPublish}}<form class="stack" method="post" action="{{.Base}}/access">{{template "token" .}}<input type="hidden" name="request_id" value="{{.Request}}-access"><input type="hidden" name="revision" value="{{if .S.live_revision}}{{.S.live_revision}}{{else}}{{.Rev}}{{end}}">
-<div class="field"><label for="visibility">Site audience</label><div class="select-wrap"><select id="visibility" name="visibility"><option value="workspace" {{if eq .S.visibility "workspace"}}selected{{end}}>Workspace</option>{{if and .AllowPublic .S.release_id}}<option value="public" {{if eq .S.visibility "public"}}selected{{end}}>Public</option>{{end}}<option value="offline" {{if eq .S.visibility "offline"}}selected{{end}}>Offline</option></select></div></div><button class="secondary" type="submit">Update access</button></form>{{end}}
+{{if eq .S.Visibility "public"}}<p>Anyone with the address can open this site.</p>{{else if eq .S.Visibility "offline"}}<p>The live address is offline. Workspace members can still open draft previews.</p>{{else}}<p>Only signed-in workspace members can open this site.</p>{{end}}
+{{if and (eq .S.ConfiguredVisibility "public") (not .AllowPublic)}}<p class="notice">Public sharing is disabled on this server. Set this site to Workspace to keep it private if public sharing is enabled later.</p>{{end}}
+{{if .CanPublish}}<form class="stack" method="post" action="{{.Base}}/access">{{template "token" .}}<input type="hidden" name="request_id" value="{{.Request}}-access"><input type="hidden" name="revision" value="{{if .S.LiveRevision}}{{.S.LiveRevision}}{{else}}{{.Rev}}{{end}}">
+<div class="field"><label for="visibility">Site audience</label><div class="select-wrap"><select id="visibility" name="visibility"><option value="workspace" {{if eq .S.Visibility "workspace"}}selected{{end}}>Workspace</option>{{if and .AllowPublic .S.ReleaseID}}<option value="public" {{if eq .S.Visibility "public"}}selected{{end}}>Public</option>{{end}}<option value="offline" {{if eq .S.Visibility "offline"}}selected{{end}}>Offline</option></select></div></div><button class="secondary" type="submit">Update access</button></form>{{end}}
 </section>
 <section class="panel stack" id="releases" aria-labelledby="releases-title"><h2 id="releases-title">Releases</h2>
-{{if .History.releases}}<ul class="list">{{range .History.releases}}<li class="row"><div><strong><time datetime="{{.created_at}}">{{utcTime .created_at}}</time></strong><p class="muted">Revision <code>{{shortID .revision}}</code>{{if eq .release_id $.S.release_id}} <span class="badge">Current</span>{{end}}</p></div>
-{{if and $.CanPublish (ne .release_id $.S.release_id)}}<a href="{{$.Base}}/rollback?release={{.release_id}}" aria-label="Review restore of revision {{shortID .revision}}">Restore…</a>{{end}}</li>{{end}}</ul>
-{{if .History.next_cursor}}<a href="{{.Base}}?releases={{.History.next_cursor}}#releases">Older releases</a>{{end}}{{else}}<p>No releases yet.</p>{{end}}
+{{if .History.Releases}}<ul class="list">{{range .History.Releases}}<li class="row"><div><strong><time datetime="{{.CreatedAt}}">{{utcTime .CreatedAt}}</time></strong><p class="muted">Revision <code>{{shortID .Revision}}</code>{{if eq .ID $.S.ReleaseID}} <span class="badge">Current</span>{{end}}</p></div>
+{{if and $.CanPublish (ne .ID $.S.ReleaseID)}}<a href="{{$.Base}}/rollback?release={{.ID}}" aria-label="Review restore of revision {{shortID .Revision}}">Restore…</a>{{end}}</li>{{end}}</ul>
+{{if .History.NextCursor}}<a href="{{.Base}}?releases={{.History.NextCursor}}#releases">Older releases</a>{{end}}{{else}}<p>No releases yet.</p>{{end}}
 </section>
 {{end}}
 
 {{define "edit"}}{{template "back" .}}
-<header><p class="eyebrow">{{.S.name}} / Draft</p><h1>{{if .Existing}}Edit file{{else}}New file{{end}}</h1></header>
+<header><p class="eyebrow">{{.S.Name}} / Draft</p><h1>{{if .Existing}}Edit file{{else}}New file{{end}}</h1></header>
 <section class="panel stack">{{template "error" .}}
 {{if .Error}}<p>Copy any changes you want to keep before <a href="{{.Base}}">opening the current draft</a>.</p>{{end}}
 <form class="stack" method="post" action="{{.Base}}/edit">{{template "write" .}}
@@ -95,7 +95,7 @@
 <div class="toolbar"><button type="submit">Save file</button><a href="{{.Base}}">Cancel</a></div></form></section>{{end}}
 
 {{define "upload"}}{{template "back" .}}
-<header><p class="eyebrow">{{.S.name}} / Draft</p><h1>{{if eq .Action "import"}}Import ZIP{{else}}Upload file{{end}}</h1></header>
+<header><p class="eyebrow">{{.S.Name}} / Draft</p><h1>{{if eq .Action "import"}}Import ZIP{{else}}Upload file{{end}}</h1></header>
 <section class="panel stack">{{template "error" .}}
 <form class="stack" method="post" enctype="multipart/form-data" action="{{.Base}}/{{.Action}}">{{template "write" .}}
 {{if eq .Action "import"}}
@@ -109,4 +109,4 @@
 {{define "delete"}}{{template "back" .}}<h1>Remove file</h1><section class="panel stack">{{template "error" .}}<p>Remove <strong><code>{{.Path}}</code></strong> from the draft? Published releases will keep their copy.</p>
 <form method="post" action="{{.Base}}/delete">{{template "write" .}}<input type="hidden" name="path" value="{{.Path}}"><div class="toolbar"><button class="danger" name="confirm" value="remove" type="submit">Remove file</button><a href="{{.Base}}">Keep file</a></div></form></section>{{end}}
 
-{{define "restore"}}{{template "back" .}}<h1>Restore release</h1><section class="panel stack"><p>The live address will show revision <code>{{.Rev}}</code>. Your current draft and audience stay unchanged.</p><p><a href="{{.S.restore_preview}}">Preview this revision</a></p><form method="post" action="{{.Base}}/rollback">{{template "token" .}}<input type="hidden" name="request_id" value="{{.Request}}"><input type="hidden" name="release" value="{{.S.restore_id}}"><input type="hidden" name="current" value="{{.S.release_id}}"><div class="toolbar"><button type="submit">Restore release</button><a href="{{.Base}}">Cancel</a></div></form></section>{{end}}
+{{define "restore"}}{{template "back" .}}<h1>Restore release</h1><section class="panel stack"><p>The live address will show revision <code>{{.Rev}}</code>. Your current draft and audience stay unchanged.</p><p><a href="{{.RestorePreview}}">Preview this revision</a></p><form method="post" action="{{.Base}}/rollback">{{template "token" .}}<input type="hidden" name="request_id" value="{{.Request}}"><input type="hidden" name="release" value="{{.RestoreID}}"><input type="hidden" name="current" value="{{.S.ReleaseID}}"><div class="toolbar"><button type="submit">Restore release</button><a href="{{.Base}}">Cancel</a></div></form></section>{{end}}

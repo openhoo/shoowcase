@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/openhoo/shoowcase/internal/routes"
 	"golang.org/x/oauth2"
 )
 
@@ -164,12 +165,8 @@ func (s *Service) Challenge(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s/.well-known/oauth-protected-resource/mcp"`, s.control.String()))
 }
 func (s *Service) Handle(w http.ResponseWriter, r *http.Request) bool {
-	var isMetadata bool
-	switch r.URL.Path {
-	case "/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp":
-		isMetadata = true
-	case "/auth/login", "/auth/local", "/auth/register", "/auth/callback", "/auth/finish", "/auth/logout":
-	default:
+	known, isMetadata := routes.AuthPath(r.URL.Path)
+	if !known {
 		return false
 	}
 	w.Header().Set("Cache-Control", "no-store")

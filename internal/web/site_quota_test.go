@@ -97,7 +97,7 @@ func TestSignedUploadUsesCurrentGroupBudget(t *testing.T) {
 	for path, status := range map[string]int{"": http.StatusOK, "/edit": http.StatusForbidden} {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, testControl+"/sites/"+spec.Site+path, nil)
-		app.signedInConsole(w, r, auth.Identity{Subject: writer.Subject, Workspace: writer.Workspace, Role: auth.Editor})
+		signedInPage(app, w, r, auth.Identity{Subject: writer.Subject, Workspace: writer.Workspace, Role: auth.Editor})
 		if w.Code != status || !strings.Contains(w.Body.String(), reason) || strings.Contains(w.Body.String(), ">New file</a>") {
 			t.Fatalf("site page %q: unexpected editing controls or missing explanation (status %d)", path, w.Code)
 		}

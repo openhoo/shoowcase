@@ -17,7 +17,8 @@ Run the commands below from the Shoowcase repository. For authoring a site on an
 
 1. Follow `docs/operations.md`. Rehearse on a restored copy: create a site with the previous release, retain the release IDs and a mutation request, then start the candidate on the same data. Verify file bytes, private access, history, replay and rollback. Use the separate PostgreSQL restore drill in `docs/restore-drill.md` to test the backup itself.
 2. For the upgrade from v0.1.0, drain old replicas and stop old writers before starting the candidate. Old binaries do not advance the publication generation that invalidates outstanding approvals. Startup applies the migration transactionally; if it reports a newer schema, stop and check the binary version. Keep a restorable pre-upgrade backup.
-3. Keep public sharing disabled during recovery. Apply `SHOOWCASE_PUBLIC=false` to every replica and drain the previous configuration. `visibility` is the effective audience; `configured_visibility` is retained. Review all sites still configured as public before enabling public delivery again.
+3. For schema 6, use the v0.6.0 binary to seed the upgrade drill. Goose records each completed migration in the original version table. Stop older writers before upgrading; restore the pre-upgrade snapshot to run an older binary again. See [upgrade and restore checks](../../docs/restore-drill.md).
+4. Keep public sharing disabled during recovery. Apply `SHOOWCASE_PUBLIC=false` to every replica and drain the previous configuration. `visibility` is the effective audience; `configured_visibility` is retained. Review all sites still configured as public before enabling public delivery again.
 
 ## Collect release evidence
 

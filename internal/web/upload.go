@@ -41,15 +41,14 @@ func (a *App) prepare(ctx context.Context, who sites.Actor, args json.RawMessage
 	if _, err := sites.UploadTarget(spec.Path, spec.Size); err != nil {
 		return nil, err
 	}
-	g, _ := json.Marshal(map[string]any{"site_id": spec.Site})
-	site, e := a.store.Execute(ctx, who, "get_site", g)
+	site, e := a.store.GetSite(ctx, who, sites.GetSiteQuery{Site: spec.Site})
 	if e != nil {
 		return nil, e
 	}
-	if site["revision"] != spec.Revision {
+	if site.Revision != spec.Revision {
 		return nil, problem("conflict", "Draft changed. Read the current revision and reapply.")
 	}
-	if reason, ok := site["storage_restriction"].(string); ok {
+	if reason := site.StorageRestriction; reason != "" {
 		return nil, problem("forbidden", reason)
 	}
 	expiry := time.Now().Add(5 * time.Minute)

@@ -90,6 +90,13 @@ jobs:
           npm run build
           git diff --exit-code -- ../internal/web/runtimeassets THIRD-PARTY-LICENSES.txt
           npm test
+      - name: Verify generated directory query
+        run: |
+          curl --fail --silent --show-error --location --retry 3 https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o "$RUNNER_TEMP/sqlc.tar.gz"
+          echo "497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354  $RUNNER_TEMP/sqlc.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/sqlc.tar.gz" -C "$RUNNER_TEMP" sqlc
+          make generate-sql SQLC="$RUNNER_TEMP/sqlc"
+          test -z "$(git status --porcelain -- internal/sites/directorydb)"
       - name: Verify modules and formatting
         run: |
           go mod verify
@@ -118,7 +125,13 @@ jobs:
       - name: Restore production-format backup into a separate database
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}
-        run: python3 scripts/verify-recovery.py --binary ./bin/shoowcase --engine docker --container "$PG_CONTAINER"
+        run: |
+          python3 scripts/verify-recovery.py --binary ./bin/shoowcase --engine docker --container "$PG_CONTAINER"
+          mkdir -p "$RUNNER_TEMP/schema5"
+          curl --fail --silent --show-error --location --retry 3 https://github.com/openhoo/shoowcase/releases/download/v0.6.0/shoowcase-v0.6.0-linux-amd64.tar.gz -o "$RUNNER_TEMP/schema5/previous.tar.gz"
+          echo "24b9267b7a276ccc41860a58442721fc2696fd8d806f00d121cd84b3679e04d9  $RUNNER_TEMP/schema5/previous.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/schema5/previous.tar.gz" -C "$RUNNER_TEMP/schema5" shoowcase
+          python3 scripts/verify-recovery.py --binary ./bin/shoowcase --previous-binary "$RUNNER_TEMP/schema5/shoowcase" --engine docker --container "$PG_CONTAINER"
       - name: Check Grafana queries against representative traffic and idle replicas
         run: python3 scripts/check-grafana.py
       - name: Render the provisioned Grafana dashboards with local Shoowcase metrics

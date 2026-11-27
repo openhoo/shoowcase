@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/felixge/httpsnoop"
+	"github.com/openhoo/shoowcase/internal/routes"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/log"
@@ -22,35 +23,10 @@ type runtimeKey struct{}
 // route returns fixed templates only. Hostnames, file paths and even unknown
 // HTTP methods may contain tenant data or arbitrary high-cardinality values.
 func (rt *Runtime) route(r *http.Request) (route, surface string) {
-	control := strings.EqualFold(r.Host, rt.controlHost)
-	surface = "control"
-	if !control {
-		surface = "content"
+	if strings.EqualFold(r.Host, rt.controlHost) {
+		return routes.Label(r, true), "control"
 	}
-	p := r.URL.Path
-	switch p {
-	case "/auth/login", "/auth/callback", "/auth/finish", "/auth/logout":
-		return p, surface
-	}
-	if !control {
-		return "/{path...}", surface
-	}
-	switch p {
-	case "/", "/quickstart", "/quickstart/redeem", "/quickstart/install.sh", "/quickstart/install.ps1", "/keys", "/admin", "/account", "/mcp", "/approve", "/upload", "/sites",
-		"/api/audit", "/metrics", "/healthz", "/readyz", "/ui.css", "/console.js",
-		"/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp":
-		return p, surface
-	}
-	if suffix, ok := strings.CutPrefix(p, "/sites/"); ok {
-		_, op, _ := strings.Cut(suffix, "/")
-		switch op {
-		case "":
-			return "/sites/{site}", surface
-		case "edit", "delete", "upload", "import", "publish", "access", "rollback":
-			return "/sites/{site}/" + op, surface
-		}
-	}
-	return "", surface
+	return routes.Label(r, false), "content"
 }
 
 func methodName(method string) string {

@@ -40,6 +40,12 @@ Workspaces use their signed identity-provider claim as the tenant ID. In the def
 
 An existing personal key does not contact the identity provider on every request. A newer verified identity assertion updates the recorded provider role, but removing someone at the provider alone does not notify Shoowcase. For immediate offboarding, **suspend the member or revoke their keys in Shoowcase and remove access at the provider**. Another active workspace administrator can suspend an administrator immediately. No one can suspend themselves. Only the identity provider can change an administrator’s role; suspension and restoration are recorded in workspace activity. Limit OAuth token lifetimes and rotate the session signing key for emergency invalidation of existing sessions and signed links.
 
+## Upgrade to schema 6
+
+Schema 6 indexes release history by site, creation time and release ID. It does not change releases, site contents or permissions. Allow time and disk space for index creation on a large release history. Keep a pre-upgrade backup, drain older writers, and rehearse with the [restore drill](restore-drill.md) using the previous binary.
+
+At startup, Goose applies each missing version in its own transaction on both databases. It updates the existing `sc_schema_migrations` table; there is no separate migration command. Old binaries refuse schema 6. To downgrade, restore the pre-upgrade snapshot before restarting the previous binary. If upgrading from schema 4 or earlier, follow the identity and quota checks below as well.
+
 ## Upgrade to schema 5
 
 1. Rehearse against a backup, then close ingress, drain all older writers and take a consistent database backup. Record the previous binary or image digest, issuer and deployment configuration.

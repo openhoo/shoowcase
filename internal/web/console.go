@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/openhoo/shoowcase/internal/auth"
+	"github.com/openhoo/shoowcase/internal/routes"
 	"github.com/openhoo/shoowcase/internal/sites"
 )
 
@@ -62,7 +63,7 @@ func verified(ctx context.Context, i auth.Identity) context.Context {
 	return sites.WithIdentityIssuedAt(ctx, i.IssuedAt)
 }
 
-func (a *App) console(w http.ResponseWriter, r *http.Request) {
+func (a *App) console(w http.ResponseWriter, r *http.Request, route routes.Endpoint) {
 	w.Header().Set("Referrer-Policy", "strict-origin")
 	if r.Method != "GET" && r.Method != "HEAD" && r.Method != "POST" {
 		w.Header().Set("Allow", "GET, HEAD, POST")
@@ -87,10 +88,10 @@ func (a *App) console(w http.ResponseWriter, r *http.Request) {
 		a.login(w, r)
 		return
 	}
-	a.signedInConsole(w, r, i)
+	a.signedInConsole(w, r, i, route)
 }
 
-func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Identity) {
+func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Identity, route routes.Endpoint) {
 	ctx := verified(r.Context(), i)
 	c := consoleContext{Actor: actor(i), Identity: i, WorkspaceLabel: i.Workspace}
 	m, enrolled, err := a.store.AccountFor(ctx, c.Actor)
@@ -177,8 +178,8 @@ func (a *App) signedInConsole(w http.ResponseWriter, r *http.Request, i auth.Ide
 			return
 		}
 	}
-	if r.URL.Path == "/sites" || strings.HasPrefix(r.URL.Path, "/sites/") {
-		a.siteConsole(w, r, c)
+	if route.Page != routes.Console {
+		a.siteConsole(w, r, c, route)
 		return
 	}
 	a.membersConsole(w, r, c)

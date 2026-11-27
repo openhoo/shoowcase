@@ -45,11 +45,8 @@ type fileInput struct {
 	Base64 *string `json:"base64"`
 }
 type asset struct {
-	Path        string `json:"path"`
-	Digest      string `json:"digest"`
-	Size        int    `json:"size"`
-	ContentType string `json:"content_type"`
-	data        []byte
+	FileMetadata
+	data []byte
 }
 
 // UploadTarget validates what is knowable before an upload: its logical path,
@@ -131,7 +128,7 @@ func prepare(f fileInput) (asset, error) {
 			return a, bad("Raster image cannot be decoded.")
 		}
 	}
-	return asset{Path: f.Path, Digest: sum(data), ContentType: ct, Size: len(data), data: data}, nil
+	return asset{FileMetadata: FileMetadata{Path: f.Path, Digest: sum(data), ContentType: ct, Size: len(data)}, data: data}, nil
 }
 func wordset(s string) map[string]bool {
 	m := map[string]bool{}
