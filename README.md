@@ -38,6 +38,12 @@ If Quickstart returns **HTTP 401** while connecting, copy a new command: setup c
 
 Try: **“Create a site called Team Fieldnotes. Make a welcome page and a checklist, publish them for my workspace, and give me the URL.”** To try it with ready-made files, use the [onboarding example](examples/onboarding/).
 
+### Uninstall the local connector
+
+Close your agents. In **Quickstart → Uninstall the local connector**, copy the command for macOS/Linux or Windows PowerShell and run it as the user who ran setup. You can also download `uninstall.sh` or `uninstall.ps1` from the [release assets](https://github.com/openhoo/shoowcase/releases/latest) and run `sh ./uninstall.sh` or `.\uninstall.ps1`. The scripts use a temporary, checksum-verified helper and also work with older Quickstart installations.
+
+The script removes the local executable, local Quickstart credentials and MCP registrations that match the ones Quickstart creates. It preserves other agent settings. Remove any manually configured entries in the agent, then revoke the corresponding keys under **Agent keys** on your Shoowcase instance. Your sites, drafts and published versions stay available.
+
 ### I want to try it on my computer
 
 [Download an archive](https://github.com/openhoo/shoowcase/releases) for macOS, Linux or Windows (each available for Intel/AMD 64-bit and ARM64), [verify it](deploy/README.md), extract it, and run `./shoowcase -dev` (Windows PowerShell: `.\shoowcase.exe -dev`). Or build from source with Git, Make and Go 1.26 or later:

@@ -12,7 +12,7 @@ main() {
     case ${HOME:-} in /*) ;; *) fail 'Could not find your home directory.' ;; esac
     case $(uname -s) in Darwin) os=darwin ;; Linux) os=linux ;; *) fail 'Use the Windows PowerShell command, or run this on macOS or Linux.' ;; esac
     case $(uname -m) in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) fail 'Shoowcase requires a 64-bit Intel/AMD or ARM processor.' ;; esac
-    version=v0.10.5
+    version=v0.10.7
     asset="shoowcase-$version-$os-$arch.tar.gz"
     base="https://github.com/openhoo/shoowcase/releases/download/$version"
     root="$HOME/.local/share/shoowcase"

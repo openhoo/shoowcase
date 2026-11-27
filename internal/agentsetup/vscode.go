@@ -15,23 +15,10 @@ func registerVSCode(ctx context.Context, home, binary string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var dir string
-	switch {
-	case os.Getenv("VSCODE_PORTABLE") != "":
-		dir = filepath.Join(os.Getenv("VSCODE_PORTABLE"), "user-data")
-	case os.Getenv("VSCODE_APPDATA") != "":
-		dir = filepath.Join(os.Getenv("VSCODE_APPDATA"), "Code")
-	default:
-		base, err := os.UserConfigDir()
-		if err != nil {
-			if runtime.GOOS != "windows" || !filepath.IsAbs(home) {
-				return errors.New("cannot locate the VS Code user configuration directory")
-			}
-			base = filepath.Join(home, "AppData", "Roaming")
-		}
-		dir = filepath.Join(base, "Code")
+	path, err := vsCodePath(home)
+	if err != nil {
+		return err
 	}
-	path := filepath.Join(dir, "User", "mcp.json")
 	const id = "vscode-local"
 	want := entry{Type: "stdio", Command: binary, Args: []string{"mcp-stdio", id}}
 	return mergeClientJSONC(path, "servers", "shoowcase", want, func(raw json.RawMessage) bool {
@@ -46,4 +33,24 @@ func registerVSCode(ctx context.Context, home, binary string) error {
 		}
 		return true
 	})
+}
+
+func vsCodePath(home string) (string, error) {
+	var dir string
+	switch {
+	case os.Getenv("VSCODE_PORTABLE") != "":
+		dir = filepath.Join(os.Getenv("VSCODE_PORTABLE"), "user-data")
+	case os.Getenv("VSCODE_APPDATA") != "":
+		dir = filepath.Join(os.Getenv("VSCODE_APPDATA"), "Code")
+	default:
+		base, err := os.UserConfigDir()
+		if err != nil {
+			if runtime.GOOS != "windows" || !filepath.IsAbs(home) {
+				return "", errors.New("cannot locate the VS Code user configuration directory")
+			}
+			base = filepath.Join(home, "AppData", "Roaming")
+		}
+		dir = filepath.Join(base, "Code")
+	}
+	return filepath.Join(dir, "User", "mcp.json"), nil
 }

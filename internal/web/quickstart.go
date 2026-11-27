@@ -22,7 +22,7 @@ import (
 	"github.com/openhoo/shoowcase/internal/sites"
 )
 
-//go:embed quickstartassets/install.*
+//go:embed quickstartassets/install.* quickstartassets/uninstall.*
 var installers embed.FS
 
 type quickPage struct {
@@ -30,6 +30,7 @@ type quickPage struct {
 	Client, Platform, ClientName, Command, Prompt string
 	Clients                                       []agentclients.Client
 	CompanyProxy                                  bool
+	UninstallUnix, UninstallWindows               string
 }
 
 // The browser receives an encrypted, client-bound envelope, not the persistent
@@ -135,6 +136,8 @@ func quickCommand(base, client, platform, code string) string {
 
 func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContext, m memberPage) {
 	p := quickPage{memberPage: m, Clients: agentclients.Clients, Client: "", Platform: "unix"}
+	p.UninstallUnix = fmt.Sprintf("script=$(curl -fsSL '%s/quickstart/uninstall.sh') && printf '%%s\\n' \"$script\" | sh", a.config.ControlURL)
+	p.UninstallWindows = fmt.Sprintf("& ([scriptblock]::Create((Invoke-RestMethod '%s/quickstart/uninstall.ps1')))", a.config.ControlURL)
 	p.Scopes = memberScopes(c.Actor.Role)
 	p.Scope, p.Days = defaultKeyScope(p.Scopes), "30"
 	if strings.Contains(strings.ToLower(r.UserAgent()), "windows") {
