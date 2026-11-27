@@ -29,13 +29,13 @@ func Render(w http.ResponseWriter, status int, title, kind string, page any, nat
 		doc.WriteString(html.EscapeString(refresh))
 		doc.WriteString(`"></noscript>`)
 	}
-	doc.WriteString(`</head><body><div id="app"></div><script type="application/json" id="shoowcase-page">`)
+	doc.WriteString(`</head><body><a class="skip" href="#content">Skip to content</a><div id="app"><div id="native-page">`)
+	doc.Write(native)
+	doc.WriteString(`</div></div><script type="application/json" id="shoowcase-page">`)
 	// json.Marshal escapes HTML-sensitive characters, so source code and form
 	// values stay inside this inert data block until React reads it.
 	doc.Write(model)
-	doc.WriteString(`</script><noscript id="native-page">`)
-	doc.Write(native)
-	doc.WriteString(`</noscript></body></html>`)
+	doc.WriteString(`</script></body></html>`)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")

@@ -83,12 +83,6 @@ function Shell({
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <a
-        href="#content"
-        className="sr-only z-50 rounded-md bg-background px-4 py-2 font-medium text-foreground focus:not-sr-only focus:absolute focus:left-3 focus:top-3"
-      >
-        Skip to content
-      </a>
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-8">
           <a

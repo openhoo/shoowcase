@@ -24,7 +24,9 @@ import {
   Terminal,
 } from "lucide-react";
 import { useEffect } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { protectReceipt } from "./lib/receipt";
 import { Members } from "./members";
 import { Public } from "./public";
 import { Sites } from "./sites";
@@ -132,12 +134,6 @@ function Console({ page }: { page: ConsolePage }) {
   ].includes(view);
   return (
     <div className="flex min-h-dvh min-w-0 flex-col">
-      <a
-        className="sr-only z-50 rounded-md bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
-        href="#content"
-      >
-        Skip to content
-      </a>
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-x-8 gap-y-3 px-4 py-3 sm:px-7 lg:flex-nowrap lg:px-10">
           <a
@@ -208,13 +204,31 @@ function mount() {
     !host
   )
     return;
-  const { kind, page } = JSON.parse(payload.text);
+  const native = document.getElementById("native-page");
   payload.remove();
-  document.getElementById("native-page")?.remove();
-  createRoot(host).render(
-    <ActionTooltipProvider>
-      {kind === "public" ? <Public page={page} /> : <Console page={page} />}
-    </ActionTooltipProvider>,
+  // Keep the native form, including the caret, selection and any chosen files,
+  // if someone started using it while the bundle was downloading.
+  if (
+    native?.contains(document.activeElement) ||
+    native?.querySelector(
+      "input:user-valid, input:user-invalid, textarea:user-valid, textarea:user-invalid",
+    )
+  ) {
+    const receipt = native.querySelector("[data-secret-receipt]");
+    if (receipt)
+      protectReceipt(receipt.id === "setup-command" ? "/quickstart" : "/keys");
+    return;
+  }
+  const { kind, page } = JSON.parse(payload.text);
+  // Replace the native UI in one turn. An input event cannot land between
+  // this focus check and the first React commit.
+  const root = createRoot(host);
+  flushSync(() =>
+    root.render(
+      <ActionTooltipProvider>
+        {kind === "public" ? <Public page={page} /> : <Console page={page} />}
+      </ActionTooltipProvider>,
+    ),
   );
 }
 mount();

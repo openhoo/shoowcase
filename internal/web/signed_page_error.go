@@ -7,7 +7,7 @@ import (
 	"github.com/openhoo/shoowcase/internal/webui"
 )
 
-var signedErrorPage = template.Must(template.New("signed-error").Parse(`<main><h1>{{.Title}}</h1><p>{{.Message}}</p><a href="/">Back to workspace</a></main>`))
+var signedErrorPage = template.Must(template.New("signed-error").Parse(`<main id="content" tabindex="-1"><h1>{{.Title}}</h1><p>{{.Message}}</p><a href="/">Back to workspace</a></main>`))
 
 func signedDomainError(w http.ResponseWriter, r *http.Request, err error) {
 	message, status := publicErrorDetails(err)

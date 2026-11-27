@@ -62,4 +62,4 @@ func (a *App) browserResult(w http.ResponseWriter, r *http.Request, raw map[stri
 	webui.Public(w, http.StatusOK, title, "receipt", receiptPage, data)
 }
 
-var receiptPage = template.Must(template.New("receipt").Parse(`<main><small>Shoowcase</small><h1>{{.Title}}</h1><p>{{.Message}}</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Revision</dt><dd><code>{{.Revision}}</code></dd></dl>{{if .Preview}}<p><a href="{{.Preview}}">Preview this revision</a></p>{{end}}{{if .SiteURL}}<p><a href="{{.SiteURL}}">Open the live site</a></p>{{end}}</main>`))
+var receiptPage = template.Must(template.New("receipt").Parse(`<main id="content" tabindex="-1"><small>Shoowcase</small><h1>{{.Title}}</h1><p>{{.Message}}</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Revision</dt><dd><code>{{.Revision}}</code></dd></dl>{{if .Preview}}<p><a href="{{.Preview}}">Preview this revision</a></p>{{end}}{{if .SiteURL}}<p><a href="{{.SiteURL}}">Open the live site</a></p>{{end}}</main>`))

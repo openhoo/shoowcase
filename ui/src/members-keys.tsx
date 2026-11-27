@@ -1,3 +1,4 @@
+import { protectReceipt } from "./lib/receipt";
 import { ActionButton, ActionSummary } from "@/components/icon-action";
 import {
   ArrowLeft,
@@ -115,33 +116,14 @@ function useReceipt(
   field: "Command" | "Secret",
   back: string,
 ) {
-  useLayoutEffect(() => {
-    const clear = () => {
-      if (field === "Command") (data as QuickData).Command = "";
-      else data.Secret = "";
-      const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-        "[data-secret-receipt]",
-      );
-      if (el) {
-        el.value = "";
-        el.defaultValue = "";
-        el.removeAttribute("value");
-        el.textContent = "";
-      }
-    };
-    const restore = (e: PageTransitionEvent) => {
-      if (e.persisted) {
-        clear();
-        window.location.replace(back);
-      }
-    };
-    window.addEventListener("pagehide", clear);
-    window.addEventListener("pageshow", restore);
-    return () => {
-      window.removeEventListener("pagehide", clear);
-      window.removeEventListener("pageshow", restore);
-    };
-  }, [data, field, back]);
+  useLayoutEffect(
+    () =>
+      protectReceipt(back, () => {
+        if (field === "Command") (data as QuickData).Command = "";
+        else data.Secret = "";
+      }),
+    [data, field, back],
+  );
 }
 export function KeyReceipt({ p }: { p: MemberData }) {
   useReceipt(p, "Secret", "/keys");
