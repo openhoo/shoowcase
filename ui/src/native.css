@@ -28,6 +28,9 @@
     .selection-toolbar {
       @apply flex flex-wrap items-center gap-3;
     }
+    .grid {
+      @apply grid-cols-1;
+    }
     form,
     p,
     .field,
