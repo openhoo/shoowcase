@@ -141,6 +141,54 @@ func (s *Store) createLocal(ctx context.Context, actor Actor, public bool, usern
 	return m, tx.Commit()
 }
 
+// SetLocalRole changes the password account's sign-in grant. Group membership,
+// personal limits and key scopes continue to constrain its effective access.
+func (s *Store) SetLocalRole(ctx context.Context, admin Actor, subject, role, expectedRole, expectedCeiling string, expectedDisabled bool) error {
+	tx, err := s.adminWrite(ctx, admin)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if subject == admin.Subject {
+		return fail("forbidden", "You cannot change your own membership.")
+	}
+	if !strings.HasPrefix(subject, LocalSubjectPrefix) {
+		return fail("forbidden", "Your identity provider manages this sign-in role.")
+	}
+	if roleLevel(role) == 0 {
+		return bad("Choose a valid password account role.")
+	}
+
+	// Require an actual password credential in this administrator's workspace.
+	var currentRole, ceiling string
+	var disabled bool
+	err = tx.QueryRowContext(ctx, `SELECT m.identity_role,m.ceiling,m.disabled
+		FROM sc_members m JOIN sc_local_credentials c ON c.workspace=m.workspace AND c.subject=m.subject
+		WHERE m.workspace=$1 AND m.subject=$2`, admin.Workspace, subject).Scan(&currentRole, &ceiling, &disabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fail("not_found", "Password account not found in this workspace.")
+	}
+	if err != nil {
+		return err
+	}
+	if currentRole != expectedRole || ceiling != expectedCeiling || disabled != expectedDisabled {
+		return conflict("This membership changed. Reload it and review the current settings.")
+	}
+	if currentRole == role {
+		return nil
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE sc_members SET identity_role=$1 WHERE workspace=$2 AND subject=$3", role, admin.Workspace, subject); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE sc_local_credentials SET generation=generation+1 WHERE workspace=$1 AND subject=$2", admin.Workspace, subject); err != nil {
+		return err
+	}
+	if err = recordAccountChange(ctx, tx, admin, "local_role_changed", subject, currentRole, role); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 type localCredential struct {
 	actor      Actor
 	salt, hash []byte

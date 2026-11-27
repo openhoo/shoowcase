@@ -323,40 +323,69 @@ function MemberDetails({ p }: { p: MemberData }) {
             value={m.Disabled ? "offline" : "published"}
             label={m.Disabled ? "Suspended" : "Active"}
           />
-          <span>{role(m.Role)}</span>
+          <span>Current access: {role(m.Role)}</span>
         </div>
         {m.Manage ? (
           <>
-            <p>
-              Sign-in role: {role(m.IdentityRole)}.{" "}
-              {m.IdentityRole === "admin"
-                ? "Your identity provider manages this role."
-                : "Role limit: " + role(m.Ceiling) + "."}
-            </p>
-            {m.IdentityRole !== "admin" && (
-              <Post className={stack} fields={{ ...guard, action: "role" }}>
+            {m.Local ? (
+              <Post
+                className={stack}
+                fields={{
+                  ...guard,
+                  action: "local-role",
+                  expected_role: m.IdentityRole,
+                }}
+              >
                 <Field
-                  id="ceiling-member"
-                  label={"Role limit for " + m.DisplayName}
-                  hintId="role-help-member"
-                  hint="A limit can only reduce the access granted at sign-in."
+                  id="member-sign-in-role"
+                  label={"Sign-in role for " + m.DisplayName}
+                  hintId="sign-in-role-help"
+                  hint="Admin can manage this workspace, including other members and their roles. Changing the sign-in role signs the member out. Their role limit stays in place."
                 >
                   <Choices
-                    id="ceiling-member"
-                    name="ceiling"
-                    defaultValue={m.Ceiling}
-                    choices={[
-                      ["", "Use sign-in role"],
-                      ...(m.Ceilings ?? []).map((v) => [v, role(v)] as const),
-                    ]}
-                    aria-describedby="role-help-member"
+                    id="member-sign-in-role"
+                    name="role"
+                    defaultValue={m.IdentityRole}
+                    choices={[...groupChoices, ["admin", "Admin"]]}
+                    aria-describedby="sign-in-role-help"
                   />
                 </Field>
                 <div>
-                  <ActionButton label="Save role limit" icon={Save} />
+                  <ActionButton label="Save sign-in role" icon={Save} />
                 </div>
               </Post>
+            ) : (
+              <p>
+                Sign-in role: {role(m.IdentityRole)}. Your identity provider
+                manages this role.
+              </p>
             )}
+            <Post className={stack} fields={{ ...guard, action: "role" }}>
+              <Field
+                id="ceiling-member"
+                label={"Role limit for " + m.DisplayName}
+                hintId="role-help-member"
+                hint={
+                  p.Settings.Mode === "managed"
+                    ? "A limit can only reduce access. In managed mode, members below Admin also need a group that grants editing or publishing."
+                    : "A limit can only reduce the access granted at sign-in."
+                }
+              >
+                <Choices
+                  id="ceiling-member"
+                  name="ceiling"
+                  defaultValue={m.Ceiling}
+                  choices={[
+                    ["", "Use sign-in role"],
+                    ...(m.Ceilings ?? []).map((v) => [v, role(v)] as const),
+                  ]}
+                  aria-describedby="role-help-member"
+                />
+              </Field>
+              <div>
+                <ActionButton label="Save role limit" icon={Save} />
+              </div>
+            </Post>
             <Post
               className={stack + " border-t pt-4"}
               fields={{ ...guard, action: m.Disabled ? "restore" : "suspend" }}

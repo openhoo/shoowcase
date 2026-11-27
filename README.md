@@ -134,7 +134,9 @@ The **control host** handles MCP, sign-in, uploads and public release approvals.
 | Publisher | Also publish, roll back, change the audience and approve public releases. |
 | Admin | Also manage enrolled workspace members and their agent keys, review workspace audit history and manage groups. Process metrics are available only to administrators of an explicitly configured operator workspace. |
 
-In **Admin**, a workspace administrator can add members, manage groups, set role limits, suspend members and revoke keys. In [managed mode](docs/tenant-access.md), members start as viewers and receive editor or publisher rights through group membership. Suspension revokes the member’s keys; restoring the member does not reactivate them. Administrators sign in through OIDC. If [password accounts](docs/tenant-access.md#manage-password-accounts) are enabled, an administrator can create them even with public registration closed. Members can change their own password under **Account**.
+In **Admin → Members**, a workspace administrator can change another [password account’s role](docs/tenant-access.md#change-a-password-accounts-role) after creation, including promoting the member to Admin or demoting an existing local Admin. The member signs in again with the same password. For SSO accounts, use **Role limit** to lower or restore access within the role granted by the identity provider.
+
+Administrators also manage groups, set role limits, suspend members and revoke keys. In [managed mode](docs/tenant-access.md), group membership grants editing or publishing to non-admin members within their sign-in role and any individual limit. Personal keys grant at most Publisher access. Suspension revokes the member’s keys; restoring the member does not reactivate them.
 
 See [OIDC and PKCE configuration](docs/oidc.md) and [audit export and retention](docs/audit.md).
 
