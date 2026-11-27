@@ -58,7 +58,7 @@ func (a *App) prepare(ctx context.Context, who sites.Actor, args json.RawMessage
 	return map[string]any{"upload_url": link, "browser_upload_url": link, "method": "PUT", "expires_at": expiry.UTC().Format(time.RFC3339), "size": spec.Size, "site_id": spec.Site}, nil
 }
 
-var uploadPage = template.Must(webui.NativeTemplate("upload").Parse(`<main>
+var uploadPage = template.Must(webui.NativeTemplate("upload").Parse(`<main id="content" tabindex="-1">
 <h1>Upload a file to the draft</h1><p>Choose the original file your agent requested. Uploading it will not change the published site.</p>
 <dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Destination</dt><dd><code>{{.Path}}</code></dd><dt>Expected size</dt><dd>{{.Size}} bytes</dd></dl>
 <details><summary>Verify the file checksum</summary><p>Expected SHA-256: <code>{{.SHA}}</code></p></details>

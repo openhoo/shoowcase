@@ -80,6 +80,17 @@ async def enroll(page, control):
 
 
 async def create_key(page, endpoint):
+    # A long access-level option must fit even before the bundle arrives.
+    native = await page.context.browser.new_context(java_script_enabled=False,
+        storage_state=await page.context.storage_state(), viewport={"width": 320, "height": 780})
+    try:
+        narrow = await native.new_page()
+        await narrow.goto(endpoint.removesuffix("/mcp") + "/keys")
+        await expect(narrow.get_by_label("Access", exact=True)).to_be_visible()
+        check(await narrow.evaluate("document.documentElement.scrollWidth <= innerWidth"),
+              "native agent key form overflows at 320px")
+    finally:
+        await native.close()
     await page.get_by_role("link", name="Agent keys", exact=True).click()
     await fits(page, "agent keys")
     await page.get_by_label("Key name").fill("Workshop publisher")

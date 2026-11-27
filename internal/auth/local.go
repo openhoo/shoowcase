@@ -37,7 +37,7 @@ func (s *Service) identityActive(ctx context.Context, i Identity) bool {
 
 //go:embed password.html
 var passwordHTML string
-var passwordContinue = template.Must(template.New("continue").Parse(`<main><h1>Signed in</h1><a href="{{.Next}}">Continue to your site</a></main>`))
+var passwordContinue = template.Must(template.New("continue").Parse(`<main id="content" tabindex="-1"><h1>Signed in</h1><a href="{{.Next}}">Continue to your site</a></main>`))
 
 var passwordPage = template.Must(webui.NativeTemplate("password").Parse(passwordHTML))
 

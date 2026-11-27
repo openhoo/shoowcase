@@ -283,7 +283,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Long signed actions can exceed a safe OIDC state-cookie size. Leave the
 // exact request in this tab and authenticate separately; no opaque action is
 // copied into a cookie, returned through the identity provider or cached per replica.
-var separateSignInPage = template.Must(template.New("signin").Parse(`<main><h1>Sign in to continue</h1><p>Keep this page open. <a href="/auth/login" target="_blank" rel="noopener noreferrer">Sign in in a new tab</a> with the account that requested this action, then close that tab and reload this page. You can then review the original request.</p><p>If the link expires, request a new one from your agent.</p></main>`))
+var separateSignInPage = template.Must(template.New("signin").Parse(`<main id="content" tabindex="-1"><h1>Sign in to continue</h1><p>Keep this page open. <a href="/auth/login" target="_blank" rel="noopener noreferrer">Sign in in a new tab</a> with the account that requested this action, then close that tab and reload this page. You can then review the original request.</p><p>If the link expires, request a new one from your agent.</p></main>`))
 
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	if strings.EqualFold(r.Host, a.origin.Host) && (r.URL.Path == "/approve" || r.URL.Path == "/upload") && len(r.URL.RequestURI()) > auth.MaxReturnPath {
@@ -384,7 +384,7 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var approvalPage = template.Must(webui.NativeTemplate("approval").Parse(`<main><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>{{template "icon-Check"}}<span class="action-caption">Approve public release</span></button></form></main>`))
+var approvalPage = template.Must(webui.NativeTemplate("approval").Parse(`<main id="content" tabindex="-1"><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>{{template "icon-Check"}}<span class="action-caption">Approve public release</span></button></form></main>`))
 
 func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	if !a.config.Public {

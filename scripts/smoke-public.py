@@ -52,6 +52,64 @@ async def start_local(binary):
                 server.wait(timeout=12)
 
 
+async def check_keyboard_handoff(browser, origin):
+    # Gate the actual network response and React's first scheduled work separately.
+    # No sleeps: Tab goes to the browser before the bundle/first commit can help it.
+    for phase, path in (("download", "/"), ("render", "/"), ("download", "/auth/register")):
+        ctx = await browser.new_context()
+        page = await ctx.new_page()
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def hold(route):
+            entered.set()
+            await release.wait()
+            await route.continue_()
+        if phase == "download":
+            await page.route("**/console.js", hold)
+        else:
+            await page.add_init_script("""{
+              const post = MessagePort.prototype.postMessage;
+              const pending = [];
+              MessagePort.prototype.postMessage = function(...args) {
+                pending.push(() => post.apply(this, args));
+              };
+              window.resumeRender = () => {
+                MessagePort.prototype.postMessage = post;
+                pending.splice(0).forEach(fn => fn());
+              };
+            }""")
+        try:
+            await page.goto(origin + path, wait_until="commit" if phase == "download" else "load")
+            if phase == "download":
+                await asyncio.wait_for(entered.wait(), timeout=5)
+            await page.locator("body").wait_for(state="attached")
+            if path == "/":
+                await page.keyboard.press("Tab")
+                await expect(page.get_by_role("link", name="Skip to content")).to_be_focused(timeout=1500)
+            else:
+                username = page.get_by_label("Username", exact=True)
+                await username.click(timeout=1500)
+                await page.keyboard.type("early-editor")
+                await page.keyboard.press("ArrowLeft")
+            if phase == "download":
+                release.set()
+                await page.wait_for_load_state("load")
+            else:
+                await page.evaluate("window.resumeRender()")
+            if path == "/":
+                await expect(page.locator("#app > :not(#native-page) main")).to_be_visible()
+                await expect(page.get_by_role("link", name="Skip to content")).to_be_focused()
+                await page.keyboard.press("Enter")
+                await expect(page.get_by_role("main")).to_be_focused()
+            else:
+                await expect(username).to_be_focused()
+                await page.keyboard.type("X")
+                await expect(username).to_have_value("early-editoXr")
+        finally:
+            release.set()
+            await ctx.close()
+    print("PASS: first Tab during bundle download and first render, skip target, native input value, focus and caret.")
+
+
 async def check_browser(browser, origin, live, screenshots=None):
     for js in (True, False):
         ctx = await browser.new_context(java_script_enabled=js, service_workers="block")
@@ -84,7 +142,7 @@ async def check_browser(browser, origin, live, screenshots=None):
                     await expect(h).to_be_visible()
                     if js:
                         # A native fallback with the correct heading must not pass the React gate.
-                        await expect(page.locator("#app main h1")).to_have_text(heading)
+                        await expect(page.locator("#app > :not(#native-page) main h1")).to_have_text(heading)
                     if path.startswith("/auth/"):
                         await expect(page.get_by_label("Username", exact=True)).to_be_visible()
                         await expect(page.get_by_label("Password", exact=True)).to_have_attribute("type", "password")
@@ -119,6 +177,7 @@ async def main(args):
                 if args.screenshots:
                     args.screenshots.mkdir(parents=True, exist_ok=True)
                 async with start_local(args.binary.resolve(strict=True)) as origin:
+                    await check_keyboard_handoff(browser, origin)
                     await check_browser(browser, origin, False, args.screenshots)
         finally:
             await browser.close()
