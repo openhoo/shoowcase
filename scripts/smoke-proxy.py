@@ -21,6 +21,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import secrets
 import shutil
 import socket
@@ -203,10 +204,13 @@ async def main(args):
                                    ("wrong proxy password", {**net, "HTTPS_PROXY": f"http://wrong@127.0.0.1:{port}"})):
                     # No CA passed to the untrusted-certificate probe.
                     ca = [] if label == "untrusted certificate" else ["--cacert", str(root / "ca.pem")]
-                    p = await asyncio.create_subprocess_exec(curl, "-qfsS", "--max-time", "4", *ca, base + "/healthz",
-                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    status = await p.wait()
-                    check((status == 0) == (label == "trusted proxy"), f"{label}: unexpected curl exit {status}")
+                    p = await asyncio.create_subprocess_exec(curl, "-qfsS", "--max-time", "8", *ca, base + "/healthz",
+                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                    _, error = await p.communicate()
+                    # Only report native Windows trust codes, never proxy URLs or credentials.
+                    codes = re.findall(rb"\b(?:CERT_TRUST_|SEC_E_|CRYPT_E_|CERT_E_)[A-Z0-9_]+\b|\b0x[0-9a-fA-F]{8}\b", error)
+                    check((p.returncode == 0) == (label == "trusted proxy"),
+                          f"{label}: unexpected curl exit {p.returncode}; trust codes: {b' '.join(codes).decode() or 'none'}")
                 check(counts["/healthz"] == 1, "only the trusted probe should reach the backend")
                 browser = await pw.chromium.launch(channel=args.browser_channel, args=["--ignore-certificate-errors-spki-list=" + spki],
                         proxy={"server": f"http://127.0.0.1:{port}", "username": "worker", "password": secret, "bypass": "<-loopback>"})
