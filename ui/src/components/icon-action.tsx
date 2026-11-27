@@ -14,6 +14,8 @@ type ActionProps = {
 };
 
 const actionClass = "size-11 min-h-11 min-w-11 justify-self-start p-0";
+const labeledClass =
+  "h-auto min-h-11 min-w-11 max-w-full justify-self-start gap-1.5 whitespace-normal";
 const glyphClass = "size-5";
 
 export function ActionButton({
@@ -21,23 +23,25 @@ export function ActionButton({
   icon: Icon,
   variant,
   className,
+  showLabel = false,
   disabled,
   disabledHint,
   ...props
 }: Omit<ComponentProps<"button">, "children" | "aria-label"> &
-  ActionProps & { disabledHint?: string }) {
+  ActionProps & { showLabel?: boolean; disabledHint?: string }) {
   const control = (
     <Button
       {...props}
       variant={variant}
       disabled={disabled}
-      size="icon"
-      data-icon-action
-      data-action-hint={disabled ? undefined : label}
-      aria-label={label}
-      className={cn(actionClass, className)}
+      size={showLabel ? "default" : "icon"}
+      data-icon-action={showLabel ? undefined : true}
+      data-action-hint={showLabel || disabled ? undefined : label}
+      aria-label={showLabel ? undefined : label}
+      className={cn(showLabel ? labeledClass : actionClass, className)}
     >
-      <Icon aria-hidden="true" className={glyphClass} />
+      <Icon aria-hidden="true" className={showLabel ? "size-4" : glyphClass} />
+      {showLabel && label}
     </Button>
   );
   // A native disabled button cannot receive keyboard focus or pointer events.
@@ -94,14 +98,7 @@ export function NavigationLink({
   ...props
 }: Omit<ComponentProps<"a">, "children" | "aria-label"> & ActionProps) {
   return (
-    <Button
-      asChild
-      variant={variant}
-      className={cn(
-        "h-auto min-h-11 min-w-11 max-w-full justify-self-start gap-1.5 whitespace-normal",
-        className,
-      )}
-    >
+    <Button asChild variant={variant} className={cn(labeledClass, className)}>
       <a {...props}>
         <Icon aria-hidden="true" className="size-4" />
         {label}

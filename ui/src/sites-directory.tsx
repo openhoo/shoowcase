@@ -121,7 +121,7 @@ function SiteFilters({ d, open }: { d: SiteListing; open: boolean }) {
 export function SiteDirectory({ d }: { d: SiteData }) {
   const f = d.Directory;
   const newSite = d.CanEdit && (
-    <ButtonLink action primary href="/sites/new" label="New site" icon={Plus} />
+    <ButtonLink primary href="/sites/new" label="New site" icon={Plus} />
   );
   return (
     <>

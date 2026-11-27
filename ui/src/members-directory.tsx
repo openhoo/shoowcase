@@ -264,6 +264,7 @@ function CreateMember({ p }: { p: MemberData }) {
             </Field>
             <div>
               <ActionButton
+                showLabel
                 label="Create password account"
                 icon={UserRoundPlus}
               />
@@ -379,6 +380,7 @@ function MemberDetails({ p }: { p: MemberData }) {
               )}
               <div>
                 <ActionButton
+                  showLabel
                   variant={m.Disabled ? "default" : "destructive"}
                   label={m.Disabled ? "Restore access" : "Suspend member"}
                   icon={m.Disabled ? RotateCcw : Ban}
@@ -847,6 +849,7 @@ function GroupDetails({ p }: { p: MemberData }) {
             </label>
             <div>
               <ActionButton
+                showLabel
                 variant="destructive"
                 label="Delete group"
                 icon={Trash2}

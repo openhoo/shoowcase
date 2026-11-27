@@ -85,5 +85,5 @@
 <h1>{{.Title}}</h1><p>{{.Effect}}</p>
 <form method="post" action="/admin" class="stack"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="{{.Action}}"><input type="hidden" name="review" value="{{.Review}}">
 <ul>{{range .Rows}}<li>{{.Name}}<input type="hidden" name="selected" value="{{.Value}}"></li>{{end}}</ul>
-<div class="toolbar"><button class="danger-action" name="confirm" value="yes">{{template "icon-Check"}}<span class="action-caption">{{.Title}}</span></button><a href="/admin?view=quotas#{{.Cancel}}">Cancel</a></div>
+<div class="toolbar"><button class="danger-action" name="confirm" value="yes">{{template "icon-Check"}}<span class="action-label">{{.Title}}</span></button><a href="/admin?view=quotas#{{.Cancel}}">Cancel</a></div>
 </form></section>{{end}}

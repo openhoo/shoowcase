@@ -12,7 +12,7 @@
 {{end}}
 
 {{define "keys"}}
-<header class="desk-head"><div><p class="eyebrow">Workspace <span aria-hidden="true">/</span> {{.Workspace}}</p><h1>Agent keys</h1><p>Use a separate key for each agent connection.</p><p><a href="/quickstart">Set up an agent with Quickstart →</a></p></div><a class="button new-site-action" href="#new-key">{{template "icon-KeyRound"}}<span class="action-caption">Create a key</span></a></header>
+<header class="desk-head"><div><p class="eyebrow">Workspace <span aria-hidden="true">/</span> {{.Workspace}}</p><h1>Agent keys</h1><p>Use a separate key for each agent connection.</p><p><a href="/quickstart">Set up an agent with Quickstart →</a></p></div><a class="button new-site-action" href="#new-key">{{template "icon-KeyRound"}}<span class="action-label">Create a key</span></a></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 {{template "key-list" .}}
 <section class="panel stack" aria-labelledby="new-key"><h2 id="new-key" tabindex="-1">Create a key</h2>
@@ -21,7 +21,7 @@
 <div class="field"><label for="key-name">Key name</label><input id="key-name" name="name" type="text" value="{{.NameValue}}" required maxlength="80" placeholder="e.g. Design team agent"{{if .Err}} aria-describedby="key-error"{{end}}></div>
 <div class="grid"><div class="field"><label for="key-scope">Access</label><div class="select-wrap"><select id="key-scope" name="scope" required>{{range .Scopes}}<option value="{{.}}"{{if eq $.Scope .}} selected{{end}}>{{if eq . "reader"}}Viewer · Read sites{{else if eq . "editor"}}Editor · Create and edit{{else}}Publisher · Publish and manage public access{{end}}</option>{{end}}</select></div></div>
 <div class="field"><label for="key-days">Expires in</label><div class="select-wrap"><select id="key-days" name="days"><option value="7"{{if eq .Days "7"}} selected{{end}}>7 days</option><option value="30"{{if eq .Days "30"}} selected{{end}}>30 days</option><option value="90"{{if eq .Days "90"}} selected{{end}}>90 days</option></select></div></div></div>
-<div><button type="submit">{{template "icon-KeyRound"}}<span class="action-caption">Create key</span></button></div></form></section>
+<div><button type="submit">{{template "icon-KeyRound"}}<span class="action-label">Create key</span></button></div></form></section>
 <details class="panel"><summary>Connect an existing key</summary><div class="stack"><p>In your agent’s MCP settings, choose Streamable HTTP. Enter the server URL and use your key as the bearer token.</p>{{template "endpoint" .}}</div></details>
 {{end}}
 
@@ -52,7 +52,7 @@
         <form class="stack" action="{{if $.Admin}}/admin{{else}}/keys{{end}}" method="post">
           <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{.ID}}">
           <label><input type="checkbox" name="confirm" value="yes" required> Disconnect agents using this key.</label>
-          <div><button type="submit" class="danger">{{template "icon-Unplug"}}<span class="action-caption">Revoke key</span></button></div>
+          <div><button type="submit" class="danger">{{template "icon-Unplug"}}<span class="action-label">Revoke key</span></button></div>
         </form></details>{{else}}—{{end}}</td>
     </tr>{{end}}</tbody>
   </table>
@@ -69,6 +69,6 @@
 <ul>{{range .Keys}}<li><strong>{{.Name}}</strong>{{if $.Admin}} · Owner: <code>{{.Subject}}</code>{{end}} · ID: <code>{{.ID}}</code></li>{{end}}</ul>
 <form class="toolbar" method="post" action="{{.Path}}">
   <input type="hidden" name="action" value="revoke-selected"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="review" value="{{.Review}}">
-  <button type="submit" name="confirm" value="yes" class="danger">{{template "icon-Unplug"}}<span class="action-caption">{{if eq (len .Keys) 1}}Revoke key{{else}}Revoke keys{{end}}</span></button><a href="{{.Back}}">Cancel</a>
+  <button type="submit" name="confirm" value="yes" class="danger">{{template "icon-Unplug"}}<span class="action-label">{{if eq (len .Keys) 1}}Revoke key{{else}}Revoke keys{{end}}</span></button><a href="{{.Back}}">Cancel</a>
 </form></section>
 {{end}}

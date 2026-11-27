@@ -92,7 +92,6 @@ function DraftFiles({ d }: { d: SiteData }) {
             icon={Upload}
           />
           <ButtonLink
-            action
             href={d.Base + "/import"}
             label="Import ZIP"
             icon={Archive}
@@ -243,6 +242,7 @@ function SiteAccess({ d }: { d: SiteData }) {
             />
           </Field>
           <ActionButton
+            showLabel
             type="submit"
             variant="outline"
             label="Update access"
@@ -406,6 +406,7 @@ export function SiteDetail({ d }: { d: SiteData }) {
           <form method="post" action={postTarget(d.Base + "/publish")}>
             <Write d={d} />
             <ActionButton
+              showLabel
               type="submit"
               label="Publish draft"
               icon={CloudUpload}

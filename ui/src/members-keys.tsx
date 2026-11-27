@@ -286,6 +286,7 @@ export function KeyList({ p }: { p: MemberData }) {
                       </label>
                       <div>
                         <ActionButton
+                          showLabel
                           variant="destructive"
                           label="Revoke key"
                           icon={Ban}
@@ -317,7 +318,6 @@ export function Keys({ p }: { p: MemberData }) {
         title="Agent keys"
         action={
           <ButtonLink
-            action
             primary
             href="#new-key"
             label="Create a key"
@@ -379,7 +379,7 @@ export function Keys({ p }: { p: MemberData }) {
             </Field>
           </div>
           <div>
-            <ActionButton label="Create key" icon={KeyRound} />
+            <ActionButton showLabel label="Create key" icon={KeyRound} />
           </div>
         </Post>
       </Panel>
@@ -439,6 +439,7 @@ export function KeyReview({
           className={toolbar}
         >
           <ActionButton
+            showLabel
             variant="destructive"
             name="confirm"
             value="yes"
@@ -553,7 +554,11 @@ export function Quickstart({ p }: { p: QuickData }) {
           </Field>
         </Disclosure>
         <div>
-          <ActionButton label="Create key and get command" icon={Terminal} />
+          <ActionButton
+            showLabel
+            label="Create key and get command"
+            icon={Terminal}
+          />
         </div>
         <p className={secondaryText}>
           Does your agent run in the cloud or only accept a server URL?{" "}
