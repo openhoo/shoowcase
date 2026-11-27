@@ -384,7 +384,7 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var approvalPage = template.Must(webui.NativeTemplate("approval").Parse(`<main id="content" tabindex="-1"><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>{{template "icon-Check"}}<span class="action-caption">Approve public release</span></button></form></main>`))
+var approvalPage = template.Must(webui.NativeTemplate("approval").Parse(`<main id="content" tabindex="-1"><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>{{template "icon-Check"}}<span class="action-label">Approve public release</span></button></form></main>`))
 
 func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	if !a.config.Public {

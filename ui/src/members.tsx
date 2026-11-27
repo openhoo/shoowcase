@@ -124,7 +124,7 @@ function Account({ p }: { p: MemberData }) {
               ["Role", role(p.Role)],
             ]}
           />
-          <ActionButton label="Create account" icon={UserRoundPlus} />
+          <ActionButton showLabel label="Create account" icon={UserRoundPlus} />
         </Post>
       </>
     );
@@ -508,6 +508,7 @@ function SelectionReview({ p }: { p: Review }) {
             <Hidden key={id} fields={{ selected: id }} />
           ))}
           <ActionButton
+            showLabel
             name="confirm"
             value="yes"
             variant={
@@ -555,6 +556,7 @@ function ClearReview({
         </ul>
         <div className={toolbar}>
           <ActionButton
+            showLabel
             variant="destructive"
             name="confirm"
             value="yes"

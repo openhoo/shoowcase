@@ -90,6 +90,7 @@ export function CreateSite({ d }: { d: SiteData }) {
             </Field>
             <div className={toolbar}>
               <ActionButton
+                showLabel
                 type="submit"
                 label="Create site"
                 icon={FolderPlus}
@@ -226,7 +227,12 @@ export function FileEditor({ d }: { d: SiteData }) {
             />
           </Field>
           <div className={toolbar}>
-            <ActionButton type="submit" label="Save file" icon={Save} />
+            <ActionButton
+              showLabel
+              type="submit"
+              label="Save file"
+              icon={Save}
+            />
             <ButtonLink href={d.Base} label="Cancel" icon={X} />
           </div>
         </form>
@@ -305,6 +311,7 @@ export function UploadSiteFile({ d }: { d: SiteData }) {
           )}
           <div className={toolbar}>
             <ActionButton
+              showLabel
               type="submit"
               label={zip ? "Import files" : "Upload to draft"}
               icon={FileUp}
@@ -368,6 +375,7 @@ export function ConfirmDelete({ d, sites }: { d: SiteData; sites: boolean }) {
           <Hidden name="proof" value={d.ReviewProof} />
           <div className={toolbar}>
             <ActionButton
+              showLabel
               type="submit"
               variant="destructive"
               name="confirm"
@@ -411,6 +419,7 @@ export function RestoreRelease({ d }: { d: SiteData }) {
           <Hidden name="current" value={d.S?.ReleaseID || ""} />
           <div className={toolbar}>
             <ActionButton
+              showLabel
               type="submit"
               label="Restore release"
               icon={History}
