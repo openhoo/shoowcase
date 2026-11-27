@@ -64,3 +64,4 @@ async def check_site_lists(admin, member, control):
     await expect(admin.get_by_text("This group has no members.")).to_be_visible()
     await member.goto(control + "/sites")
     await expect(member.get_by_role("rowheader").get_by_role("link")).to_have_text([member_site])
+    return member_site

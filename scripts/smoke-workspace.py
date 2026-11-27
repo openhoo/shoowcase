@@ -620,7 +620,7 @@ async def password_accounts(binary, browser):
             await expect(page.get_by_role("link", name="Admin", exact=True)).to_have_count(0)
         blocked = await member.request.get(control + "/admin")
         check(blocked.status == 403, "demoted password account still has workspace admin access")
-        await check_site_lists(admin, member, control)
+        member_site = await check_site_lists(admin, member, control)
         # A new browser that starts on a private site returns to the exact
         # destination through the password flow. Its site cookie must expire too.
         async with browser_smoke.connect(endpoint, token) as agent:
@@ -657,7 +657,7 @@ async def password_accounts(binary, browser):
         await expect(member.get_by_role("alert")).to_contain_text("incorrect")
         await signin(member, control, second)
         await expect(member.get_by_role("heading", name="Your account")).to_be_visible()
-        await delete_password_account(admin, member, control, browser, fits, second)
+        await delete_password_account(admin, member, control, browser, fits, second, member_site)
         for page in (admin, member, other, private, native_private):
             await page.context.close()
     async with browser_smoke.local_server(binary, password_registration=True) as (endpoint, _, _):

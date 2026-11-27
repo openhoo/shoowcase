@@ -111,8 +111,8 @@ async def delete_groups_without_javascript(page, control, browser):
         await ctx.close()
 
 
-async def delete_password_account(admin, member, control, browser, fits, current_password):
-    # A real password user owns one site; the admin's Private guide and another
+async def delete_password_account(admin, member, control, browser, fits, current_password, member_site):
+    # The password user already owns the site from the directory test; the admin's Private guide and another
     # member must survive both cancel and confirmed deletion.
     owner = "studio-member"
     neighbor = "Keep this member"
@@ -134,8 +134,9 @@ async def delete_password_account(admin, member, control, browser, fits, current
     async def reviewed(page):
         await expect(page.get_by_role("heading", name="Review account deletion", exact=True)).to_be_visible()
         entries = page.get_by_role("listitem")
-        await expect(entries).to_have_count(2)
+        await expect(entries).to_have_count(3)
         await expect(entries.filter(has_text=owner)).to_be_visible()
+        await expect(entries.filter(has_text=member_site)).to_be_visible()
         await expect(entries.filter(has_text=site_name)).to_contain_text(site_id)
         await expect(entries.filter(has_text=neighbor)).to_have_count(0)
         await expect(page.get_by_text("This cannot be undone.", exact=False).first).to_be_visible()
@@ -166,8 +167,10 @@ async def delete_password_account(admin, member, control, browser, fits, current
         await expect(plain.get_by_role("status").filter(has_text="permanently deleted")).to_be_visible()
         await expect(plain.get_by_role("link", name=owner, exact=True)).to_have_count(0)
         await expect(plain.get_by_role("link", name=neighbor, exact=True)).to_be_visible()
-        await plain.goto(control + "/sites")
+        await plain.goto(control + "/admin?view=sites")
+        await expect(plain.get_by_role("heading", name="All sites", exact=True)).to_be_visible()
         await expect(plain.get_by_role("link", name=site_name, exact=True)).to_have_count(0)
+        await expect(plain.get_by_role("link", name=member_site, exact=True)).to_have_count(0)
         await expect(plain.get_by_role("link", name="Private guide", exact=True)).to_be_visible()
         await member.goto(control + "/account")
         await expect(member.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
