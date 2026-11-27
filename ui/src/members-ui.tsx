@@ -1,26 +1,26 @@
-import { navigationTarget, postTarget } from "@/lib/navigation";
-import { type ComponentProps, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
-import { Label } from "@/components/ui/label";
+import { ActionButton } from "@/components/icon-action";
+import { PanelSection } from "@/components/panel-section";
 import {
   SelectAll,
   SelectionCount,
   type useSelection,
 } from "@/components/selection";
-import { linkStyle, sectionHeading, toolbar } from "./sites-ui";
-import { PanelSection } from "@/components/panel-section";
-export {
-  RecordTable,
-  RecordRow,
-  NameCell,
-  Cell,
-  PickCell,
-} from "@/components/record-table";
+import { Label } from "@/components/ui/label";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import { navigationTarget, postTarget } from "@/lib/navigation";
+import { type ComponentProps, type ReactNode } from "react";
 import { longDate, role } from "./members-model";
+import { linkStyle, sectionHeading, toolbar } from "./sites-ui";
+export {
+  Cell,
+  NameCell,
+  PickCell,
+  RecordRow,
+  RecordTable,
+} from "@/components/record-table";
 
 export const stack = "grid min-w-0 gap-4";
 export const secondaryText = "text-sm text-muted-foreground";
@@ -198,20 +198,14 @@ export function BulkForm({
     </Post>
   );
 }
-export function BulkButton({
-  children,
-  ...props
-}: ComponentProps<typeof Button>) {
+export function BulkButton(props: ComponentProps<typeof ActionButton>) {
   return (
-    <Button
+    <ActionButton
       data-selection-submit
-      size="sm"
       variant="outline"
       type="submit"
       {...props}
-    >
-      {children}
-    </Button>
+    />
   );
 }
 export function DateDisplay({

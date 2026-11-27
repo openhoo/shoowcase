@@ -1,3 +1,4 @@
+import { ActionButton, ActionSummary } from "@/components/icon-action";
 import {
   ArrowLeft,
   Ban,
@@ -10,24 +11,14 @@ import {
 import { useLayoutEffect, useState, type ReactNode } from "react";
 
 import { SelectRow, useSelection } from "@/components/selection";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ButtonLink,
-  Empty,
-  Head,
-  linkStyle,
-  Notice,
-  StateBadge,
-  toolbar,
-} from "./sites-ui";
-import {
+  plural,
+  role,
   type AgentKey,
   type MemberData,
   type QuickData,
-  plural,
-  role,
 } from "./members-model";
 import {
   BulkButton,
@@ -48,8 +39,16 @@ import {
   reviewList,
   secondaryText,
   stack,
-  summaryClass,
 } from "./members-ui";
+import {
+  ButtonLink,
+  Empty,
+  Head,
+  linkStyle,
+  Notice,
+  StateBadge,
+  toolbar,
+} from "./sites-ui";
 
 const lifetimes = ["7", "30", "90"].map((v) => [v, v + " days"] as const);
 const scopes: Record<string, string> = {
@@ -63,7 +62,7 @@ const quickScopes: Record<string, string> = {
   publisher: "Edit, publish and manage public access",
 };
 
-function Copy({ id, children }: { id: string; children: ReactNode }) {
+function Copy({ id, children }: { id: string; children: string }) {
   const [message, set] = useState("");
   async function copy() {
     const field = document.getElementById(id) as
@@ -80,16 +79,14 @@ function Copy({ id, children }: { id: string; children: ReactNode }) {
   }
   return (
     <div className={toolbar}>
-      <Button
+      <ActionButton
         variant="outline"
-        size="sm"
         type="button"
         data-copy-target={id}
         onClick={copy}
-      >
-        <ClipboardCopy aria-hidden="true" />
-        {children}
-      </Button>
+        label={children}
+        icon={ClipboardCopy}
+      />
       <span role="status" className={secondaryText}>
         {message}
       </span>
@@ -188,10 +185,7 @@ export function KeyReceipt({ p }: { p: MemberData }) {
           </li>
           <li>Connect the server and ask your agent to list your sites.</li>
         </ol>
-        <ButtonLink href="/keys">
-          <ArrowLeft aria-hidden="true" />
-          Back to agent keys
-        </ButtonLink>
+        <ButtonLink href="/keys" label="Back to agent keys" icon={ArrowLeft} />
       </Panel>
     </>
   );
@@ -217,10 +211,11 @@ export function KeyList({ p }: { p: MemberData }) {
           selection={s}
           fields={{ csrf: p.CSRF, action: "review-key-revocation" }}
         >
-          <BulkButton disabled={!s.count}>
-            <KeyRound aria-hidden="true" />
-            Revoke selected keys
-          </BulkButton>
+          <BulkButton
+            disabled={!s.count}
+            label="Revoke selected keys"
+            icon={Ban}
+          />
         </BulkForm>
       )}
       {rows.length > 0 ? (
@@ -287,9 +282,11 @@ export function KeyList({ p }: { p: MemberData }) {
               <Cell>
                 {k.State === "Active" ? (
                   <details className="min-w-0 space-y-3">
-                    <summary className={summaryClass + " text-destructive"}>
-                      Revoke {k.Name}
-                    </summary>
+                    <ActionSummary
+                      className="text-destructive"
+                      label={"Revoke " + k.Name}
+                      icon={Ban}
+                    />
                     <Post
                       path={path}
                       className={stack}
@@ -306,10 +303,11 @@ export function KeyList({ p }: { p: MemberData }) {
                         Disconnect agents using this key.
                       </label>
                       <div>
-                        <Button size="sm" variant="destructive">
-                          <Ban aria-hidden="true" />
-                          Revoke key
-                        </Button>
+                        <ActionButton
+                          variant="destructive"
+                          label="Revoke key"
+                          icon={Ban}
+                        />
                       </div>
                     </Post>
                   </details>
@@ -336,10 +334,12 @@ export function Keys({ p }: { p: MemberData }) {
         tag={"Workspace / " + p.Workspace}
         title="Agent keys"
         action={
-          <ButtonLink primary href="#new-key">
-            <Plus aria-hidden="true" />
-            Create a key
-          </ButtonLink>
+          <ButtonLink
+            primary
+            href="#new-key"
+            label="Create a key"
+            icon={Plus}
+          />
         }
       >
         <p>Use a separate key for each agent connection.</p>
@@ -396,10 +396,7 @@ export function Keys({ p }: { p: MemberData }) {
             </Field>
           </div>
           <div>
-            <Button>
-              <KeyRound aria-hidden="true" />
-              Create key
-            </Button>
+            <ActionButton label="Create key" icon={KeyRound} />
           </div>
         </Post>
       </Panel>
@@ -458,14 +455,14 @@ export function KeyReview({
           fields={{ action: "revoke-selected", csrf: p.CSRF, review: p.Review }}
           className={toolbar}
         >
-          <Button variant="destructive" name="confirm" value="yes">
-            <Ban aria-hidden="true" />
-            {p.Keys.length === 1 ? "Revoke key" : "Revoke keys"}
-          </Button>
-          <ButtonLink href={p.Back}>
-            <X aria-hidden="true" />
-            Cancel
-          </ButtonLink>
+          <ActionButton
+            variant="destructive"
+            name="confirm"
+            value="yes"
+            label={p.Keys.length === 1 ? "Revoke key" : "Revoke keys"}
+            icon={Ban}
+          />
+          <ButtonLink href={p.Back} label="Cancel" icon={X} />
         </Post>
       </Panel>
     </>
@@ -573,10 +570,7 @@ export function Quickstart({ p }: { p: QuickData }) {
           </Field>
         </Disclosure>
         <div>
-          <Button>
-            <Terminal aria-hidden="true" />
-            Create key and get command
-          </Button>
+          <ActionButton label="Create key and get command" icon={Terminal} />
         </div>
         <p className={secondaryText}>
           Does your agent run in the cloud or only accept a server URL?{" "}

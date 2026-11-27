@@ -384,7 +384,7 @@ func (a *App) deliver(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var approvalPage = template.Must(template.New("approval").Parse(`<main><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Approve public release</button></form></main>`))
+var approvalPage = template.Must(webui.NativeTemplate("approval").Parse(`<main><h1>Review public release</h1><p>Approval makes this version available to anyone who knows the site address. The current version remains unchanged until you approve.</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Version</dt><dd><code>{{.Revision}}</code></dd><dt>Action</dt><dd>{{.Tool}}</dd></dl>{{if .Preview}}<p><a href="{{.Preview}}" target="_blank" rel="noreferrer">Review this version</a></p>{{end}}<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>{{template "icon-Check"}}<span class="action-caption">Approve public release</span></button></form></main>`))
 
 func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 	if !a.config.Public {
@@ -433,6 +433,9 @@ func (a *App) approve(w http.ResponseWriter, r *http.Request) {
 				signedDomainError(w, r, e)
 				return
 			}
+		} else if _, e := a.store.GetSite(ctx, who, sites.GetSiteQuery{Site: v.Site, Limit: new(1)}); e != nil {
+			signedDomainError(w, r, e)
+			return
 		}
 		preview := ""
 		if review != "" {

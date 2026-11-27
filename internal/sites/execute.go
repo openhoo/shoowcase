@@ -213,6 +213,12 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 		if e = json.Unmarshal([]byte(saved), &res); e != nil {
 			return nil, e
 		}
+		// Receipts survive deletion to reserve the request ID. Do not return
+		// a successful upload, approval or creation for a removed site.
+		siteID, _ := res["site_id"].(string)
+		if _, e = readSite(ctx, tx, a, siteID); e != nil {
+			return nil, e
+		}
 		return effectiveAudience(ctx, res), nil
 	}
 	if !errors.Is(e, sql.ErrNoRows) {

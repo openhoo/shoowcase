@@ -13,12 +13,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/openhoo/shoowcase/internal/sites"
+	"github.com/openhoo/shoowcase/internal/webui"
 )
 
 //go:embed templates/members*.html directory-icons.html
 var memberFiles embed.FS
 
-var memberPages = template.Must(template.New("member-pages").Funcs(template.FuncMap{
+var memberPages = template.Must(webui.NativeTemplate("member-pages").Funcs(template.FuncMap{
 	"role":            memberRole,
 	"shortDate":       func(t time.Time) string { return t.UTC().Format("Jan 2, 2006") },
 	"longDate":        func(t time.Time) string { return t.UTC().Format("Jan 2, 2006 at 15:04 UTC") },
@@ -112,7 +113,7 @@ func memberEventName(action string) string {
 	case "workspace_renamed":
 		return "Workspace renamed"
 	case "delete_site":
-		return "Draft site deleted"
+		return "Site deleted"
 	case "create_site":
 		return "Site created"
 	case "upload_files":

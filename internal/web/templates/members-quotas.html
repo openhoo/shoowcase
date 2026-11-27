@@ -17,7 +17,7 @@
 <div class="field"><label for="storage-limit-{{$key}}">Maximum storage</label><input type="number" min="0" step="1" id="storage-limit-{{$key}}" name="storage_limit" value="{{.StorageLimit}}" aria-describedby="storage-help-{{$key}}"{{if .Workspace}} required{{end}}><small id="storage-help-{{$key}}">Enter a whole number and choose its unit.</small></div>
 <div class="field"><label for="storage-unit-{{$key}}">Storage unit</label><div class="select-wrap"><select id="storage-unit-{{$key}}" name="storage_unit"><option value="B"{{if eq .Unit "B"}} selected{{end}}>Bytes</option><option value="KiB"{{if eq .Unit "KiB"}} selected{{end}}>KiB</option><option value="MiB"{{if eq .Unit "MiB"}} selected{{end}}>MiB</option><option value="GiB"{{if eq .Unit "GiB"}} selected{{end}}>GiB</option></select></div></div>
 </div>
-<div class="toolbar"><button>Save limits</button>{{if not .Workspace}}<a href="/admin?view=quotas#budget-{{.ID}}">Cancel</a>{{end}}</div></form>
+<div class="toolbar"><button>{{template "icon-Save"}}<span class="action-caption">Save limits</span></button>{{if not .Workspace}}<a href="/admin?view=quotas#budget-{{.ID}}">{{template "icon-X"}}<span class="action-caption">Cancel</span></a>{{end}}</div></form>
 {{end}}
 
 {{define "quotas"}}
@@ -38,7 +38,7 @@
 {{if .Quota.HasGroupLimits}}
 <form class="selection-toolbar" id="select-group-quotas" method="post" action="/admin">
 <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="clear-group-limits">
-{{template "admin-select-all"}}<button type="submit" class="danger-action" data-selection-submit>Clear selected limits</button>
+{{template "admin-select-all"}}<button type="submit" class="danger-action" data-selection-submit>{{template "icon-Eraser"}}<span class="action-caption">Clear selected limits</span></button>
 </form>{{end}}
 {{if .Quota.Groups}}<table class="directory-table" role="table" aria-labelledby="group-quotas">
 <thead><tr>{{if .Quota.HasGroupLimits}}<th scope="col" class="selection-cell">Select</th>{{end}}<th scope="col">Group</th><th scope="col">Sites</th><th scope="col">Revision storage</th><th scope="col">Actions</th></tr></thead>
@@ -48,7 +48,7 @@
 <td><span class="mobile-label" aria-hidden="true">Sites</span>{{template "site-usage" .}}</td>
 <td><span class="mobile-label" aria-hidden="true">Revision storage</span>{{template "storage-usage" .}}</td>
 <td class="entry-wide"><div class="toolbar"><a href="/admin?view=quotas&amp;budget={{.ID}}#budget-editor" aria-label="Edit limits for {{.Name}}">Edit limits</a>{{if or (ge .Limits.Sites 0) (ge .Limits.Bytes 0)}}<form action="/admin" method="post">
-<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="clear-group-limits"><button class="danger-action" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Clear limits for {{.Name}}">Clear limits</button></form>{{end}}</div></td>
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="clear-group-limits"><button class="danger-action" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Clear limits for {{.Name}}">{{template "icon-Eraser"}}<span class="action-caption">Clear limits for {{.Name}}</span></button></form>{{end}}</div></td>
 </tr>{{end}}</tbody></table>{{else}}<div class="directory-empty"><h3>No groups yet</h3><p><a href="/admin?view=groups">Create a group</a> to give a project its own limits.</p></div>{{end}}
 </section>
 
@@ -62,12 +62,12 @@
 <p>Moving this site assigns its full revision history ({{quotaBytes .Bytes}}) to the new group. Its address and audience stay the same. If you choose a group, only its editors, its publishers and workspace admins can edit the draft.</p>
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="site-group"><input type="hidden" name="site" value="{{.ID}}"><input type="hidden" name="version" value="{{.Version}}">
 <div class="field"><label for="site-group">Group for {{.Name}}</label><div class="select-wrap"><select id="site-group" name="group"><option value=""{{if not .GroupID}} selected{{end}}>Unassigned</option>{{range $.Quota.Groups}}<option value="{{.ID}}"{{if eq $.Quota.Selected.GroupID .ID}} selected{{end}}>{{.Name}}</option>{{end}}</select></div></div>
-<div class="toolbar"><button>Save assignment</button><a href="/admin?view=quotas#site-assignments">Cancel</a></div>
+<div class="toolbar"><button>{{template "icon-Save"}}<span class="action-caption">Save assignment</span></button><a href="/admin?view=quotas#site-assignments">{{template "icon-X"}}<span class="action-caption">Cancel</span></a></div>
 </form>{{end}}</div>
 {{if .Quota.HasAssignments}}
 <form class="selection-toolbar" id="select-site-assignments" method="post" action="/admin">
 <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="clear-site-assignments">
-{{template "admin-select-all"}}<button type="submit" class="danger-action" data-selection-submit>Remove selected assignments</button>
+{{template "admin-select-all"}}<button type="submit" class="danger-action" data-selection-submit>{{template "icon-Unlink"}}<span class="action-caption">Remove selected assignments</span></button>
 </form>{{end}}
 {{if .Quota.Sites}}<table class="directory-table" role="table" aria-labelledby="site-assignments">
 <thead><tr>{{if .Quota.HasAssignments}}<th scope="col" class="selection-cell">Select</th>{{end}}<th scope="col">Site</th><th scope="col">Group</th><th scope="col">Revision storage</th><th scope="col">Actions</th></tr></thead>
@@ -77,7 +77,7 @@
 <td><span class="mobile-label" aria-hidden="true">Group</span>{{.GroupName}}</td>
 <td><span class="mobile-label" aria-hidden="true">Revision storage</span>{{quotaBytes .Bytes}}</td>
 <td class="entry-wide"><div class="toolbar"><a href="/admin?view=quotas&amp;site={{.ID}}#assignment" aria-label="Change group for {{.Name}}">Change group</a>{{if .GroupID}}<form action="/admin" method="post">
-<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="clear-site-assignments"><button class="danger-action" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Remove assignment for {{.Name}}">Remove assignment</button></form>{{end}}</div></td>
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="clear-site-assignments"><button class="danger-action" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Remove assignment for {{.Name}}">{{template "icon-Unlink"}}<span class="action-caption">Remove assignment for {{.Name}}</span></button></form>{{end}}</div></td>
 </tr>{{end}}</tbody></table>{{else}}<div class="directory-empty"><h3>No sites in this workspace yet.</h3></div>{{end}}
 </section>{{end}}
 
@@ -85,5 +85,5 @@
 <h1>{{.Title}}</h1><p>{{.Effect}}</p>
 <form method="post" action="/admin" class="stack"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="{{.Action}}"><input type="hidden" name="review" value="{{.Review}}">
 <ul>{{range .Rows}}<li>{{.Name}}<input type="hidden" name="selected" value="{{.Value}}"></li>{{end}}</ul>
-<div class="toolbar"><button class="danger-action" name="confirm" value="yes">{{.Title}}</button><a href="/admin?view=quotas#{{.Cancel}}">Cancel</a></div>
+<div class="toolbar"><button class="danger-action" name="confirm" value="yes">{{template "icon-Check"}}<span class="action-caption">{{.Title}}</span></button><a href="/admin?view=quotas#{{.Cancel}}">{{template "icon-X"}}<span class="action-caption">Cancel</span></a></div>
 </form></section>{{end}}

@@ -5,7 +5,7 @@
   {{if .Events}}
 
   <div class="selection-toolbar" data-export-toolbar hidden>
-    {{template "admin-select-all"}}<button type="button" class="secondary" data-selection-export="audit-events" hidden>Download selected (CSV)</button>
+    {{template "admin-select-all"}}<button type="button" class="secondary" data-selection-export="audit-events" hidden>{{template "icon-Download"}}<span class="action-caption">Download selected (CSV)</span></button>
   </div>
   <table class="directory-table" role="table" aria-labelledby="activity">
     <thead><tr><th scope="col" class="selection-cell" data-export-cell hidden>Select</th><th scope="col">Event</th><th scope="col">When (UTC)</th><th scope="col">By</th><th scope="col">Details</th></tr></thead>

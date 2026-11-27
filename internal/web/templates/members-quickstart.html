@@ -13,7 +13,7 @@
 <div><label><input type="checkbox" name="company_proxy" aria-describedby="proxy-help" {{if .CompanyProxy}}checked{{end}}> Use a company proxy</label>
 <p class="muted" id="proxy-help">Choose this if your computer needs a proxy to reach the internet. The installer uses your terminal’s proxy settings or asks for the address locally.</p></div>
 <details><summary>Name this connection (optional)</summary><div class="field"><label for="quick-name">Name in Agent keys</label><input type="text" id="quick-name" name="name" value="{{.NameValue}}" maxlength="80" placeholder="e.g. My work laptop"></div></details>
-<div class="toolbar"><button type="submit">Create key and get command</button></div>
+<div class="toolbar"><button type="submit">{{template "icon-KeyRound"}}<span class="action-caption">Create key and get command</span></button></div>
 <p class="muted">Does your agent run in the cloud or only accept a server URL? <a href="/keys">Set up a remote HTTP connection instead.</a></p>
 </form>
 {{end}}
@@ -25,9 +25,9 @@
 <p>Open {{if eq .Platform "windows"}}PowerShell{{else}}a terminal{{end}} on the computer where you use {{.ClientName}}. {{if eq .Client "stdio"}}This installs the connector and prints the command and arguments to enter in your client’s local MCP server settings.{{else}}This installs the Shoowcase connector and registers it for your user.{{end}}</p>
 <div class="field"><label for="setup-command">{{if eq .Platform "windows"}}PowerShell{{else}}Terminal{{end}} command</label>
 <textarea id="setup-command" class="quick-command" data-secret-receipt readonly rows="4" spellcheck="false" autocomplete="off" aria-describedby="setup-expiry">{{.Command}}</textarea>
-<div class="toolbar"><button type="button" data-copy-target="setup-command" hidden>Copy command</button></div>
+<div class="toolbar"><button type="button" data-copy-target="setup-command" hidden>{{template "icon-Copy"}}<span class="action-caption">Copy command</span></button></div>
 <small id="setup-expiry">This command contains a private setup code. Use it once within 10 minutes. Don’t share it or paste it into chat.</small></div></section>
 <section class="panel stack"><h2>2. Try it in {{.ClientName}}</h2><p>{{if eq .Client "copilot-app"}}Open a local session in the GitHub Copilot app. In Customize, check that Shoowcase is enabled.{{else if eq .Client "vscode"}}Open a new session with the Copilot agent in VS Code. You can find the server in Agent Customizations → MCP Servers under Copilot Global.{{else if eq .Client "vscode-local"}}In the default profile of VS Code Stable, start a session with the legacy Local agent. For custom profiles, use the Other local MCP client option. Run “MCP: List Servers” from the Command Palette to find Shoowcase.{{else if eq .Client "stdio"}}Add a server named shoowcase with the stdio transport and the command and arguments printed by the installer. Save the settings and restart the client.{{else if eq .Client "gemini"}}Start Gemini CLI and use /mcp to check the connection.{{else if eq .Client "opencode"}}Start a new OpenCode session. You can check the connection with <code>opencode mcp list</code>.{{else}}Restart the agent or start a new session.{{end}} If asked to trust the Shoowcase connection, review and enable it. Then try this prompt:</p>
-<div class="field"><label for="first-prompt">First prompt</label><input readonly id="first-prompt" value="{{.Prompt}}"><div><button type="button" class="secondary" data-copy-target="first-prompt" hidden>Copy prompt</button></div></div></section>
+<div class="field"><label for="first-prompt">First prompt</label><input readonly id="first-prompt" value="{{.Prompt}}"><div><button type="button" class="secondary" data-copy-target="first-prompt" hidden>{{template "icon-Copy"}}<span class="action-caption">Copy prompt</span></button></div></div></section>
 <p>Manage or revoke this key in <a href="/keys">Agent keys</a>. If your setup command expired, revoke the unused key there, then <a href="/quickstart">start again</a>.</p>
 {{end}}

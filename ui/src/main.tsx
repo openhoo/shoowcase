@@ -1,5 +1,15 @@
-import { useEffect } from "react";
-import { createRoot } from "react-dom/client";
+import {
+  ActionButton,
+  ActionLink,
+  ActionTooltipProvider,
+} from "@/components/icon-action";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -13,18 +23,11 @@ import {
   ShieldAlert,
   Terminal,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import { Members } from "./members";
 import { Public } from "./public";
 import { Sites } from "./sites";
-import { Members } from "./members";
 
 interface Context {
   Name: string;
@@ -70,20 +73,24 @@ function Message({ page }: { page: ConsolePage }) {
       </CardHeader>
       <CardContent className="flex flex-wrap gap-3">
         {!provisioning && (
-          <Button asChild variant="outline">
-            <a href={changed ? "/auth/login?next=/account" : "/"}>
-              <ArrowLeft aria-hidden />
-              {changed ? "Sign in with your new password" : "Back to workspace"}
-            </a>
-          </Button>
+          <ActionLink
+            variant="outline"
+            href={changed ? "/auth/login?next=/account" : "/"}
+            label={
+              changed ? "Sign in with your new password" : "Back to workspace"
+            }
+            icon={ArrowLeft}
+          />
         )}
         {c.Identity.CSRF && (
           <form action="/auth/logout" method="post">
             <input type="hidden" name="csrf" value={c.Identity.CSRF} />
-            <Button variant="outline" type="submit">
-              <LogOut aria-hidden />
-              Sign out
-            </Button>
+            <ActionButton
+              variant="outline"
+              type="submit"
+              label="Sign out"
+              icon={LogOut}
+            />
           </form>
         )}
       </CardContent>
@@ -149,24 +156,15 @@ function Console({ page }: { page: ConsolePage }) {
             >
               <>
                 {links.map(({ name, id, icon: Icon }) => (
-                  <Button
-                    asChild
-                    size="sm"
-                    variant="ghost"
-                    className={cn(
-                      "gap-1.5 px-2 sm:px-3",
-                      id === active && "bg-secondary text-secondary-foreground",
-                    )}
+                  <ActionLink
                     key={id}
-                  >
-                    <a
-                      href={"/" + id}
-                      aria-current={id === active ? "page" : undefined}
-                    >
-                      <Icon aria-hidden />
-                      {name}
-                    </a>
-                  </Button>
+                    variant={active === id ? "secondary" : "ghost"}
+                    className="aria-[current=page]:ring-1 aria-[current=page]:ring-primary"
+                    aria-current={active === id ? "page" : undefined}
+                    href={"/" + id}
+                    label={name}
+                    icon={Icon}
+                  />
                 ))}
               </>
             </nav>
@@ -214,7 +212,9 @@ function mount() {
   payload.remove();
   document.getElementById("native-page")?.remove();
   createRoot(host).render(
-    kind === "public" ? <Public page={page} /> : <Console page={page} />,
+    <ActionTooltipProvider>
+      {kind === "public" ? <Public page={page} /> : <Console page={page} />}
+    </ActionTooltipProvider>,
   );
 }
 mount();

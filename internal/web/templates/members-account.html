@@ -3,12 +3,12 @@
 <section class="panel stack" aria-labelledby="account-details"><h2 id="account-details">Account details</h2>
 <dl><dt>Display name</dt><dd>{{.Name}}</dd><dt>Workspace</dt><dd>{{.Workspace}}</dd><dt>Role</dt><dd>{{role .Role}}</dd><dt>Sign-in ID</dt><dd><code>{{.Subject}}</code></dd></dl>
 <div class="toolbar">
-{{if .LocalUser}}<a class="button" href="#change-password">Change password</a>{{else if .OIDCAccountURL}}<a class="button" href="{{.OIDCAccountURL}}" rel="noreferrer">Change password at identity provider</a>{{end}}
-<a class="button secondary" href="/sites">Open sites</a><a class="button secondary" href="/keys">Manage agent keys</a><form method="post" action="/auth/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" class="secondary">Sign out</button></form></div></section>
+{{if .LocalUser}}<a class="button" href="#change-password">{{template "icon-KeyRound"}}<span class="action-caption">Change password</span></a>{{else if .OIDCAccountURL}}<a class="button" href="{{.OIDCAccountURL}}" rel="noreferrer">{{template "icon-ExternalLink"}}<span class="action-caption">Change password at identity provider</span></a>{{end}}
+<a class="button secondary" href="/sites">{{template "icon-PanelsTopLeft"}}<span class="action-caption">Open sites</span></a><a class="button secondary" href="/keys">{{template "icon-KeyRound"}}<span class="action-caption">Manage agent keys</span></a><form method="post" action="/auth/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" class="secondary">{{template "icon-LogOut"}}<span class="action-caption">Sign out</span></button></form></div></section>
 {{if .LocalUser}}<section class="panel stack" aria-labelledby="change-password"><h2 id="change-password" tabindex="-1">Change password</h2><p>Changing your password signs you out on all devices.</p>{{if .Err}}<p role="alert" class="notice">{{.Err}}</p>{{end}}
 <form class="stack" method="post" action="/account"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="change-password">
 <label class="field">Current password<input type="password" name="current_password" autocomplete="current-password" required></label>
-<label class="field">New password<input type="password" name="new_password" autocomplete="new-password" minlength="12" aria-describedby="password-help" required></label><small id="password-help">Use at least 12 characters.</small><div><button>Change password</button></div></form></section>
+<label class="field">New password<input type="password" name="new_password" autocomplete="new-password" minlength="12" aria-describedby="password-help" required></label><small id="password-help">Use at least 12 characters.</small><div><button>{{template "icon-KeyRound"}}<span class="action-caption">Change password</span></button></div></form></section>
 {{else if not .OIDCAccountURL}}<section class="panel stack" aria-labelledby="work-password"><h2 id="work-password">Change password</h2><p>Open your work account’s security settings to change your password. If you don’t know where to find them, ask your workspace administrator.</p></section>{{end}}
 {{else}}
 <header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Create your account</h1><p>Choose how your name appears to your workspace admin.</p></header>
@@ -16,5 +16,5 @@
 {{if .Err}}<p class="notice" id="account-error" role="alert">{{.Err}}</p>{{end}}
 <div class="field"><label for="display-name">Display name <span class="muted">(optional)</span></label><input id="display-name" name="display_name" value="{{.NameValue}}" maxlength="80" autocomplete="nickname" aria-describedby="name-help{{if .Err}} account-error{{end}}"{{if .Err}} aria-invalid="true"{{end}}><small id="name-help">Leave this blank to use your sign-in ID.</small></div>
 <dl><dt>Sign-in ID</dt><dd><code>{{.Subject}}</code></dd><dt>Role</dt><dd>{{role .Role}}</dd></dl>
-<div><button type="submit">Create account</button></div></form>
+<div><button type="submit">{{template "icon-UserPlus"}}<span class="action-caption">Create account</span></button></div></form>
 {{end}}{{end}}

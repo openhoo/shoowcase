@@ -58,11 +58,11 @@ func (a *App) prepare(ctx context.Context, who sites.Actor, args json.RawMessage
 	return map[string]any{"upload_url": link, "browser_upload_url": link, "method": "PUT", "expires_at": expiry.UTC().Format(time.RFC3339), "size": spec.Size, "site_id": spec.Site}, nil
 }
 
-var uploadPage = template.Must(template.New("upload").Parse(`<main>
+var uploadPage = template.Must(webui.NativeTemplate("upload").Parse(`<main>
 <h1>Upload a file to the draft</h1><p>Choose the original file your agent requested. Uploading it will not change the published site.</p>
 <dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Destination</dt><dd><code>{{.Path}}</code></dd><dt>Expected size</dt><dd>{{.Size}} bytes</dd></dl>
 <details><summary>Verify the file checksum</summary><p>Expected SHA-256: <code>{{.SHA}}</code></p></details>
-<form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{.CSRF}}"><label>Select file <input name="file" type="file" required></label><button>Upload to draft</button></form></main>`))
+<form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{.CSRF}}"><label>Select file <input name="file" type="file" required></label><button>{{template "icon-Upload"}}<span class="action-caption">Upload to draft</span></button></form></main>`))
 
 func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.ticket(r, "upload")
@@ -101,6 +101,10 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if r.Method == "GET" {
+			if _, err := a.store.GetSite(ctx, who, sites.GetSiteQuery{Site: spec.Site, Limit: new(1)}); err != nil {
+				signedDomainError(w, r, err)
+				return
+			}
 			webui.Public(w, http.StatusOK, "Upload file", "upload", uploadPage, map[string]any{"Site": spec.Site, "Path": spec.Path, "Size": spec.Size, "SHA": spec.SHA, "CSRF": i.CSRF})
 			return
 		}

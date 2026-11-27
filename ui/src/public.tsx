@@ -1,24 +1,28 @@
+import { ActionButton, ActionLink } from "@/components/icon-action";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { navigationTarget } from "@/lib/navigation";
-import { useEffect, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
   ExternalLink,
+  Eye,
   FileUp,
   Globe2,
   KeyRound,
   Layers3,
   LockKeyhole,
+  LogIn,
   ShieldCheck,
+  Terminal,
   TriangleAlert,
+  UserRoundPlus,
 } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useEffect, type ReactNode } from "react";
 
 type PasswordPage = {
   screen: "password";
@@ -97,11 +101,12 @@ function Shell({
             Shoowcase
           </a>
           {landing && (
-            <Button asChild variant="ghost" size="sm">
-              <a href={signIn}>
-                Sign in <ArrowRight aria-hidden="true" />
-              </a>
-            </Button>
+            <ActionLink
+              variant="ghost"
+              href={signIn}
+              label="Sign in"
+              icon={LogIn}
+            />
           )}
         </div>
       </header>
@@ -178,18 +183,24 @@ function Landing({ signup }: { signup?: string }) {
           </p>
           <div className="flex flex-wrap gap-3">
             {signup && (
-              <Button asChild>
-                <a href={navigationTarget(signup, true)}>
-                  Create an account <ArrowRight aria-hidden="true" />
-                </a>
-              </Button>
+              <ActionLink
+                href={navigationTarget(signup, true)}
+                label="Create an account"
+                icon={UserRoundPlus}
+              />
             )}
-            <Button asChild variant={signup ? "outline" : "default"}>
-              <a href={signIn}>Sign in</a>
-            </Button>
-            <Button asChild variant="ghost">
-              <a href="/quickstart">Connect an agent</a>
-            </Button>
+            <ActionLink
+              variant={signup ? "outline" : "default"}
+              href={signIn}
+              label="Sign in"
+              icon={LogIn}
+            />
+            <ActionLink
+              variant="ghost"
+              href="/quickstart"
+              label="Connect an agent"
+              icon={Terminal}
+            />
           </div>
         </section>
         <div
@@ -249,11 +260,12 @@ function Password({ p }: { p: PasswordPage }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Button asChild variant="outline">
-              <a href={navigationTarget(p.OIDC)}>
-                Continue with single sign-on <ArrowRight aria-hidden="true" />
-              </a>
-            </Button>
+            <ActionLink
+              variant="outline"
+              href={navigationTarget(p.OIDC)}
+              label="Continue with single sign-on"
+              icon={ShieldCheck}
+            />
           </CardContent>
         </Card>
       )}
@@ -312,10 +324,11 @@ function Password({ p }: { p: PasswordPage }) {
               )}
             </div>
             <div>
-              <Button type="submit">
-                {p.Register ? "Create account" : "Sign in with password"}{" "}
-                <ArrowRight aria-hidden="true" />
-              </Button>
+              <ActionButton
+                type="submit"
+                label={p.Register ? "Create account" : "Sign in with password"}
+                icon={p.Register ? UserRoundPlus : LogIn}
+              />
             </div>
           </form>
         </CardContent>
@@ -354,11 +367,11 @@ function Continue({ next }: { next: string }) {
         Opening your site.
       </Heading>
       <div>
-        <Button asChild>
-          <a href={navigationTarget(next)}>
-            Continue to your site <ArrowRight aria-hidden="true" />
-          </a>
-        </Button>
+        <ActionLink
+          href={navigationTarget(next)}
+          label="Continue to your site"
+          icon={ArrowRight}
+        />
       </div>
     </Shell>
   );
@@ -393,10 +406,11 @@ function Approval({ p }: { p: ApprovalPage }) {
       )}
       <form method="post">
         <input type="hidden" name="csrf" value={p.CSRF} />
-        <Button type="submit">
-          <Globe2 aria-hidden="true" />
-          Approve public release
-        </Button>
+        <ActionButton
+          type="submit"
+          label="Approve public release"
+          icon={Globe2}
+        />
       </form>
     </Shell>
   );
@@ -441,10 +455,7 @@ function Upload({ p }: { p: UploadPage }) {
           />
         </div>
         <div>
-          <Button type="submit">
-            <FileUp aria-hidden="true" />
-            Upload to draft
-          </Button>
+          <ActionButton type="submit" label="Upload to draft" icon={FileUp} />
         </div>
       </form>
     </Shell>
@@ -471,18 +482,19 @@ function Receipt({ p }: { p: ReceiptPage }) {
       />
       <div className="flex flex-wrap gap-3">
         {p.Preview && (
-          <Button asChild variant="outline">
-            <a href={navigationTarget(p.Preview, true)}>
-              Preview this revision <ArrowRight aria-hidden="true" />
-            </a>
-          </Button>
+          <ActionLink
+            variant="outline"
+            href={navigationTarget(p.Preview, true)}
+            label="Preview this revision"
+            icon={Eye}
+          />
         )}
         {p.SiteURL && (
-          <Button asChild>
-            <a href={navigationTarget(p.SiteURL, true)}>
-              Open the live site <ArrowRight aria-hidden="true" />
-            </a>
-          </Button>
+          <ActionLink
+            href={navigationTarget(p.SiteURL, true)}
+            label="Open the live site"
+            icon={ExternalLink}
+          />
         )}
       </div>
     </Shell>
@@ -512,11 +524,13 @@ export function Public({ page }: { page: PublicPage }) {
             original request.
           </Heading>
           <div>
-            <Button asChild>
-              <a href="/auth/login" target="_blank" rel="noopener noreferrer">
-                Sign in in a new tab <ExternalLink aria-hidden="true" />
-              </a>
-            </Button>
+            <ActionLink
+              href="/auth/login"
+              target="_blank"
+              rel="noopener noreferrer"
+              label="Sign in in a new tab"
+              icon={LogIn}
+            />
           </div>
           <p className="text-sm text-muted-foreground">
             If the link expires, request a new one from your agent.
@@ -530,12 +544,12 @@ export function Public({ page }: { page: PublicPage }) {
             {page.Message}
           </Heading>
           <div>
-            <Button asChild variant="outline">
-              <a href="/">
-                <ArrowLeft aria-hidden="true" />
-                Back to workspace
-              </a>
-            </Button>
+            <ActionLink
+              variant="outline"
+              href="/"
+              label="Back to workspace"
+              icon={ArrowLeft}
+            />
           </div>
         </Shell>
       );

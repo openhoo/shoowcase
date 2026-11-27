@@ -2,7 +2,7 @@
 <div class="directory-title">
   <h2 id="directory-title">{{if eq .View "members"}}Member directory{{else}}Group directory{{end}}</h2>
   <span class="directory-count">{{.Directory.Matches}}{{if .Directory.Filtered}} of {{.Directory.Total}}{{end}} {{if eq .View "members"}}{{if eq .Directory.Total 1}}member{{else}}members{{end}}{{else}}{{if eq .Directory.Total 1}}group{{else}}groups{{end}}{{end}}</span>
-  <button type="button" class="filter-toggle secondary" id="directory-toggle" aria-controls="directory-options" aria-expanded="true" hidden>Filter and sort</button>
+  <button type="button" class="filter-toggle secondary" id="directory-toggle" aria-controls="directory-options" aria-expanded="true" hidden>{{template "icon-SlidersHorizontal"}}<span class="action-caption">Filter and sort</span></button>
 </div>
 <form method="get" action="/admin" class="directory-filters{{if eq .View "groups"}} group-filters{{end}}" role="search" aria-label="Filter the {{if eq .View "members"}}member{{else}}group{{end}} directory">
   <input type="hidden" name="view" value="{{.View}}">
@@ -12,7 +12,7 @@
     <div class="field"><label for="directory-role">Role</label><div class="select-wrap"><select id="directory-role" name="role"><option value="">All roles</option>{{template "groupRoles" .Directory.Role}}{{if eq .View "members"}}<option value="admin"{{if eq .Directory.Role "admin"}} selected{{end}}>Admin</option>{{end}}</select></div></div>
     <div class="field"><label for="directory-sort">Sort by</label><div class="select-wrap"><select id="directory-sort" name="sort"><option value="name"{{if eq .Directory.Sort "name"}} selected{{end}}>Name A–Z</option>{{if eq .View "members"}}<option value="subject"{{if eq .Directory.Sort "subject"}} selected{{end}}>Sign-in ID</option>{{else}}<option value="members"{{if eq .Directory.Sort "members"}} selected{{end}}>Most members</option>{{end}}</select></div></div>
   </div>
-  <button type="submit" class="secondary filter-action">Apply filters</button>
+  <button type="submit" class="secondary filter-action">{{template "icon-ListFilter"}}<span class="action-caption">Apply filters</span></button>
 </form>
 {{if or .Directory.Filtered (ne .Directory.Sort "name")}}<p class="filter-reset"><a href="/admin?view={{.View}}">Reset filters</a></p>{{end}}
 {{end}}
@@ -23,7 +23,7 @@
 {{if .Members}}
 <form id="member-selection" class="directory-body selection-toolbar" action="/admin" method="post">
 <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="review-selection">{{template "admin-select-all"}}
-<button type="submit" name="operation" value="suspend-members" data-requires-kind="active" data-selection-submit class="secondary danger-action">Suspend selected</button><button type="submit" name="operation" value="restore-members" data-requires-kind="suspended" data-selection-submit class="secondary">Restore selected</button></form>
+<button type="submit" name="operation" value="suspend-members" data-requires-kind="active" data-selection-submit class="secondary danger-action">{{template "icon-UserRoundX"}}<span class="action-caption">Suspend selected</span></button><button type="submit" name="operation" value="restore-members" data-requires-kind="suspended" data-selection-submit class="secondary">{{template "icon-UserCheck"}}<span class="action-caption">Restore selected</span></button></form>
 <table class="directory-table" role="table" aria-labelledby="directory-title">
   <thead><tr><th scope="col" class="selection-cell">Select</th><th scope="col">Member</th><th scope="col">Status</th><th scope="col">Role</th><th scope="col">Joined</th><th scope="col">Action</th></tr></thead>
   <tbody>{{range .Members}}<tr>
@@ -32,7 +32,7 @@
     <td class="state-cell"><span class="status-chip {{if .Disabled}}state-offline{{else}}state-published{{end}}"><i class="dot {{if .Disabled}}offline{{else}}published{{end}}" aria-hidden="true"></i>{{if .Disabled}}Suspended{{else}}Active{{end}}</span></td>
     <td><span class="mobile-label" aria-hidden="true">Role</span>{{role .Role}}</td>
     <td><span class="mobile-label" aria-hidden="true">Joined</span><time datetime="{{isoDate .CreatedAt}}">{{shortDate .CreatedAt}}</time></td>
-    <td class="entry-wide">{{if ne $.Subject .Subject}}<form action="/admin" method="post"><input type="hidden" name="action" value="review-selection"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="selected" value="{{.Subject}}">{{if .Disabled}}<button class="secondary" name="operation" value="restore-members" aria-label="Restore {{.DisplayName}}">Restore</button>{{else}}<button class="secondary danger-action" name="operation" value="suspend-members" aria-label="Suspend {{.DisplayName}}">Suspend</button>{{end}}</form>{{else}}—{{end}}</td>
+    <td class="entry-wide">{{if ne $.Subject .Subject}}<form action="/admin" method="post"><input type="hidden" name="action" value="review-selection"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="selected" value="{{.Subject}}">{{if .Disabled}}<button class="secondary" name="operation" value="restore-members" aria-label="Restore {{.DisplayName}}">{{template "icon-UserCheck"}}<span class="action-caption">Restore {{.DisplayName}}</span></button>{{else}}<button class="secondary danger-action" name="operation" value="suspend-members" aria-label="Suspend {{.DisplayName}}">{{template "icon-UserRoundX"}}<span class="action-caption">Suspend {{.DisplayName}}</span></button>{{end}}</form>{{else}}—{{end}}</td>
   </tr>{{end}}</tbody>
 </table>{{else}}<div class="directory-empty"><h3>{{if .Directory.Filtered}}No matching members{{else}}No members on this page{{end}}</h3>{{if .Directory.Filtered}}<p>Try another name or sign-in ID, or reset the filters.</p>{{end}}</div>{{end}}
 {{if or .Directory.Prev .Directory.Next}}<nav class="directory-pages" aria-label="Member pages">{{if .Directory.Prev}}<a href="{{.Directory.Prev}}">← Previous members</a>{{end}}{{if .Directory.Next}}<a href="{{.Directory.Next}}">Next members →</a>{{end}}</nav>{{end}}

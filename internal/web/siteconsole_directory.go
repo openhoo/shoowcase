@@ -20,7 +20,7 @@ type directoryData struct {
 }
 type directoryEntry struct {
 	ID, Name, Address, Href, State, StateLabel, Audience, AudienceLabel string
-	DraftRevision                                                       string
+	DeletionValue                                                       string
 	FileCount                                                           int
 	Updated                                                             time.Time
 	UpdatedLabel                                                        string
@@ -64,8 +64,10 @@ func (a *App) directory(ctx context.Context, who sites.Actor, q url.Values) (d d
 		if e.IsPublished {
 			d.Published++
 		}
+		if who.Role == "admin" {
+			e.DeletionValue = siteSelectionValue(x.ID, x.Draft)
+		}
 		if x.Live == "" {
-			e.DraftRevision = x.Draft
 			d.Drafts++
 		}
 		switch {

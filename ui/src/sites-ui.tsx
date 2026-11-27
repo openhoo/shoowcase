@@ -1,13 +1,13 @@
-import { navigationTarget } from "@/lib/navigation";
-import type { ComponentProps, ReactNode } from "react";
-import { ArrowLeft, File, FolderOpen } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ActionLink } from "@/components/icon-action";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
-import { Label } from "@/components/ui/label";
+import { navigationTarget } from "@/lib/navigation";
+import { ArrowLeft, File, FolderOpen } from "lucide-react";
+import type { ComponentProps, ReactNode } from "react";
 import type { SiteData } from "./sites-model";
 
 export const toolbar = "flex min-w-0 flex-wrap items-center gap-2.5";
@@ -34,21 +34,20 @@ export function Write({ d }: { d: SiteData }) {
 
 export function ButtonLink({
   href,
-  children,
   primary = false,
   external = false,
-  ...rest
-}: ComponentProps<"a"> & {
+  ...props
+}: ComponentProps<typeof ActionLink> & {
   href: string;
   primary?: boolean;
   external?: boolean;
 }) {
   return (
-    <Button asChild variant={primary ? "default" : "outline"}>
-      <a href={navigationTarget(href, external)} {...rest}>
-        {children}
-      </a>
-    </Button>
+    <ActionLink
+      {...props}
+      variant={primary ? "default" : "outline"}
+      href={navigationTarget(href, external)}
+    />
   );
 }
 export function Back({ d }: { d?: SiteData }) {

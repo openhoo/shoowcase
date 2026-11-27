@@ -39,7 +39,7 @@ func (s *Service) identityActive(ctx context.Context, i Identity) bool {
 var passwordHTML string
 var passwordContinue = template.Must(template.New("continue").Parse(`<main><h1>Signed in</h1><a href="{{.Next}}">Continue to your site</a></main>`))
 
-var passwordPage = template.Must(template.New("password").Parse(passwordHTML))
+var passwordPage = template.Must(webui.NativeTemplate("password").Parse(passwordHTML))
 
 type passwordIntent struct {
 	Dest           destination

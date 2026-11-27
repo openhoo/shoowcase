@@ -8,7 +8,7 @@ export interface SiteEntry {
   State: string;
   StateLabel: string;
   AudienceLabel: string;
-  DraftRevision: string;
+  DeletionValue: string;
   FileCount: number;
   Updated: string;
   UpdatedLabel: string;
@@ -46,7 +46,8 @@ export interface SiteData {
     Identity: { CSRF: string };
   };
   Directory: SiteDirectory;
-  Selected: { Site: string; Revision: string }[] | null;
+  DeletionValue: string;
+  Selected: { DeletionValue: string }[] | null;
   Labels: string[] | null;
   Paths: string[] | null;
   Creation: {

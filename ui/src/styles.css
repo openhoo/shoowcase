@@ -61,3 +61,23 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* The fallback keeps hints readable in browsers without anchor positioning. */
+[data-action-tooltip] {
+  position: fixed;
+  inset: auto 0 0.5rem;
+  margin-inline: auto;
+}
+@supports (position-area: bottom span-all) and (justify-self: anchor-center) {
+  [data-action-hint-open] {
+    anchor-name: --action-trigger;
+  }
+  [data-action-tooltip] {
+    position-anchor: --action-trigger;
+    position-area: bottom span-all;
+    position-try-fallbacks: flip-block;
+    justify-self: anchor-center;
+    inset: auto;
+    margin: 4px 0;
+  }
+}
