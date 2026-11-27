@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -36,17 +35,13 @@ type mutation struct {
 	Release         string      `json:"release_id"`
 	ExpectedRelease string      `json:"expected_release_id"`
 }
-type lookup struct {
-	Site     string `json:"site_id"`
-	Path     string `json:"path"`
-	Revision string `json:"revision"`
-	Cursor   string `json:"cursor"`
-	Limit    *int   `json:"limit"`
-	View     string `json:"view"`
+type siteListQuery struct {
+	Cursor string `json:"cursor"`
+	Limit  *int   `json:"limit"`
 }
 
 var fields = map[string]map[string]bool{
-	"list_site_groups": {}, "create_site": wordset("name slug request_id group_id"), "list_sites": wordset("cursor limit"), "get_site": wordset("site_id path revision cursor limit view"),
+	"get_site": getSiteFields, "list_site_groups": {}, "create_site": wordset("name slug request_id group_id"), "list_sites": wordset("cursor limit"),
 	"upload_files": wordset("site_id expected_revision files delete_paths request_id"), "publish_site": wordset("site_id revision request_id"), "set_site_access": wordset("site_id visibility revision request_id"), "rollback_site": wordset("site_id release_id expected_release_id request_id"),
 }
 
@@ -65,7 +60,7 @@ func decodeStrict(raw json.RawMessage, dst any) error {
 	}
 	return nil
 }
-func checkedFields(raw json.RawMessage, tool string) (map[string]json.RawMessage, error) {
+func checkedFields(raw json.RawMessage, allowed map[string]bool) (map[string]json.RawMessage, error) {
 	var m map[string]json.RawMessage
 	if e := decodeStrict(raw, &m); e != nil {
 		return nil, e
@@ -74,7 +69,7 @@ func checkedFields(raw json.RawMessage, tool string) (map[string]json.RawMessage
 		return nil, bad("Tool arguments must be an object.")
 	}
 	for k, v := range m {
-		if !fields[tool][k] || string(v) == "null" {
+		if !allowed[k] || string(v) == "null" {
 			return nil, bad("Unknown or null argument: " + k)
 		}
 	}
@@ -86,7 +81,7 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 	}
 	level := 3
 	switch tool {
-	case "list_sites", "get_site":
+	case "get_site", "list_sites":
 		level = 1
 	case "create_site", "upload_files", "list_site_groups":
 		level = 2
@@ -94,7 +89,7 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 	if e := actorErr(a, level); e != nil {
 		return nil, e
 	}
-	m, e := checkedFields(raw, tool)
+	m, e := checkedFields(raw, fields[tool])
 	if e != nil {
 		return nil, e
 	}
@@ -105,12 +100,23 @@ func (s *Store) Execute(ctx context.Context, a Actor, tool string, raw json.RawM
 		}
 		return map[string]any{"groups": opts.Groups, "allow_unassigned": opts.AllowUnassigned}, nil
 	}
-	if level == 1 {
-		var q lookup
+	if tool == "get_site" {
+		var q GetSiteQuery
+		if e = decodeStrict(raw, &q); e != nil {
+			return nil, e
+		}
+		detail, e := s.GetSite(ctx, a, q)
+		if e != nil {
+			return nil, e
+		}
+		return detail.toolResult(), nil
+	}
+	if tool == "list_sites" {
+		var q siteListQuery
 		if e = strict(raw, &q); e != nil {
 			return nil, e
 		}
-		return s.lookup(ctx, a, tool, q)
+		return s.listSites(ctx, a, q)
 	}
 	var p mutation
 	if e = strict(raw, &p); e != nil {
@@ -459,169 +465,32 @@ func releaseChange(ctx context.Context, tx *sql.Tx, r *record, p mutation, tool 
 	_, e := tx.ExecContext(ctx, "UPDATE sc_sites SET live=$1,release_id=$2,visibility=$3,publication_generation=publication_generation+1 WHERE id=$4", r.live, r.release, r.visibility, r.site)
 	return e
 }
-func (s *Store) lookup(ctx context.Context, a Actor, tool string, q lookup) (map[string]any, error) {
-	limit := 25
-	if q.Limit != nil {
-		limit = *q.Limit
-	}
-	if limit < 1 || limit > 100 || len(q.Cursor) > 256 {
-		return nil, bad("limit must be 1–100 and cursor cannot exceed 256 characters.")
-	}
-	tx, e := s.readSnapshot(ctx)
+func (s *Store) listSites(ctx context.Context, a Actor, q siteListQuery) (map[string]any, error) {
+	tx, a, limit, e := s.beginSiteRead(ctx, a, q.Cursor, q.Limit)
 	if e != nil {
 		return nil, e
 	}
 	defer tx.Rollback()
-	if a, e = accountPolicy(ctx, tx, a, false); e != nil {
-		return nil, e
-	}
-	if e = actorErr(a, 1); e != nil {
-		return nil, e
-	}
-	if tool == "list_sites" {
-		rows, e := tx.QueryContext(ctx, `SELECT s.id,s.name,s.visibility,s.draft,s.live,s.release_id,COALESCE(sg.group_id,'') FROM sc_sites s
+	rows, e := tx.QueryContext(ctx, `SELECT s.id,s.name,s.visibility,s.draft,s.live,s.release_id,COALESCE(sg.group_id,'') FROM sc_sites s
 			LEFT JOIN sc_site_groups sg ON sg.workspace=s.workspace AND sg.site=s.id WHERE s.workspace=$1 AND s.id>$2 ORDER BY s.id LIMIT $3`, a.Workspace, q.Cursor, limit+1)
-		if e != nil {
-			return nil, e
-		}
-		defer rows.Close()
-		list := []map[string]any{}
-		last := ""
-		next := ""
-		for rows.Next() {
-			var r record
-			if e = rows.Scan(&r.site, &r.name, &r.visibility, &r.draft, &r.live, &r.release, &r.group); e != nil {
-				return nil, e
-			}
-			if len(list) == limit {
-				next = last
-				break
-			}
-			list = append(list, effectiveAudience(ctx, r.out()))
-			last = r.site
-		}
-		return map[string]any{"sites": list, "next_cursor": next}, rows.Err()
-	}
-	if !validSlug(q.Site) {
-		return nil, bad("Invalid site_id.")
-	}
-	r, e := readSite(ctx, tx, a, q.Site)
-	if e != nil {
-		return nil, e
-	}
-	out := effectiveAudience(ctx, r.out())
-	// Expose the same group policy before an editor opens the form or an
-	// agent prepares an upload. The actual write always checks it again.
-	if rank(a) >= 2 && q.View != "releases" {
-		if err := canChargeSiteGroup(ctx, tx, a, r.group); err != nil {
-			var denial *Error
-			if !errors.As(err, &denial) || denial.Code != "forbidden" {
-				return nil, err
-			}
-			out["storage_restriction"] = denial.Message
-		}
-	}
-	if q.View != "" && q.View != "releases" && q.View != "files" {
-		return nil, bad("view must be files or releases.")
-	}
-	if q.View == "releases" {
-		if q.Path != "" || q.Revision != "" {
-			return nil, bad("Release history does not take a path or revision.")
-		}
-		// Keyset pagination is ordered by timestamp then id; the cursor is the last release ID.
-		var stamp int64 = 1 << 62
-		cut := ""
-		if q.Cursor != "" {
-			cut = q.Cursor
-			e = tx.QueryRowContext(ctx, "SELECT created_at FROM sc_releases WHERE site=$1 AND id=$2", r.site, cut).Scan(&stamp)
-			if errors.Is(e, sql.ErrNoRows) {
-				return nil, bad("Invalid release cursor.")
-			}
-			if e != nil {
-				return nil, e
-			}
-		}
-		rows, e := tx.QueryContext(ctx, "SELECT id,revision,created_at FROM sc_releases WHERE site=$1 AND (created_at<$2 OR (created_at=$2 AND id<$3)) ORDER BY created_at DESC,id DESC LIMIT $4", r.site, stamp, cut, limit+1)
-		if e != nil {
-			return nil, e
-		}
-		defer rows.Close()
-		list := []map[string]any{}
-		last := ""
-		next := ""
-		for rows.Next() {
-			var release, rev string
-			var at int64
-			if e = rows.Scan(&release, &rev, &at); e != nil {
-				return nil, e
-			}
-			if len(list) == limit {
-				next = last
-				break
-			}
-			list = append(list, map[string]any{"release_id": release, "revision": rev, "created_at": time.UnixMicro(at).UTC().Format(time.RFC3339Nano)})
-			last = release
-		}
-		out["releases"] = list
-		out["next_cursor"] = next
-		return out, rows.Err()
-	}
-	v := q.Revision
-	if v == "" {
-		v = r.draft
-	} else {
-		var ok int
-		if e = tx.QueryRowContext(ctx, "SELECT 1 FROM sc_revisions WHERE id=$1 AND site=$2", v, r.site).Scan(&ok); errors.Is(e, sql.ErrNoRows) {
-			return nil, absent()
-		}
-		if e != nil {
-			return nil, e
-		}
-	}
-	out["selected_revision"] = v
-	if q.Path != "" {
-		if !validPath(q.Path) {
-			return nil, bad("Invalid file path.")
-		}
-		var item asset
-		var b []byte
-		e = tx.QueryRowContext(ctx, "SELECT f.path,f.digest,f.size,f.content_type,b.body FROM sc_files f JOIN sc_blobs b ON b.digest=f.digest WHERE f.revision=$1 AND f.path=$2", v, q.Path).Scan(&item.Path, &item.Digest, &item.Size, &item.ContentType, &b)
-		if errors.Is(e, sql.ErrNoRows) {
-			return nil, absent()
-		}
-		if e != nil {
-			return nil, e
-		}
-		file := map[string]any{"path": item.Path, "digest": item.Digest, "size": item.Size, "content_type": item.ContentType}
-		if strings.HasPrefix(item.ContentType, "text/") {
-			file["text"] = string(b)
-		} else {
-			file["base64"] = base64.StdEncoding.EncodeToString(b)
-		}
-		out["file"] = file
-		return out, nil
-	}
-	rows, e := tx.QueryContext(ctx, "SELECT path,digest,size,content_type FROM sc_files WHERE revision=$1 AND path>$2 ORDER BY path LIMIT $3", v, q.Cursor, limit+1)
 	if e != nil {
 		return nil, e
 	}
 	defer rows.Close()
-	list := []asset{}
+	list := []map[string]any{}
 	last := ""
 	next := ""
 	for rows.Next() {
-		var item asset
-		if e = rows.Scan(&item.Path, &item.Digest, &item.Size, &item.ContentType); e != nil {
+		var r record
+		if e = rows.Scan(&r.site, &r.name, &r.visibility, &r.draft, &r.live, &r.release, &r.group); e != nil {
 			return nil, e
 		}
 		if len(list) == limit {
 			next = last
 			break
 		}
-		list = append(list, item)
-		last = item.Path
+		list = append(list, effectiveAudience(ctx, r.out()))
+		last = r.site
 	}
-	out["files"] = list
-	out["next_cursor"] = next
-	return out, rows.Err()
+	return map[string]any{"sites": list, "next_cursor": next}, rows.Err()
 }

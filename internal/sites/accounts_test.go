@@ -282,7 +282,7 @@ func TestAccountSchemaUpgradeFromV011(t *testing.T) {
 				t.Fatal(m, e)
 			}
 			var version int
-			if e = s.db.QueryRow("SELECT MAX(version) FROM sc_schema_migrations").Scan(&version); e != nil || version != 5 {
+			if e = s.db.QueryRow("SELECT MAX(version) FROM sc_schema_migrations").Scan(&version); e != nil || version != 6 {
 				t.Fatal(version, e)
 			}
 		})

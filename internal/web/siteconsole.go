@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/openhoo/shoowcase/internal/routes"
 	"github.com/openhoo/shoowcase/internal/sites"
 )
 
@@ -63,7 +64,8 @@ type siteData struct {
 	Directory                                                           directoryData
 	Creation                                                            sites.CreationGroupOptions
 	GroupID                                                             string
-	S, History                                                          map[string]any
+	S, History                                                          *sites.SiteDetails
+	SiteURL, PreviewURL, RestoreID, RestorePreview                      string
 	Base, Name, Slug, Path, Source, Rev, Request, Action, Notice, Error string
 	CanEdit, CanPublish, AllowPublic, Existing, HasIndex                bool
 }
@@ -111,7 +113,6 @@ func siteMethod(w http.ResponseWriter, c consoleContext, allowed string) {
 	w.Header().Set("Allow", allowed)
 	consoleError(w, c, 405, "Method not allowed", "Use the site controls to make changes.")
 }
-func siteRead(r *http.Request) bool { return r.Method == http.MethodGet || r.Method == http.MethodHead }
 
 func (a *App) newSiteView(w http.ResponseWriter, r *http.Request, d siteData, status int) {
 	options, err := a.store.CreationGroups(r.Context(), d.C.Actor)
@@ -126,14 +127,18 @@ func (a *App) newSiteView(w http.ResponseWriter, r *http.Request, d siteData, st
 	siteView(w, d, status, "New site", "new-site")
 }
 
-func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleContext) {
+func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleContext, route routes.Endpoint) {
 	d := makeSiteData(c)
 	d.AllowPublic = a.config.Public
-	if r.URL.Path == "/sites/new" {
-		if !siteRead(r) {
-			siteMethod(w, c, "GET, HEAD")
-			return
-		}
+	if route.Page == routes.UnknownSite {
+		http.NotFound(w, r)
+		return
+	}
+	if route.Allowed != "" {
+		siteMethod(w, c, route.Allowed)
+		return
+	}
+	if route.Page == routes.NewSite {
 		if !d.CanEdit {
 			siteFailure(w, c, problem("forbidden", ""))
 			return
@@ -141,8 +146,7 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 		a.newSiteView(w, r, d, 200)
 		return
 	}
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/sites"), "/")
-	if len(parts) == 1 || (len(parts) == 2 && parts[1] == "") {
+	if route.Page == routes.Directory {
 		if r.Method == http.MethodPost {
 			if !d.CanEdit {
 				siteFailure(w, c, problem("forbidden", ""))
@@ -167,10 +171,6 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 			a.newSiteView(w, r, d, status)
 			return
 		}
-		if !siteRead(r) {
-			siteMethod(w, c, "GET, HEAD, POST")
-			return
-		}
 		var e error
 		d.Directory, e = a.directory(r.Context(), c.Actor, r.URL.Query())
 		if e != nil {
@@ -180,59 +180,39 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 		siteView(w, d, 200, "Sites", "list")
 		return
 	}
-	if len(parts) > 3 || parts[0] != "" || parts[1] == "" {
-		http.NotFound(w, r)
-		return
-	}
-	id := parts[1]
+	id := r.PathValue("site")
 	if id == "~new" {
 		id = "new"
 	}
 	d.Base = directoryHref(id)
-	action := ""
-	if len(parts) == 3 {
-		action = parts[2]
-	}
-	switch action {
-	case "", "edit", "delete", "upload", "import", "publish", "access", "rollback":
-	default:
-		http.NotFound(w, r)
-		return
-	}
+	action := route.Action
 	if r.Method == http.MethodPost && action != "" {
 		a.sitePost(w, r, d, id, action)
-		return
-	}
-	if !siteRead(r) {
-		siteMethod(w, c, "GET, HEAD")
-		return
-	}
-	if action == "publish" || action == "access" {
-		siteMethod(w, c, "POST")
 		return
 	}
 	if action != "" && !d.CanEdit {
 		siteFailure(w, c, problem("forbidden", ""))
 		return
 	}
-	args := map[string]any{"site_id": id, "limit": 100}
+	query := sites.GetSiteQuery{Site: id, Limit: new(sites.MaxFiles)}
 	d.Path = r.URL.Query().Get("path")
 	if action == "delete" && d.Path == "" {
 		consoleError(w, c, 400, "Choose a file", "Open the site and select a file to remove.")
 		return
 	}
 	if action == "edit" && d.Path != "" {
-		args["path"] = d.Path
+		query.Path = d.Path
 		d.Existing = true
 	}
 	var e error
-	d.S, e = siteCall(a, r.Context(), "get_site", args)
+	d.S, e = a.getSite(r.Context(), query)
 	if e != nil {
 		siteFailure(w, c, e)
 		return
 	}
-	d.Rev = d.S["revision"].(string)
-	if reason, restricted := d.S["storage_restriction"].(string); restricted && d.S["group_id"] != "" {
+	d.Rev = d.S.Revision
+	d.SiteURL, d.PreviewURL = a.siteLinks(d.S.SiteID, d.S.Revision, d.S.SelectedRevision)
+	if reason := d.S.StorageRestriction; reason != "" && d.S.GroupID != "" {
 		d.CanEdit = false
 		if action != "" && action != "rollback" {
 			consoleError(w, c, 403, "Draft editing unavailable", reason)
@@ -242,17 +222,16 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 	d.Action = action
 	switch action {
 	case "edit":
-		if f, ok := d.S["file"].(map[string]any); ok {
-			s, editable := f["text"].(string)
-			if !editable {
+		if f := d.S.File; f != nil {
+			if f.Text == nil {
 				consoleError(w, c, 400, "Choose an HTML, CSS or JavaScript file", "Use Upload file to replace an image.")
 				return
 			}
-			d.Source = s
+			d.Source = *f.Text
 		} else {
 			d.Path = "index.html"
 			d.Source = "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Welcome</title>\n</head>\n<body>\n  <main><h1>Welcome</h1></main>\n</body>\n</html>\n"
-			if manifestHas(d.S, "index.html") {
+			if d.S.HasFile("index.html") {
 				d.Path, d.Source = "", ""
 			}
 		}
@@ -268,12 +247,12 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 			siteFailure(w, c, err)
 			return
 		}
-		d.S["restore_id"] = release
-		d.S["restore_preview"] = a.siteURL("pv-" + rev)
+		d.RestoreID = release
+		d.RestorePreview = a.siteURL("pv-" + rev)
 		d.Rev = rev
 		siteView(w, d, 200, "Restore release", "restore")
 	case "delete":
-		if !manifestHas(d.S, d.Path) {
+		if !d.S.HasFile(d.Path) {
 			siteFailure(w, c, problem("not_found", ""))
 			return
 		}
@@ -281,34 +260,17 @@ func (a *App) siteConsole(w http.ResponseWriter, r *http.Request, c consoleConte
 	case "upload", "import":
 		siteView(w, d, 200, siteUploadTitle(action), "upload")
 	default:
-		d.HasIndex = manifestHas(d.S, "index.html")
+		d.HasIndex = d.S.HasFile("index.html")
 		d.Notice = map[string]string{"created": "Site created. Add a homepage to get started.", "saved": "File saved to the draft.", "removed": "File removed from the draft.", "uploaded": "File uploaded to the draft.", "imported": "ZIP imported into the draft.", "published": "Draft published.", "access": "Site access updated.", "restored": "Release restored."}[r.URL.Query().Get("notice")]
-		args = map[string]any{"site_id": id, "view": "releases", "limit": 10}
-		if cursor := r.URL.Query().Get("releases"); cursor != "" {
-			args["cursor"] = cursor
-		}
-		d.History, e = siteCall(a, r.Context(), "get_site", args)
+		d.History, e = a.getSite(r.Context(), sites.GetSiteQuery{Site: id, View: "releases", Limit: new(10), Cursor: r.URL.Query().Get("releases")})
 		if e != nil {
 			siteFailure(w, c, e)
 			return
 		}
-		siteView(w, d, 200, d.S["name"].(string), "detail")
+		siteView(w, d, 200, d.S.Name, "detail")
 	}
 }
 
-// The store's manifest concrete type is private. Decode this small list of
-// metadata without requesting file contents merely to discover filenames.
-func manifestHas(item map[string]any, name string) bool {
-	b, _ := json.Marshal(item["files"])
-	var out []struct{ Path string }
-	_ = json.Unmarshal(b, &out)
-	for _, file := range out {
-		if file.Path == name {
-			return true
-		}
-	}
-	return false
-}
 func siteUploadTitle(action string) string {
 	if action == "import" {
 		return "Import ZIP"
@@ -342,9 +304,9 @@ func (a *App) sitePost(w http.ResponseWriter, r *http.Request, d siteData, id, a
 		if e == nil && !d.Existing {
 			// Check the immutable revision the form opened, so retrying an
 			// already successful New file submission remains idempotent.
-			var original map[string]any
-			original, e = siteCall(a, r.Context(), "get_site", map[string]any{"site_id": id, "revision": d.Rev, "limit": sites.MaxFiles})
-			if e == nil && manifestHas(original, d.Path) {
+			var original *sites.SiteDetails
+			original, e = a.getSite(r.Context(), sites.GetSiteQuery{Site: id, Revision: d.Rev, Limit: new(sites.MaxFiles)})
+			if e == nil && original.HasFile(d.Path) {
 				e = problem("conflict", "A file with this path already exists. Open it from the file list to edit it, or choose another path.")
 			}
 		}
@@ -403,7 +365,7 @@ func (a *App) sitePost(w http.ResponseWriter, r *http.Request, d siteData, id, a
 		// Preserve the user’s draft text and old edit token on a conflict. Never
 		// silently resubmit against a newer revision. The user can compare and
 		// copy their work before opening the current file.
-		d.S = map[string]any{"name": id}
+		d.S = &sites.SiteDetails{Name: id}
 		switch action {
 		case "edit":
 			siteView(w, d, status, "File editor", "edit")

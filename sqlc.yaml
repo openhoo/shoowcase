@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: postgresql
+    schema: internal/sites/schema/base.sql
+    queries: internal/sites/query
+    gen:
+      go:
+        package: directorydb
+        out: internal/sites/directorydb
+        sql_package: database/sql
+        omit_unused_structs: true

@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS sc_workspace (id TEXT PRIMARY KEY, used_bytes BIGINT NOT NULL DEFAULT 0, changes BIGINT NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS sc_sites (id TEXT PRIMARY KEY, workspace TEXT NOT NULL REFERENCES sc_workspace(id), name TEXT NOT NULL, visibility TEXT NOT NULL, draft TEXT NOT NULL, live TEXT NOT NULL, release_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS sc_sites_workspace ON sc_sites(workspace,id);
+CREATE TABLE IF NOT EXISTS sc_revisions (id TEXT PRIMARY KEY, site TEXT NOT NULL REFERENCES sc_sites(id), created_at BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS sc_revisions_site ON sc_revisions(site,id);
+CREATE TABLE IF NOT EXISTS sc_blobs (digest TEXT PRIMARY KEY, body BYTEA NOT NULL);
+CREATE TABLE IF NOT EXISTS sc_files (revision TEXT NOT NULL REFERENCES sc_revisions(id), path TEXT NOT NULL, digest TEXT NOT NULL REFERENCES sc_blobs(digest), size BIGINT NOT NULL, content_type TEXT NOT NULL, PRIMARY KEY(revision,path));
+CREATE TABLE IF NOT EXISTS sc_releases (id TEXT PRIMARY KEY, site TEXT NOT NULL REFERENCES sc_sites(id), revision TEXT NOT NULL REFERENCES sc_revisions(id), created_at BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS sc_releases_site ON sc_releases(site,id);
+CREATE TABLE IF NOT EXISTS sc_requests (workspace TEXT NOT NULL, subject TEXT NOT NULL, request_id TEXT NOT NULL, hash TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(workspace,subject,request_id));
+CREATE TABLE IF NOT EXISTS sc_audit (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, site TEXT NOT NULL, subject TEXT NOT NULL, action TEXT NOT NULL, revision TEXT NOT NULL, release_id TEXT NOT NULL, live_revision TEXT NOT NULL, visibility TEXT NOT NULL, request_id TEXT NOT NULL, created_at BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS sc_audit_workspace ON sc_audit(workspace,created_at);
+CREATE INDEX IF NOT EXISTS sc_audit_site_activity ON sc_audit(workspace,site,created_at);
+CREATE TABLE IF NOT EXISTS sc_replay (key TEXT PRIMARY KEY, expires_at BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS sc_replay_expiry ON sc_replay(expires_at);
