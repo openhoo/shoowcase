@@ -27,6 +27,10 @@ func TestDeletedIdentityNeedsProvisioningAndFreshAuthority(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			oldKey, _, err := s.CreateKey(old, who, "Retired key", "reader", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
 			sel := AdminSelection{Action: "delete-members", IDs: []string{who.Subject}}
 			r, err := s.ReviewAdminSelection(ctx, admin, sel)
 			if err != nil {
@@ -56,6 +60,12 @@ func TestDeletedIdentityNeedsProvisioningAndFreshAuthority(t *testing.T) {
 			}
 			if err = s.ProvisionMember(ctx, admin, who.Subject, "New membership"); err != nil {
 				t.Fatal(err)
+			}
+			if err := s.RecordDenied(WithKeyID(ctx, oldKey.ID), who, "admin"); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.db.QueryRow("SELECT count(*) FROM sc_workspace_audit WHERE workspace=$1 AND credential_id=$2", who.Workspace, oldKey.ID).Scan(&count); err != nil || count != 0 {
+				t.Fatalf("late denial restored erased key: %d, %v", count, err)
 			}
 			for _, c := range []context.Context{old, WithIdentityIssuedAt(ctx, time.Now().Add(40*time.Second).Unix()), WithActionAssertion(fresh, issued(old)), WithActionAssertion(ctx, 0)} {
 				_, err = s.LimitActor(c, who)

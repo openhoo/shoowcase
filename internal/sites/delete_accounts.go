@@ -30,7 +30,7 @@ func accountSites(ctx context.Context, tx *sql.Tx, workspace, subject string) ([
 
 // Scope generic target/value fields by event type. An OIDC subject can have
 // exactly the same text as another person's site slug, role, group or key ID.
-const accountActions = "('account_created','member_provisioned','local_account_created','identity_role_updated','account_suspended','account_reactivated','account_role_changed','local_password_changed')"
+const accountActions = "('account_created','member_provisioned','local_account_created','identity_role_updated','account_suspended','account_reactivated','account_role_changed','local_password_changed','local_role_changed')"
 const siteActions = "('create_site','upload_files','publish_site','rollback_site','set_site_access','delete_site','site_group_changed')"
 
 func (s *Store) eraseAccounts(ctx context.Context, tx *sql.Tx, admin Actor, targets []reviewedTarget) error {
