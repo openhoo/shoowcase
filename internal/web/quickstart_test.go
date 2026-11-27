@@ -167,3 +167,33 @@ func TestQuickstartKeepsCompanyProxyChoice(t *testing.T) {
 		}
 	}
 }
+
+func TestQuickstartUninstallDownloads(t *testing.T) {
+	app, _ := handlerFixture(t, filepath.Join(t.TempDir(), "setup.sqlite"), "team-a", false)
+	c, _ := joinMemberConsole(t, app)
+	page := hitRoute(t, app, "GET", testControl+"/quickstart", c, nil)
+	requireMemberStatus(t, page, 200)
+	for _, name := range []string{"uninstall.sh", "uninstall.ps1"} {
+		path := "/quickstart/" + name
+		if !strings.Contains(page.Body.String(), path) {
+			t.Fatalf("missing uninstall command for %s", name)
+		}
+		want, err := installers.ReadFile("quickstartassets/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		download := hitRoute(t, app, "GET", testControl+path, nil, nil)
+		if download.Code != 200 || download.Body.String() != string(want) ||
+			!strings.HasPrefix(download.Header().Get("Content-Type"), "text/plain") {
+			t.Fatalf("did not serve the standalone %s", name)
+		}
+		head := hitRoute(t, app, "HEAD", testControl+path, nil, nil)
+		if head.Code != 200 || head.Body.Len() != 0 {
+			t.Fatalf("unexpected HEAD for %s", name)
+		}
+		if hitRoute(t, app, "POST", testControl+path, nil, nil).Code != 405 ||
+			hitRoute(t, app, "GET", testSite+path, nil, nil).Code == 200 {
+			t.Fatalf("served %s outside the control download route", name)
+		}
+	}
+}

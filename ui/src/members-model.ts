@@ -123,6 +123,8 @@ export interface QuickData extends MemberData {
   Prompt: string;
   Clients: { ID: string; Name: string }[];
   CompanyProxy: boolean;
+  UninstallUnix: string;
+  UninstallWindows: string;
 }
 export const roles: Record<string, string> = {
   reader: "Viewer",

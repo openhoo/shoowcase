@@ -24,6 +24,9 @@ SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null ||
 export SOURCE_DATE_EPOCH
 go mod verify
 cp LICENSE NOTICE runtime/THIRD-PARTY-LICENSES.txt ui/UI-LICENSES.txt "$out/"
+for script in uninstall.sh uninstall.ps1; do
+  cp "internal/web/quickstartassets/$script" "$out/$script"
+done
 # The skills are text and small enough to store uncompressed. Fixed metadata and
 # an explicit inventory make this ZIP independent of platform and file mtimes.
 python3 - "$out/shoowcase-${version}-skills.zip" <<'PY'
