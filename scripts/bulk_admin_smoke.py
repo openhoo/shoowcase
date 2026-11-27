@@ -111,7 +111,7 @@ async def delete_groups_without_javascript(page, control, browser):
         await ctx.close()
 
 
-async def delete_password_account(admin, member, control, browser, fits):
+async def delete_password_account(admin, member, control, browser, fits, current_password):
     # A real password user owns one site; the admin's Private guide and another
     # member must survive both cancel and confirmed deletion.
     owner = "studio-member"
@@ -170,7 +170,11 @@ async def delete_password_account(admin, member, control, browser, fits):
         await expect(plain.get_by_role("link", name=site_name, exact=True)).to_have_count(0)
         await expect(plain.get_by_role("link", name="Private guide", exact=True)).to_be_visible()
         await member.goto(control + "/account")
-        await expect(member.get_by_role("button", name="Sign in with password")).to_be_visible()
+        await expect(member.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
+        await member.get_by_label("Username", exact=True).fill(owner)
+        await member.get_by_label("Password", exact=True).fill(current_password)
+        await member.get_by_role("button", name="Login", exact=True).click()
+        await expect(member.get_by_role("alert")).to_contain_text("incorrect")
     finally:
         await plain.context.close()
 

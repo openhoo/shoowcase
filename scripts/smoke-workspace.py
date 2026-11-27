@@ -655,7 +655,7 @@ async def password_accounts(binary, browser):
         await expect(member.get_by_role("alert")).to_contain_text("incorrect")
         await signin(member, control, second)
         await expect(member.get_by_role("heading", name="Your account")).to_be_visible()
-        await delete_password_account(admin, member, control, browser, fits)
+        await delete_password_account(admin, member, control, browser, fits, second)
         for page in (admin, member, other, private, native_private):
             await page.context.close()
     async with browser_smoke.local_server(binary, password_registration=True) as (endpoint, _, _):
