@@ -12,7 +12,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "internal/web/quickstartassets"
-TAG = "v0.10.2"
+TAG = "v0.10.3"
 CODE = "synthetic-setup-code-for-installer-fixture"
 PROXY_PASSWORD = "synthetic-password-for-installer-fixture"
 PROXY = f"http://user:{PROXY_PASSWORD}@proxy.invalid:8080"
