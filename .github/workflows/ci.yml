@@ -24,9 +24,9 @@ jobs:
           go-version: '1.27.4'
       - name: Install, upgrade and reject a corrupted archive with the native shell
         run: python scripts/test-quickstart-install.py
-      - name: Check Windows user credential protection
+      - name: Check client registration and Windows credential protection
         if: runner.os == 'Windows'
-        run: go test -run TestDPAPIUserCredential ./internal/agentsetup
+        run: go test ./internal/agentsetup
   verify:
     name: verify
     runs-on: ubuntu-24.04
@@ -84,8 +84,8 @@ jobs:
           "$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-browser.py --binary ./bin/shoowcase --browser-channel chrome
       - name: Create and share an interactive site from the workspace
         run: '"$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-workspace.py --binary ./bin/shoowcase --browser-channel chrome'
-      - name: Connect an isolated agent through the browser Quickstart
-        run: '"$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-quickstart.py --binary ./bin/shoowcase --clients cursor --browser-channel chrome'
+      - name: Connect isolated MCP clients through the browser Quickstart
+        run: '"$RUNNER_TEMP/shoowcase-browser/bin/python" scripts/smoke-quickstart.py --binary ./bin/shoowcase --clients cursor,copilot,copilot-app,vscode,vscode-local,gemini,opencode,stdio --browser-channel chrome'
       - name: Restore production-format backup into a separate database
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}
