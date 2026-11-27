@@ -69,7 +69,9 @@ async def delete_groups_without_javascript(page, control, browser):
                 await plain.get_by_role("button", name="Delete groups", exact=True).click()
             else:
                 await plain.get_by_role("link", name="Cancel", exact=True).click()
-            await plain.reload()
+            # Cancel and submit both navigate back to a server-rendered directory.
+            # Let that navigation finish before checking what the server retained.
+            await expect(plain.get_by_role("table", name="Group directory", exact=True)).to_be_visible()
             for name in names:
                 await expect(plain.get_by_role("link", name=name, exact=True)).to_have_count(int(not submit))
             await expect(plain.get_by_role("link", name=keep, exact=True)).to_be_visible()
@@ -101,7 +103,7 @@ async def revoke_keys(page, control):
             await page.get_by_role("button", name="Revoke keys", exact=True).click()
         else:
             await page.get_by_role("link", name="Cancel", exact=True).click()
-        await page.reload()
+        await expect(table).to_be_visible()
         for name in names:
             await expect(table.get_by_role("row").filter(has_text=name)).to_contain_text("Revoked" if submit else "Active")
         await expect(table.get_by_role("row").filter(has_text=keep)).to_contain_text("Active")
