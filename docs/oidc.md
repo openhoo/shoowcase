@@ -45,6 +45,8 @@ The MCP endpoint is a separate resource. Configure `SHOOWCASE_AUDIENCE` with an 
 
 ## Use OIDC alongside password accounts
 
+Set `SHOOWCASE_OIDC_ACCOUNT_URL` (Helm: `config.oidc.accountUrl`) to the HTTPS page where a signed-in user can change their own password at your provider. Shoowcase links to this page from **Account**. If you leave it empty, **Account** explains who manages the password. Local password accounts always use Shoowcase’s own form.
+
 To offer both methods on the same sign-in page, set `SHOOWCASE_LOCAL_WORKSPACE` to the workspace that will own the password accounts. Leave `SHOOWCASE_PUBLIC_REGISTRATION=false` for an invitation-only password directory. An administrator can still create accounts under **Workspace admin**. See [tenant access](tenant-access.md#manage-password-accounts) for the member workflow.
 
 Optionally set both `SHOOWCASE_OIDC_ADMIN_SUBJECT` and `SHOOWCASE_OIDC_ADMIN_WORKSPACE`. The former is the immutable `sub` for this client at the configured issuer. After normal OIDC token verification, this one subject maps to admin in the specified workspace even when the issuer omits Shoowcase-specific role or workspace claims. Its first successful browser sign-in creates its membership. Other subjects still need the configured claims. The `local:` subject prefix is reserved for generated password-account IDs. A matching email address, display name or password login never links to an OIDC identity.

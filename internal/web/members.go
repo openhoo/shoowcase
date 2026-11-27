@@ -15,7 +15,7 @@ import (
 	"github.com/openhoo/shoowcase/internal/sites"
 )
 
-//go:embed templates/members*.html
+//go:embed templates/members*.html directory-icons.html
 var memberFiles embed.FS
 
 var memberPages = template.Must(template.New("member-pages").Funcs(template.FuncMap{
@@ -28,7 +28,7 @@ var memberPages = template.Must(template.New("member-pages").Funcs(template.Func
 	"maxQuotaStorage": func() string { return formatQuotaBytes(sites.MaxWorkspaceManifestBytes) },
 	"quotaBytes":      formatQuotaBytes,
 	"limitState":      quotaLimitState,
-}).ParseFS(memberFiles, "templates/members*.html"))
+}).ParseFS(memberFiles, "directory-icons.html", "templates/members*.html"))
 
 func memberRole(r string) string {
 	switch r {
@@ -60,12 +60,15 @@ type memberKeyRow struct {
 
 type memberPage struct {
 	LocalAdmin, LocalUser                                 bool
+	OIDCAccountURL                                        string
 	CSRF, Workspace, Subject, Name, Role, Endpoint        string
 	Enrolled                                              bool
 	NameValue, Scope, Days, Secret, Err, Notice, Creation string
 	Scopes                                                []string
 	Keys                                                  []memberKeyRow
-	Members                                               []memberRow
+	Member                                                *memberRow
+	Members                                               []sites.Account
+	Directory                                             adminDirectory
 	Events                                                []sites.AuditEvent
 	Settings                                              sites.WorkspaceSettings
 	Groups                                                []sites.Group
@@ -190,6 +193,9 @@ func validMemberLabel(s string, max int) bool {
 }
 
 func (a *App) memberAccount(w http.ResponseWriter, r *http.Request, c consoleContext, p memberPage) {
+	if !p.LocalUser {
+		p.OIDCAccountURL = a.config.OIDCAccountURL
+	}
 	if r.URL.Query().Get("next") == "quickstart" || r.PostForm.Get("next") == "quickstart" {
 		p.Next = "quickstart"
 	}
@@ -474,7 +480,7 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 			memberError(w, c, err)
 			return
 		}
-		http.Redirect(w, r, "/admin?done="+action, 303)
+		http.Redirect(w, r, "/admin?"+url.Values{"member": {r.PostForm.Get("subject")}, "done": {action}}.Encode(), 303)
 		return
 	}
 	p.Notice = map[string]string{"create-local": "Password account created. The member can sign in now.", "workspace-quota": "Workspace limits saved.", "group-quota": "Group limits saved.", "site-group": "Site assignment saved.", "provision": "Member added.", "workspace-save": "Workspace settings saved.", "group-create": "Group created.", "group-update": "Group updated.", "group-delete": "Group deleted.", "group-add-member": "Member added to group.", "group-remove-member": "Member removed from group.", "revoked": "Key revoked.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved."}[r.URL.Query().Get("done")]
@@ -489,15 +495,9 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 	switch p.View {
 	case "", "members":
 		p.View = "members"
-		entries, next, err := a.store.ListAccounts(ctx, who, after)
-		if err != nil {
-			memberError(w, c, err)
+		if !a.membersView(w, r, c, &p) {
 			return
 		}
-		for _, v := range entries {
-			p.Members = append(p.Members, memberRow{v, v.Subject != who.Subject, memberCeilings(v)})
-		}
-		p.Next = memberNext("/admin", "members", next)
 	case "keys":
 		keys, next, err := a.store.ListKeys(ctx, who, true, after)
 		if err != nil {

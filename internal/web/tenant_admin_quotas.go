@@ -24,6 +24,7 @@ type quotaSiteRow struct {
 type quotaPage struct {
 	Workspace  quotaBudgetForm
 	Groups     []quotaBudgetForm
+	EditBudget *quotaBudgetForm
 	Unassigned sites.QuotaUsage
 	Sites      []quotaSiteRow
 	Selected   *quotaSiteRow
@@ -96,9 +97,18 @@ func (a *App) quotaView(w http.ResponseWriter, r *http.Request, c consoleContext
 	q := &p.Quota
 	q.Workspace = budgetForm(data.Workspace, data.Workspace.Limits, p.CSRF, true)
 	names := map[string]string{"": "Unassigned"}
+	budgetID := r.URL.Query().Get("budget")
 	for _, g := range data.Groups {
 		names[g.ID] = g.Name
-		q.Groups = append(q.Groups, budgetForm(g, data.Workspace.Limits, p.CSRF, false))
+		b := budgetForm(g, data.Workspace.Limits, p.CSRF, false)
+		q.Groups = append(q.Groups, b)
+		if g.ID == budgetID {
+			q.EditBudget = &b
+		}
+	}
+	if budgetID != "" && q.EditBudget == nil {
+		consoleError(w, c, 404, "Group not found", "Choose a group in this workspace.")
+		return false
 	}
 	selected := r.URL.Query().Get("site")
 	for _, site := range data.Sites {

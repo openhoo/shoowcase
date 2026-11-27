@@ -27,6 +27,7 @@ import (
 type Config struct {
 	DisableApps                                                   bool
 	ControlURL, SitesDomain, Version, SignupURL, MetricsWorkspace string
+	OIDCAccountURL                                                string
 	Key                                                           []byte
 	Public                                                        bool
 }
@@ -55,6 +56,12 @@ func New(c Config, db *sites.Store, a *auth.Service) (*App, error) {
 		signup, err := url.Parse(c.SignupURL)
 		if err != nil || signup.Scheme != "https" || signup.Hostname() == "" || signup.User != nil || signup.Fragment != "" {
 			return nil, errors.New("signup URL must be an absolute HTTPS URL without credentials or fragment")
+		}
+	}
+	if c.OIDCAccountURL != "" {
+		account, err := url.Parse(c.OIDCAccountURL)
+		if err != nil || account.Scheme != "https" || account.Hostname() == "" || account.User != nil || strings.ContainsAny(c.OIDCAccountURL, " \\") {
+			return nil, errors.New("OIDC account URL must be an absolute HTTPS URL without credentials")
 		}
 	}
 	u, _ := url.Parse(origin)

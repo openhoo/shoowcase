@@ -195,7 +195,7 @@ async def main(args):
                         check(b"Connected" in native, "Claude Code did not complete the MCP handshake")
                         print("PASS: Claude Code opened the registered connection")
                     await page.get_by_role("link", name="Agent keys", exact=True).last.click()
-                    row = page.get_by_role("listitem").filter(has=page.get_by_text(NAMES[client], exact=True)).first
+                    row = page.get_by_role("table", name="Your keys").get_by_role("row").filter(has=page.get_by_role("rowheader", name=NAMES[client], exact=True))
                     await row.locator("summary").click()
                     await row.get_by_role("checkbox").check()
                     await row.get_by_role("button", name="Revoke key").click()

@@ -80,6 +80,8 @@ spec:
               value: {{ .Values.config.sitesDomain | quote }}
             - name: SHOOWCASE_ISSUER
               value: {{ .Values.config.oidc.issuer | quote }}
+            - name: SHOOWCASE_OIDC_ACCOUNT_URL
+              value: {{ .Values.config.oidc.accountUrl | quote }}
             - name: SHOOWCASE_CLIENT_ID
               value: {{ .Values.config.oidc.clientId | quote }}
             - name: SHOOWCASE_CLIENT_AUTH_METHOD

@@ -21,6 +21,7 @@ All names below have the prefix `SHOOWCASE_`.
 | `DATABASE_URL` | PostgreSQL connection string. Use transport verification, e.g. `sslmode=verify-full`, with the appropriate trusted CA. |
 | `ISSUER`, `CLIENT_ID`, `CLIENT_SECRET`, `CLIENT_AUTH_METHOD` | HTTPS issuer, registered browser client and token endpoint authentication. See [OIDC and PKCE](oidc.md) for discovery requirements and confidential or public client setup. |
 | `OIDC_PROJECT_AUDIENCE` | Optional second audience in browser ID tokens (e.g. a provider project ID). If present in a token, its `azp` must match the browser client. |
+| `OIDC_ACCOUNT_URL` | Optional HTTPS link to the identity provider’s self-service password settings. Shown under **Account** to users who signed in through the provider. |
 | `AUDIENCE` | API token audience; defaults to control URL plus `/mcp`. |
 | `LOCAL_WORKSPACE` | Enable username and password sign-in alongside OIDC for this exact workspace ID. Empty (default) disables password sign-in. |
 | `PUBLIC_REGISTRATION` | Defaults to `false`. Administrators of the local workspace can create accounts with registration closed. Set `true` to allow visitors to register as readers; managed workspaces still require administrator provisioning. This switch is independent of public site sharing. |

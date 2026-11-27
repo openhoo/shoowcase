@@ -29,7 +29,7 @@ def axe_source():
     return path.read_text(encoding="utf-8")
 
 async def fits(page, name):
-    check(await page.evaluate("document.documentElement.scrollWidth <= innerWidth"), f"{name} overflows at 320px")
+    check(await page.evaluate("document.documentElement.scrollWidth <= innerWidth"), f"{name} overflows the viewport")
     await page.evaluate(axe_source())
     # Return only rule IDs and selectors; do not expose the key receipt or page text.
     violations = await page.evaluate("""async () => {
@@ -39,6 +39,21 @@ async def fits(page, name):
       return results.violations.map(v => [v.id, v.nodes.map(n => n.target)]);
     }""")
     check(not violations, f"{name}: axe WCAG violations: {violations}")
+
+
+async def check_record_tables(page, *names):
+    for width in (1200, 320):
+        await page.set_viewport_size({"width": width, "height": 780})
+        for name in names:
+            table = page.get_by_role("table", name=name, exact=True)
+            await expect(table).to_be_visible()
+            await expect(table.get_by_role("rowheader").first).to_be_visible()
+            check(await table.evaluate("""el => {
+                const box = el.getBoundingClientRect();
+                const parent = el.parentElement.getBoundingClientRect();
+                return box.left >= parent.left - 1 && box.right <= parent.right + 1;
+            }"""), f"{name} is clipped by its container at {width}px")
+        await fits(page, f"{', '.join(names)} at {width}px")
 
 
 async def enroll(page, control):
@@ -73,6 +88,7 @@ async def create_key(page, endpoint):
     secret = await page.get_by_label("Secret key", exact=True).input_value()
     check(bool(secret), "no key on receipt")
     await page.get_by_role("link", name="Back to agent keys").click()
+    await check_record_tables(page, "Your keys")
     check(secret not in await page.content(), "key visible after leaving the receipt")
     return secret
 
@@ -138,6 +154,7 @@ async def release_counter(page, other, control, http):
     await try_counter(page, await page.get_by_role("link", name="Preview draft").get_attribute("href"))
     await page.goto(control + "/sites/workshop-tally")
     await page.get_by_role("button", name="Publish draft").click()
+    await check_record_tables(page, "Draft files", "Releases")
     stable = await page.get_by_role("link", name="Open live site").get_attribute("href")
     http.request("GET", stable).expect(303, "anonymous reader of private site")
     await try_counter(page, stable)
@@ -170,14 +187,14 @@ async def revoke_pending(page, pending_review, control, endpoint, secret, agent,
     await fits(page, "admin members")
     await expect(page.get_by_text("Alex Morgan", exact=True)).to_be_visible()
     await page.get_by_role("link", name="Workspace keys").click()
-    await fits(page, "admin keys")
+    await check_record_tables(page, "Workspace keys")
     await page.get_by_text("Revoke Workshop publisher", exact=True).click()
     await page.get_by_label("Disconnect agents using this key.").check()
     await page.get_by_role("button", name="Revoke key").click()
     await expect(page.get_by_text("Revoked", exact=True)).to_be_visible()
     await page.get_by_role("link", name="Activity").click()
     await expect(page.get_by_text("Agent key revoked", exact=True)).to_be_visible()
-    await fits(page, "admin activity")
+    await check_record_tables(page, "Audit log")
 
     http.request("POST", endpoint, b"{}", {"Authorization": "Bearer " + secret, "Content-Type": "application/json"}).expect(401, "revoked credential")
     http.request("PUT", upload["upload_url"], addition).expect(403, "revoked exact-byte ticket")
@@ -212,6 +229,33 @@ async def admin_image(page, directory, name):
         await page.set_viewport_size(previous)
 
 
+async def check_admin_directory(page, kind, needle, name, role, media):
+    table = page.get_by_role("table", name=f"{kind.title()} directory")
+    search = page.get_by_label(f"Search {kind}s", exact=True)
+    await expect(table.get_by_role("link", name=name, exact=True)).to_be_visible()
+    for width in (1200, 320):
+        await page.set_viewport_size({"width": width, "height": 780})
+        await fits(page, f"{kind} directory at {width}px")
+        if media is not None:
+            region = page.get_by_role("region", name=f"{kind.title()} directory")
+            media.mkdir(parents=True, exist_ok=True)
+            await region.screenshot(path=media / f"{kind}-directory-{width}.png", animations="disabled")
+
+    toggle = page.get_by_role("button", name="Filter and sort")
+    await expect(toggle).to_have_attribute("aria-expanded", "false")
+    await toggle.press("Enter")
+    await expect(toggle).to_have_attribute("aria-expanded", "true")
+    await page.get_by_label("Role", exact=True).select_option(role)
+    await search.fill(needle.upper())
+    await page.get_by_role("button", name="Apply filters").click()
+    await expect(table.get_by_role("link")).to_have_text([name])
+    await search.fill("missing-directory-entry")
+    await search.press("Enter")
+    await expect(page.get_by_role("heading", name=f"No matching {kind}s")).to_be_visible()
+    await page.get_by_role("link", name="Reset filters").click()
+    await expect(table.get_by_role("link", name=name, exact=True)).to_be_visible()
+
+
 async def manage_workspace_access(page, control, media=None):
     await page.goto(control + "/admin")
     nav = page.get_by_role("navigation", name="Administration views")
@@ -221,7 +265,10 @@ async def manage_workspace_access(page, control, media=None):
     await page.get_by_label("Display name", exact=True).fill("Sam Editor")
     await fits(page, "provision member")
     await page.get_by_role("button", name="Add member").click()
-    await expect(page.get_by_text("Sam Editor", exact=True)).to_be_visible()
+    await nav.get_by_role("link", name="Members").click()
+    await check_admin_directory(page, "member", subject, "Sam Editor", "reader", media)
+    await page.get_by_role("link", name="Sam Editor", exact=True).press("Enter")
+    await expect(page.get_by_label("Role limit for Sam Editor")).to_be_visible()
 
     await nav.get_by_role("link", name="Groups").click()
     await page.get_by_label("Group name", exact=True).fill("Authors")
@@ -246,7 +293,9 @@ async def manage_workspace_access(page, control, media=None):
     await expect(page.get_by_label("Access mode")).to_have_value("managed")
     await admin_image(page, media, "access-mode")
     await nav.get_by_role("link", name="Groups").click()
-    await page.get_by_role("link", name="Releases").click()
+    await check_admin_directory(page, "group", "releas", "Releases", "publisher", media)
+    await page.get_by_role("link", name="Releases", exact=True).press("Enter")
+    await check_record_tables(page, "Group members")
     await admin_image(page, media, "groups")
     await page.get_by_role("button", name=f"Remove {subject} from group").click()
     await expect(page.get_by_text("This group has no members.")).to_be_visible()
@@ -321,8 +370,8 @@ async def check_group_budget(page, control, media):
     first = "<p>Field guide</p>"
     size = str(len(first.encode()))
     summary = f"Edit limits for {group}"
-    await page.get_by_text(summary, exact=True).click()
-    form = page.locator("details").filter(has=page.get_by_text(summary, exact=True))
+    await page.get_by_role("link", name=summary, exact=True).click()
+    form = page.locator("form#budget-editor")
     await form.get_by_label("Maximum sites").fill("1")
     await form.get_by_label("Storage unit").select_option("B")
     await form.get_by_label("Maximum storage").fill(size)
@@ -357,15 +406,16 @@ async def check_group_budget(page, control, media):
     check(await create_site("Over budget", "quota-over-budget") == 429, "group created a second site")
     await expect(page.get_by_role("alert")).to_contain_text(re.compile(r"group.*site", re.I))
     await page.goto(control + "/admin?view=quotas")
-    budget = page.get_by_role("listitem").filter(has=page.get_by_role("heading", name=group, exact=True))
-    usage = budget.get_by_role("definition")
-    await expect(usage).to_have_text([re.compile(r"^1 of 1\b.*At limit"), re.compile(rf"^{size} B of {size} B\b.*At limit")])
-    await fits(page, "budget usage at the group limits")
+    await check_record_tables(page, "Group quotas", "Site assignments")
+    budget = page.get_by_role("table", name="Group quotas").get_by_role("row").filter(has=page.get_by_role("rowheader", name=group, exact=True))
+    await expect(budget).to_contain_text(re.compile(r"1 of 1\b.*At limit"))
+    await expect(budget).to_contain_text(re.compile(rf"{size} B of {size} B\b.*At limit"))
     await admin_image(page, media, "quotas")
     await page.get_by_role("link", name=f"Change group for {name}", exact=True).click()
     await page.get_by_label(f"Group for {name}", exact=True).select_option("")
     await page.get_by_role("button", name="Save assignment").click()
-    await expect(usage).to_have_text([re.compile(r"^0 of 1\b"), re.compile(rf"^0 B of {size} B\b")])
+    await expect(budget).to_contain_text(re.compile(r"0 of 1\b"))
+    await expect(budget).to_contain_text(re.compile(rf"0 B of {size} B\b"))
     await nav.get_by_role("link", name="Activity").click()
     await expect(page.get_by_text("Site group changed", exact=True)).to_be_visible()
     await expect(page.get_by_text("Group limits changed", exact=True)).to_be_visible()
@@ -379,7 +429,8 @@ async def password_accounts(binary, browser):
         await page.get_by_role("button", name="Sign in with password").click()
 
     first, second = "starting example password", "updated example password"
-    async with browser_smoke.local_server(binary, password_registration=False) as (endpoint, token, _):
+    account_url = "https://identity.example.test/account/security"
+    async with browser_smoke.local_server(binary, password_registration=False, oidc_account_url=account_url) as (endpoint, token, _):
         control = endpoint.removesuffix("/mcp")
         admin, member, other = [await browser.new_page() for _ in range(3)]
         await admin.goto(control)
@@ -390,7 +441,10 @@ async def password_accounts(binary, browser):
         await admin.goto(control + "/admin")
         await admin.get_by_role("link", name="Continue with single sign-on").click()
         await admin.get_by_role("button", name="Create account").click()
-        await admin.goto(control + "/admin")
+        await admin.get_by_role("link", name="Account", exact=True).click()
+        await expect(admin.get_by_role("link", name="Change password at identity provider")).to_have_attribute("href", account_url)
+        await expect(admin.get_by_label("Current password")).to_have_count(0)
+        await admin.get_by_role("link", name="Admin", exact=True).click()
         await admin.get_by_text("Create a password account", exact=True).click()
         await admin.get_by_label("Username", exact=True).fill("studio-member")
         await admin.get_by_label("Starting password").fill(first)
@@ -414,6 +468,14 @@ async def password_accounts(binary, browser):
         await private.get_by_label("Password", exact=True).fill(first)
         await private.get_by_role("button", name="Sign in with password").click()
         await expect(private.get_by_role("heading", name="Private guide")).to_be_visible()
+        await member.set_viewport_size({"width": 320, "height": 780})
+        await member.get_by_role("link", name="Sites", exact=True).click()
+        await member.get_by_role("link", name="Account", exact=True).click()
+        await member.get_by_role("link", name="Change password", exact=True).press("Enter")
+        await expect(member.get_by_role("heading", name="Change password")).to_be_focused()
+        await member.keyboard.press("Tab")
+        await expect(member.get_by_label("Current password")).to_be_focused()
+        await fits(member, "change password")
         await member.get_by_label("Current password").fill(first)
         await member.get_by_label("New password").fill(second)
         await member.get_by_role("button", name="Change password").click()
@@ -479,4 +541,4 @@ if __name__ == "__main__":
     parser.add_argument("--admin-media", type=Path, help="optional directory for synthetic group, access, audit and quota screenshots")
     args = parser.parse_args()
     asyncio.run(workspace(args.binary.resolve(strict=True), args.browser_channel, args.screenshot, args.admin_media))
-    print("PASS: password provisioning, closed/open registration, password change and private-session invalidation, tenant administration, group site and storage quotas, audit export, filtered site directory, enrollment, keys, MCP, ZIP, editor, private and public counter, revocation, axe, keyboard and 320px layouts")
+    print("PASS: member, group and site directories; group members, keys, activity, quotas, assignments, draft files and releases; keyboard, axe and 320/1200px layouts; local password change, private-session invalidation and SSO account link; enrollment, MCP, ZIP, editor, publication, revocation and audit export")

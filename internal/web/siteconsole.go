@@ -18,6 +18,9 @@ import (
 	"github.com/openhoo/shoowcase/internal/sites"
 )
 
+//go:embed directory-icons.html
+var directoryIcons string
+
 //go:embed siteconsole.html
 var siteHTML string
 
@@ -57,7 +60,7 @@ var siteParts = template.Must(template.New("sites").Funcs(template.FuncMap{
 			return "Workspace"
 		}
 	},
-}).Parse(siteHTML))
+}).Parse(directoryIcons + siteHTML))
 
 type siteData struct {
 	C                                                                   consoleContext

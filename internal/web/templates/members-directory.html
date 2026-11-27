@@ -1,0 +1,38 @@
+{{define "admin-directory-tools"}}
+<div class="directory-title">
+  <h2 id="directory-title">{{if eq .View "members"}}Member directory{{else}}Group directory{{end}}</h2>
+  <span class="directory-count">{{.Directory.Matches}}{{if .Directory.Filtered}} of {{.Directory.Total}}{{end}} {{if eq .View "members"}}{{if eq .Directory.Total 1}}member{{else}}members{{end}}{{else}}{{if eq .Directory.Total 1}}group{{else}}groups{{end}}{{end}}</span>
+  <button type="button" class="filter-toggle secondary" id="directory-toggle" aria-controls="directory-options" aria-expanded="true" hidden>Filter and sort</button>
+</div>
+<form method="get" action="/admin" class="directory-filters{{if eq .View "groups"}} group-filters{{end}}" role="search" aria-label="Filter the {{if eq .View "members"}}member{{else}}group{{end}} directory">
+  <input type="hidden" name="view" value="{{.View}}">
+  <div class="field search-field"><label for="directory-search">Search {{.View}}</label><div class="search-box">{{template "search-icon"}}<input type="search" name="q" id="directory-search" value="{{.Directory.Query}}" maxlength="100" placeholder="{{if eq .View "members"}}Name or sign-in ID{{else}}Group name{{end}}"></div></div>
+  <div class="directory-options" id="directory-options">
+    {{if eq .View "members"}}<div class="field"><label for="directory-state">Status</label><div class="select-wrap"><select id="directory-state" name="state"><option value="">All statuses</option><option value="active"{{if eq .Directory.State "active"}} selected{{end}}>Active</option><option value="suspended"{{if eq .Directory.State "suspended"}} selected{{end}}>Suspended</option></select></div></div>{{end}}
+    <div class="field"><label for="directory-role">Role</label><div class="select-wrap"><select id="directory-role" name="role"><option value="">All roles</option>{{template "groupRoles" .Directory.Role}}{{if eq .View "members"}}<option value="admin"{{if eq .Directory.Role "admin"}} selected{{end}}>Admin</option>{{end}}</select></div></div>
+    <div class="field"><label for="directory-sort">Sort by</label><div class="select-wrap"><select id="directory-sort" name="sort"><option value="name"{{if eq .Directory.Sort "name"}} selected{{end}}>Name A–Z</option>{{if eq .View "members"}}<option value="subject"{{if eq .Directory.Sort "subject"}} selected{{end}}>Sign-in ID</option>{{else}}<option value="members"{{if eq .Directory.Sort "members"}} selected{{end}}>Most members</option>{{end}}</select></div></div>
+  </div>
+  <button type="submit" class="secondary filter-action">Apply filters</button>
+</form>
+{{if or .Directory.Filtered (ne .Directory.Sort "name")}}<p class="filter-reset"><a href="/admin?view={{.View}}">Reset filters</a></p>{{end}}
+{{end}}
+
+{{define "member-directory"}}
+<section class="directory" aria-labelledby="directory-title">
+{{template "admin-directory-tools" .}}
+{{if .Members}}
+<table class="directory-table" role="table" aria-labelledby="directory-title">
+  <thead><tr><th scope="col">Member</th><th scope="col">Status</th><th scope="col">Role</th><th scope="col">Joined</th></tr></thead>
+  <tbody>{{range .Members}}<tr>
+    <th scope="row" class="entry-name-cell"><div class="site-name-wrap">{{template "member-icon"}}<div><a class="site-name" href="{{if eq $.Subject .Subject}}/account{{else}}/admin?view=members&amp;member={{.Subject}}{{end}}">{{.DisplayName}}</a><span class="site-address">{{.Subject}}{{if eq $.Subject .Subject}} · Your account{{end}}</span></div></div></th>
+    <td class="state-cell"><span class="status-chip {{if .Disabled}}state-offline{{else}}state-published{{end}}"><i class="dot {{if .Disabled}}offline{{else}}published{{end}}" aria-hidden="true"></i>{{if .Disabled}}Suspended{{else}}Active{{end}}</span></td>
+    <td><span class="mobile-label" aria-hidden="true">Role</span>{{role .Role}}</td>
+    <td><span class="mobile-label" aria-hidden="true">Joined</span><time datetime="{{isoDate .CreatedAt}}">{{shortDate .CreatedAt}}</time></td>
+  </tr>{{end}}</tbody>
+</table>{{else}}<div class="directory-empty"><h3>{{if .Directory.Filtered}}No matching members{{else}}No members on this page{{end}}</h3>{{if .Directory.Filtered}}<p>Try another name or sign-in ID, or reset the filters.</p>{{end}}</div>{{end}}
+{{if or .Directory.Prev .Directory.Next}}<nav class="directory-pages" aria-label="Member pages">{{if .Directory.Prev}}<a href="{{.Directory.Prev}}">← Previous members</a>{{end}}{{if .Directory.Next}}<a href="{{.Directory.Next}}">Next members →</a>{{end}}</nav>{{end}}
+</section>
+{{end}}
+
+{{define "member-icon"}}<span class="directory-mark" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="8" r="3.25"/><path d="M5.5 20v-1.5a6.5 6.5 0 0 1 13 0V20"/></svg></span>{{end}}
+{{define "group-icon"}}<span class="directory-mark" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="9" cy="9" r="3"/><path d="M3 20v-1a6 6 0 0 1 12 0v1m1-14a3 3 0 0 1 0 6m3 8v-1a6 6 0 0 0-2-4.5"/></svg></span>{{end}}

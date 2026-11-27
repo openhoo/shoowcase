@@ -5,6 +5,8 @@ config:
   sitesDomain: ""
   oidc:
     issuer: ""
+    # Optional HTTPS page where users who sign in with OIDC manage their password.
+    accountUrl: ""
     clientId: ""
     # Empty: discover the confidential method. Use "none" for a registered public client.
     clientAuthMethod: ""

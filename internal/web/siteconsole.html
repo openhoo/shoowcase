@@ -4,7 +4,6 @@
 {{define "back"}}<p><a href="{{.Base}}">← Back to site</a></p>{{end}}
 
 {{define "plus-icon"}}<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>{{end}}
-{{define "search-icon"}}<svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.6"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>{{end}}
 {{define "file-icon"}}<svg width="15" height="15" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 2.5h5l3.5 3.7v9.3H5zM10 3v4h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>{{end}}
 
 {{define "list"}}
@@ -31,9 +30,9 @@
   </form>
   {{if .Directory.Filtered}}<p class="filter-reset"><a href="/sites">Reset filters</a></p>{{end}}
   {{if .Directory.Sites}}
-  <table class="site-table" role="table" aria-labelledby="directory-title"><thead><tr><th scope="col">Site</th><th scope="col">Status</th><th scope="col">Audience</th><th scope="col">Files</th><th scope="col">Last updated</th></tr></thead>
+  <table class="directory-table" role="table" aria-labelledby="directory-title"><thead><tr><th scope="col">Site</th><th scope="col">Status</th><th scope="col">Audience</th><th scope="col">Files</th><th scope="col">Last updated</th></tr></thead>
   <tbody>{{range .Directory.Sites}}<tr>
-    <th scope="row" class="site-name-cell"><div class="site-name-wrap"><span class="folio-mark state-{{.State}}" aria-hidden="true"><i></i></span><div><a href="{{.Href}}" class="site-name">{{.Name}}</a><span class="site-address">{{.Address}}</span></div></div></th>
+    <th scope="row" class="entry-name-cell"><div class="site-name-wrap"><span class="folio-mark state-{{.State}}" aria-hidden="true"><i></i></span><div><a href="{{.Href}}" class="site-name">{{.Name}}</a><span class="site-address">{{.Address}}</span></div></div></th>
     <td class="state-cell"><span class="status-chip state-{{.State}}"><i class="dot {{.State}}" aria-hidden="true"></i>{{.StateLabel}}</span></td>
     <td class="audience-cell"><span class="mobile-label" aria-hidden="true">Audience</span>{{.AudienceLabel}}</td>
     <td class="files-cell"><span class="mobile-label" aria-hidden="true">Files</span><span class="file-count">{{template "file-icon"}}{{.FileCount}}</span></td>
@@ -64,12 +63,21 @@
 <p>{{if not .S.ReleaseID}}Unpublished{{else if eq .S.Visibility "offline"}}Offline{{else if eq .S.LiveRevision .S.Revision}}Published{{else}}Unpublished changes{{end}} <span aria-hidden="true">·</span> {{audience .S.Visibility}}</p>
 <div class="toolbar">{{if .HasIndex}}<a class="button secondary" href="{{.PreviewURL}}">Preview draft</a>{{end}}{{if and .S.ReleaseID (ne .S.Visibility "offline")}}<a class="button secondary" href="{{.SiteURL}}">Open live site</a>{{end}}{{if and .CanPublish .HasIndex (ne .S.LiveRevision .S.Revision)}}<form method="post" action="{{.Base}}/publish">{{template "write" .}}<button type="submit">Publish draft</button></form>{{end}}</div></header>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
-<section class="panel stack" aria-labelledby="draft-title"><h2 id="draft-title">Draft files</h2>
+<section class="directory" aria-labelledby="draft-title">
+<div class="directory-title"><h2 id="draft-title">Draft files</h2><span class="directory-count">{{len .S.Files}} {{if eq (len .S.Files) 1}}file{{else}}files{{end}}</span></div>
+{{if or .CanEdit .S.StorageRestriction}}<div class="directory-body">
 {{with .S.StorageRestriction}}<p class="notice">{{.}}</p>{{end}}
 {{if .CanEdit}}<div class="toolbar"><a class="button" href="{{.Base}}/edit">New file</a><a class="button secondary" href="{{.Base}}/upload">Upload file</a><a class="button secondary" href="{{.Base}}/import">Import ZIP</a></div>{{end}}
-{{if .S.Files}}<ul class="list">{{range .S.Files}}<li class="row"><div>{{if and $.CanEdit (editable .Path)}}<a href="{{$.Base}}/edit?path={{.Path}}"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{humanBytes .Size}}</small></div>{{if $.CanEdit}}<a href="{{$.Base}}/delete?path={{.Path}}" aria-label="Remove {{.Path}}">Remove</a>{{end}}</li>{{end}}</ul>
-{{else}}<p>No files yet. {{if .CanEdit}}Create <code>index.html</code> in the editor or import a ZIP with your site files.{{end}}</p>{{end}}
-{{if and .S.Files (not .HasIndex)}}<p class="notice">Add a file named <code>index.html</code> before publishing. It is the page visitors open first.</p>{{end}}
+</div>{{end}}
+{{if .S.Files}}<table class="directory-table" role="table" aria-labelledby="draft-title">
+<thead><tr><th scope="col">File</th><th scope="col">Size</th>{{if .CanEdit}}<th scope="col">Actions</th>{{end}}</tr></thead>
+<tbody>{{range .S.Files}}<tr>
+<th scope="row" class="entry-name-cell"><div class="site-name-wrap">{{template "file-icon"}}{{if and $.CanEdit (editable .Path)}}<a class="site-name" href="{{$.Base}}/edit?path={{.Path}}"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}}</div></th>
+<td><span class="mobile-label" aria-hidden="true">Size</span>{{humanBytes .Size}}</td>
+{{if $.CanEdit}}<td><a href="{{$.Base}}/delete?path={{.Path}}" aria-label="Remove {{.Path}}">Remove</a></td>{{end}}
+</tr>{{end}}</tbody></table>
+{{else}}<div class="directory-empty"><h3>No files yet.</h3>{{if .CanEdit}}<p>Create <code>index.html</code> in the editor or import a ZIP with your site files.</p>{{end}}</div>{{end}}
+{{if and .S.Files (not .HasIndex)}}<div class="directory-body"><p class="notice">Add a file named <code>index.html</code> before publishing. It is the page visitors open first.</p></div>{{end}}
 </section>
 <section class="panel stack" aria-labelledby="audience-title"><h2 id="audience-title">Access</h2>
 {{if eq .S.Visibility "public"}}<p>Anyone with the address can open this site.</p>{{else if eq .S.Visibility "offline"}}<p>The live address is offline. Workspace members can still open draft previews.</p>{{else}}<p>Only signed-in workspace members can open this site.</p>{{end}}
@@ -77,10 +85,16 @@
 {{if .CanPublish}}<form class="stack" method="post" action="{{.Base}}/access">{{template "token" .}}<input type="hidden" name="request_id" value="{{.Request}}-access"><input type="hidden" name="revision" value="{{if .S.LiveRevision}}{{.S.LiveRevision}}{{else}}{{.Rev}}{{end}}">
 <div class="field"><label for="visibility">Site audience</label><div class="select-wrap"><select id="visibility" name="visibility"><option value="workspace" {{if eq .S.Visibility "workspace"}}selected{{end}}>Workspace</option>{{if and .AllowPublic .S.ReleaseID}}<option value="public" {{if eq .S.Visibility "public"}}selected{{end}}>Public</option>{{end}}<option value="offline" {{if eq .S.Visibility "offline"}}selected{{end}}>Offline</option></select></div></div><button class="secondary" type="submit">Update access</button></form>{{end}}
 </section>
-<section class="panel stack" id="releases" aria-labelledby="releases-title"><h2 id="releases-title">Releases</h2>
-{{if .History.Releases}}<ul class="list">{{range .History.Releases}}<li class="row"><div><strong><time datetime="{{.CreatedAt}}">{{utcTime .CreatedAt}}</time></strong><p class="muted">Revision <code>{{shortID .Revision}}</code>{{if eq .ID $.S.ReleaseID}} <span class="badge">Current</span>{{end}}</p></div>
-{{if and $.CanPublish (ne .ID $.S.ReleaseID)}}<a href="{{$.Base}}/rollback?release={{.ID}}" aria-label="Review restore of revision {{shortID .Revision}}">Restore…</a>{{end}}</li>{{end}}</ul>
-{{if .History.NextCursor}}<a href="{{.Base}}?releases={{.History.NextCursor}}#releases">Older releases</a>{{end}}{{else}}<p>No releases yet.</p>{{end}}
+<section class="directory" id="releases" aria-labelledby="releases-title"><div class="directory-title"><h2 id="releases-title">Releases</h2></div>
+{{if .History.Releases}}<table class="directory-table" role="table" aria-labelledby="releases-title">
+<thead><tr><th scope="col">Revision</th><th scope="col">Released</th><th scope="col">Status</th>{{if .CanPublish}}<th scope="col">Actions</th>{{end}}</tr></thead>
+<tbody>{{range .History.Releases}}<tr>
+<th scope="row" class="entry-name-cell"><code>{{shortID .Revision}}</code></th>
+<td><span class="mobile-label" aria-hidden="true">Released</span><time datetime="{{.CreatedAt}}">{{utcTime .CreatedAt}}</time></td>
+<td><span class="mobile-label" aria-hidden="true">Status</span>{{if eq .ID $.S.ReleaseID}}<span class="status-chip state-published">Current</span>{{else}}Previous{{end}}</td>
+{{if $.CanPublish}}<td>{{if ne .ID $.S.ReleaseID}}<a href="{{$.Base}}/rollback?release={{.ID}}" aria-label="Review restore of revision {{shortID .Revision}}">Restore…</a>{{end}}</td>{{end}}
+</tr>{{end}}</tbody></table>
+{{if .History.NextCursor}}<nav class="directory-pages" aria-label="Release pages"><a href="{{.Base}}?releases={{.History.NextCursor}}#releases">Older releases</a></nav>{{end}}{{else}}<div class="directory-empty"><h3>No releases yet.</h3></div>{{end}}
 </section>
 {{end}}
 
