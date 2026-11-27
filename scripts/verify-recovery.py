@@ -99,8 +99,8 @@ def audit_export(reader, port, after=0):
     return result
 
 
-SUPPORTED_PRIORS = {"0.1.1": 1, "0.2.0": 2, "0.3.2": 4, "0.6.0": 5}
-CURRENT_SCHEMA = 6
+SUPPORTED_PRIORS = {"0.1.1": 1, "0.2.0": 2, "0.3.2": 4, "0.6.0": 5, "0.9.0": 6}
+CURRENT_SCHEMA = 7
 MEMBER_NAME = "Restore rehearsal member"
 
 
@@ -274,7 +274,7 @@ def verify_recovery_target(previous, dsn, token, state, specimen):
 def sqlite_upgrade(previous, candidate, previous_schema):
     token = secrets.token_urlsafe(32)
     with tempfile.TemporaryDirectory(prefix="shoowcase-sqlite-upgrade-") as state, tempfile.TemporaryDirectory(prefix="shoowcase-sqlite-backup-") as backup:
-        specimen = seed(previous, "", token, state, with_member=previous_schema in (2, 4, 5))
+        specimen = seed(previous, "", token, state, with_member=previous_schema in (2, 4, 5, 6))
         with contextlib.closing(sqlite3.connect(Path(state)/"shoowcase.db")) as db, contextlib.closing(sqlite3.connect(Path(backup)/"shoowcase.db")) as saved:
             check(db.execute("SELECT max(version) FROM sc_schema_migrations").fetchone() == (previous_schema,), f"SQLite did not start on schema {previous_schema}")
             db.backup(saved)
@@ -288,6 +288,7 @@ def sqlite_upgrade(previous, candidate, previous_schema):
         check(len(before) == 5, "expected five audit rows before migration")
         verify_restored(candidate, "", token, state, specimen, before, get_audit)
         check(sql("SELECT max(version) FROM sc_schema_migrations") == [(CURRENT_SCHEMA,)], "wrong migrated SQLite schema")
+        check(sql("SELECT count(*) FROM sc_sites s WHERE NOT EXISTS (SELECT 1 FROM sc_reserved_sites r WHERE r.id=s.id)") == [(0,)], "SQLite failed to reserve an existing site address")
         reject_downgrade(previous, "", token, state)
         verify_recovery_target(previous, "", token, backup, specimen)
         print(f"PASS: SQLite schema {previous_schema}→{CURRENT_SCHEMA}; preserved two releases, private content, workspace audit revisions, cursor and replay; release rollback, old-binary rejection and restoring the prior snapshot verified.")
@@ -312,7 +313,7 @@ def rehearse(pg, binary, previous_binary=None, previous_schema=None):
             pg.sql("postgres", f"CREATE DATABASE {db} OWNER {user};")
             created.append(("DATABASE", db))
         with tempfile.TemporaryDirectory(prefix="shoowcase-restore-") as state:
-            specimen = seed(previous_binary or binary, dsn(source), token, state, with_member=previous_schema in (2, 4, 5))
+            specimen = seed(previous_binary or binary, dsn(source), token, state, with_member=previous_schema in (2, 4, 5, 6))
             if previous_binary:
                 check(int(pg.sql(source, "SELECT MAX(version) FROM sc_schema_migrations")) == previous_schema,
                       f"PostgreSQL did not start on schema {previous_schema}")
@@ -337,6 +338,7 @@ def rehearse(pg, binary, previous_binary=None, previous_schema=None):
             verify_restored(binary, dsn(restored), token, state, specimen, original_audit, lambda: audit(pg, restored))
             if previous_binary:
                 check(int(pg.sql(restored, "SELECT MAX(version) FROM sc_schema_migrations")) == CURRENT_SCHEMA, "wrong migrated PostgreSQL schema")
+                check(int(pg.sql(restored, "SELECT count(*) FROM sc_sites s WHERE NOT EXISTS (SELECT 1 FROM sc_reserved_sites r WHERE r.id=s.id)")) == 0, "PostgreSQL failed to reserve an existing site address")
                 reject_downgrade(previous_binary, dsn(restored), token, state)
                 verify_recovery_target(previous_binary, dsn(rollback_db), token, state, specimen)
                 print(f"PASS: PostgreSQL schema {previous_schema}→{CURRENT_SCHEMA}; older binary rejected schema {CURRENT_SCHEMA} and served the private site from a separately restored snapshot.")
@@ -352,7 +354,7 @@ def rehearse(pg, binary, previous_binary=None, previous_schema=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--previous-binary", type=Path, help="seed with v0.1.1 (schema 1), v0.2.0 (schema 2), v0.3.2 (schema 4) or v0.6.0 (schema 5), then verify SQLite/PostgreSQL upgrade and rollback")
+    parser.add_argument("--previous-binary", type=Path, help="seed with v0.1.1 (schema 1), v0.2.0 (schema 2), v0.3.2 (schema 4) v0.6.0 (schema 5) or v0.9.0 (schema 6), then verify SQLite/PostgreSQL upgrade and rollback")
     parser.add_argument("--engine", choices=("podman", "docker"), default="podman")
     parser.add_argument("--container", required=True, help="disposable official PostgreSQL service, published on loopback")
     args = parser.parse_args()
@@ -361,9 +363,9 @@ if __name__ == "__main__":
     previous_schema = None
     if previous:
         version = subprocess.check_output([previous, "version"], text=True).strip().removeprefix("v")
-        check(version in SUPPORTED_PRIORS, "expected previous Shoowcase v0.1.1, v0.2.0, v0.3.2 or v0.6.0 binary")
+        check(version in SUPPORTED_PRIORS, "expected previous Shoowcase v0.1.1, v0.2.0, v0.3.2, v0.6.0 or v0.9.0 binary")
         previous_schema = SUPPORTED_PRIORS[version]
         sqlite_upgrade(previous, binary, previous_schema)
     rehearse(Postgres(args.engine, args.container), binary, previous, previous_schema)
-    if previous_schema in (2, 4, 5):
+    if previous_schema in (2, 4, 5, 6):
         print(f"PASS: On both backends the v{version} member and personal reader key survived migration and snapshot rollback; the same key read the private site and was denied a write.")

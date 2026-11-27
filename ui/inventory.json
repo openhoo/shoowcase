@@ -1,0 +1,54 @@
+[
+  {
+    "name": "@radix-ui/react-compose-refs",
+    "version": "1.1.5"
+  },
+  {
+    "name": "@radix-ui/react-label",
+    "version": "2.1.17"
+  },
+  {
+    "name": "@radix-ui/react-primitive",
+    "version": "2.2.0"
+  },
+  {
+    "name": "@radix-ui/react-slot",
+    "version": "1.5.0"
+  },
+  {
+    "name": "class-variance-authority",
+    "version": "0.7.1"
+  },
+  {
+    "name": "clsx",
+    "version": "2.1.1"
+  },
+  {
+    "name": "lucide-react",
+    "version": "1.82.0"
+  },
+  {
+    "name": "react",
+    "version": "19.3.1"
+  },
+  {
+    "name": "react-dom",
+    "version": "19.3.1"
+  },
+  {
+    "name": "scheduler",
+    "version": "0.28.0"
+  },
+  {
+    "name": "tailwind-merge",
+    "version": "3.7.1"
+  },
+  {
+    "name": "tailwindcss",
+    "version": "4.3.5"
+  },
+  {
+    "name": "shadcn/ui",
+    "version": "2af707f1ddcffbc14323691e63fc2aed032049d9e686472026fda037aaaf6513"
+  }
+]

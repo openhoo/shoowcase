@@ -173,20 +173,25 @@ func (s *Store) DeleteGroup(ctx context.Context, a Actor, id string, version int
 		return err
 	}
 	defer tx.Rollback()
+	if err := deleteGroup(ctx, tx, a, g); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func deleteGroup(ctx context.Context, tx *sql.Tx, a Actor, g Group) error {
+	id := g.ID
 	var assigned bool
-	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sc_site_groups WHERE workspace=$1 AND group_id=$2)", a.Workspace, id).Scan(&assigned); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sc_site_groups WHERE workspace=$1 AND group_id=$2)", a.Workspace, id).Scan(&assigned); err != nil {
 		return err
 	}
 	if assigned {
 		return conflict("Reassign this group’s sites before deleting the group.")
 	}
-	if _, err = tx.ExecContext(ctx, "DELETE FROM sc_groups WHERE workspace=$1 AND id=$2", a.Workspace, id); err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM sc_groups WHERE workspace=$1 AND id=$2", a.Workspace, id); err != nil {
 		return err
 	}
-	if err = recordAccountChange(ctx, tx, a, "group_deleted", id, g.Role, ""); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return recordAccountChange(ctx, tx, a, "group_deleted", id, g.Role, "")
 }
 
 func (s *Store) SetGroupMember(ctx context.Context, a Actor, id, subject string, present bool, version int64) error {

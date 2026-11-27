@@ -27,6 +27,9 @@ func memberControl(t *testing.T, page, attr, name string) string {
 			continue
 		}
 		n := z.Token()
+		if n.Data == "noscript" {
+			z.NextIsNotRawText()
+		}
 		if n.Data != "input" {
 			continue
 		}

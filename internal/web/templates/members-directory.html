@@ -18,16 +18,21 @@
 {{end}}
 
 {{define "member-directory"}}
-<section class="directory" aria-labelledby="directory-title">
+<section class="directory" aria-labelledby="directory-title" data-selection>
 {{template "admin-directory-tools" .}}
 {{if .Members}}
+<form id="member-selection" class="directory-body selection-toolbar" action="/admin" method="post">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="review-selection">{{template "admin-select-all"}}
+<button type="submit" name="operation" value="suspend-members" data-requires-kind="active" data-selection-submit class="secondary danger-action">Suspend selected</button><button type="submit" name="operation" value="restore-members" data-requires-kind="suspended" data-selection-submit class="secondary">Restore selected</button></form>
 <table class="directory-table" role="table" aria-labelledby="directory-title">
-  <thead><tr><th scope="col">Member</th><th scope="col">Status</th><th scope="col">Role</th><th scope="col">Joined</th></tr></thead>
+  <thead><tr><th scope="col" class="selection-cell">Select</th><th scope="col">Member</th><th scope="col">Status</th><th scope="col">Role</th><th scope="col">Joined</th><th scope="col">Action</th></tr></thead>
   <tbody>{{range .Members}}<tr>
+    <td class="selection-cell">{{if ne $.Subject .Subject}}<input type="checkbox" data-select-row data-selection-kind="{{if .Disabled}}suspended{{else}}active{{end}}" form="member-selection" name="selected" value="{{.Subject}}" aria-label="Select {{.DisplayName}} ({{.Subject}})">{{else}}<span aria-hidden="true">—</span>{{end}}</td>
     <th scope="row" class="entry-name-cell"><div class="site-name-wrap">{{template "member-icon"}}<div><a class="site-name" href="{{if eq $.Subject .Subject}}/account{{else}}/admin?view=members&amp;member={{.Subject}}{{end}}">{{.DisplayName}}</a><span class="site-address">{{.Subject}}{{if eq $.Subject .Subject}} · Your account{{end}}</span></div></div></th>
     <td class="state-cell"><span class="status-chip {{if .Disabled}}state-offline{{else}}state-published{{end}}"><i class="dot {{if .Disabled}}offline{{else}}published{{end}}" aria-hidden="true"></i>{{if .Disabled}}Suspended{{else}}Active{{end}}</span></td>
     <td><span class="mobile-label" aria-hidden="true">Role</span>{{role .Role}}</td>
     <td><span class="mobile-label" aria-hidden="true">Joined</span><time datetime="{{isoDate .CreatedAt}}">{{shortDate .CreatedAt}}</time></td>
+    <td class="entry-wide">{{if ne $.Subject .Subject}}<form action="/admin" method="post"><input type="hidden" name="action" value="review-selection"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="selected" value="{{.Subject}}">{{if .Disabled}}<button class="secondary" name="operation" value="restore-members" aria-label="Restore {{.DisplayName}}">Restore</button>{{else}}<button class="secondary danger-action" name="operation" value="suspend-members" aria-label="Suspend {{.DisplayName}}">Suspend</button>{{end}}</form>{{else}}—{{end}}</td>
   </tr>{{end}}</tbody>
 </table>{{else}}<div class="directory-empty"><h3>{{if .Directory.Filtered}}No matching members{{else}}No members on this page{{end}}</h3>{{if .Directory.Filtered}}<p>Try another name or sign-in ID, or reset the filters.</p>{{end}}</div>{{end}}
 {{if or .Directory.Prev .Directory.Next}}<nav class="directory-pages" aria-label="Member pages">{{if .Directory.Prev}}<a href="{{.Directory.Prev}}">← Previous members</a>{{end}}{{if .Directory.Next}}<a href="{{.Directory.Next}}">Next members →</a>{{end}}</nav>{{end}}

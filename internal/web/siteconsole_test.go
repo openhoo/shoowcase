@@ -28,6 +28,9 @@ func siteForm(t *testing.T, page, action string) url.Values {
 			t.Fatalf("missing form with action %s", action)
 		case html.StartTagToken, html.SelfClosingTagToken:
 			n := z.Token()
+			if n.Data == "noscript" {
+				z.NextIsNotRawText()
+			}
 			attrs := map[string]string{}
 			for _, a := range n.Attr {
 				attrs[a.Key] = a.Val
@@ -179,6 +182,9 @@ func TestSiteConsoleManualWorkflow(t *testing.T) {
 			continue
 		}
 		n := tok.Token()
+		if n.Data == "noscript" {
+			tok.NextIsNotRawText()
+		}
 		for _, attr := range n.Attr {
 			if n.Data == "a" && attr.Key == "href" && strings.HasPrefix(attr.Val, base+"/rollback?release=") {
 				restore = attr.Val

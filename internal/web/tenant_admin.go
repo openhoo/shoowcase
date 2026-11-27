@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 
 	"github.com/openhoo/shoowcase/internal/auth"
@@ -35,13 +36,16 @@ func adminLocation(view, group, done string) string {
 }
 
 func (a *App) tenantMutation(w http.ResponseWriter, r *http.Request, c consoleContext, action string) bool {
+	if a.adminSelection(w, r, c, action) {
+		return true
+	}
 	f := r.PostForm
 	who, ctx := actor(c.Identity), r.Context()
 	group, view := f.Get("group"), "groups"
 	version, parseErr := strconv.ParseInt(f.Get("version"), 10, 64)
 	var err error
 	switch action {
-	case "group-update", "group-delete", "group-add-member", "group-remove-member", "workspace-save":
+	case "group-update", "group-delete", "group-add-member", "workspace-save":
 		if parseErr != nil || version < 1 {
 			consoleError(w, c, 400, "Missing version", "Reload this form before making changes.")
 			return true
@@ -67,8 +71,8 @@ func (a *App) tenantMutation(w http.ResponseWriter, r *http.Request, c consoleCo
 		}
 		err = a.store.DeleteGroup(ctx, who, group, version)
 		group = ""
-	case "group-add-member", "group-remove-member":
-		err = a.store.SetGroupMember(ctx, who, group, f.Get("subject"), action == "group-add-member", version)
+	case "group-add-member":
+		err = a.store.SetGroupMember(ctx, who, group, f.Get("subject"), true, version)
 	default:
 		return false
 	}
@@ -111,6 +115,7 @@ func (a *App) groupView(w http.ResponseWriter, r *http.Request, c consoleContext
 			memberError(w, c, err)
 			return false
 		}
+		pageGroupRoster(p, r.URL.Query().Get("after"))
 		return true
 	}
 	d, ok := parseAdminDirectory(w, r, c, false)
@@ -120,6 +125,35 @@ func (a *App) groupView(w http.ResponseWriter, r *http.Request, c consoleContext
 	p.Directory = d
 	p.Groups = p.Directory.groups(p.Groups)
 	return true
+}
+
+func pageGroupRoster(p *memberPage, after string) {
+	const pageSize = 25
+	all := p.GroupMembers
+	p.Directory.Total = len(all)
+	start := 0
+	if after != "" {
+		start = slices.Index(all, after) + 1
+	}
+	end := min(start+pageSize, len(all))
+	urlFor := func(cursor string) string {
+		q := url.Values{"group": {p.Group.ID}, "view": {"groups"}}
+		if cursor != "" {
+			q.Set("after", cursor)
+		}
+		return "/admin?" + q.Encode()
+	}
+	if end < len(all) {
+		p.Directory.Next = urlFor(all[end-1])
+	}
+	if start > 0 {
+		prev := ""
+		if start > pageSize {
+			prev = all[start-pageSize-1]
+		}
+		p.Directory.Prev = urlFor(prev)
+	}
+	p.GroupMembers = all[start:end]
 }
 
 func auditCursor(q url.Values, name string) (int64, bool) {

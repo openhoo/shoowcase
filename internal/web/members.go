@@ -70,6 +70,7 @@ type memberPage struct {
 	Members                                               []sites.Account
 	Directory                                             adminDirectory
 	Events                                                []sites.AuditEvent
+	EventNames                                            map[string]string
 	Settings                                              sites.WorkspaceSettings
 	Groups                                                []sites.Group
 	Group                                                 *sites.Group
@@ -110,6 +111,8 @@ func memberEventName(action string) string {
 		return "Workspace access mode changed"
 	case "workspace_renamed":
 		return "Workspace renamed"
+	case "delete_site":
+		return "Draft site deleted"
 	case "create_site":
 		return "Site created"
 	case "upload_files":
@@ -373,18 +376,15 @@ func (a *App) memberKeys(w http.ResponseWriter, r *http.Request, c consoleContex
 				return
 			}
 			status = 400
-		case "revoke":
-			if !a.memberRevoke(w, r, c) {
-				return
-			}
-			http.Redirect(w, r, "/keys?done=revoked", 303)
+		case "revoke", "review-key-revocation", "revoke-selected":
+			a.keyRevocation(w, r, c, false)
 			return
 		default:
 			consoleError(w, c, 400, "Unknown action", "Reopen the agent keys page and try again.")
 			return
 		}
-	} else if r.URL.Query().Get("done") == "revoked" {
-		p.Notice = "Key revoked."
+	} else {
+		p.Notice = keyRevocationNotice(r.URL.Query().Get("done"))
 	}
 	keys, next, err := a.store.ListKeys(r.Context(), who, false, r.URL.Query().Get("after"))
 	if err != nil {
@@ -395,18 +395,6 @@ func (a *App) memberKeys(w http.ResponseWriter, r *http.Request, c consoleContex
 	p.Next = memberNext("/keys", "", next)
 	p.Creation = a.sign(ticket{Kind: "create-key", Who: c.Actor, Nonce: rand.Text(), Expires: time.Now().Add(15 * time.Minute).Unix()})
 	consoleView(w, c, status, "Agent keys", "keys", memberPages.Lookup("keys"), p)
-}
-
-func (a *App) memberRevoke(w http.ResponseWriter, r *http.Request, c consoleContext) bool {
-	if r.PostForm.Get("confirm") != "yes" {
-		consoleError(w, c, 400, "Confirm revocation", "Select the confirmation checkbox to revoke this key.")
-		return false
-	}
-	if err := a.store.RevokeKey(r.Context(), actor(c.Identity), r.PostForm.Get("key_id")); err != nil {
-		memberError(w, c, err)
-		return false
-	}
-	return true
 }
 
 func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleContext, p memberPage) {
@@ -441,11 +429,8 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 		if a.quotaMutation(w, r, c, action) || a.tenantMutation(w, r, c, action) {
 			return
 		}
-		if action == "revoke" {
-			if !a.memberRevoke(w, r, c) {
-				return
-			}
-			http.Redirect(w, r, "/admin?view=keys&done=revoked", 303)
+		if action == "revoke" || action == "review-key-revocation" || action == "revoke-selected" {
+			a.keyRevocation(w, r, c, true)
 			return
 		}
 		if action != "suspend" && action != "restore" && action != "role" {
@@ -483,7 +468,13 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 		http.Redirect(w, r, "/admin?"+url.Values{"member": {r.PostForm.Get("subject")}, "done": {action}}.Encode(), 303)
 		return
 	}
-	p.Notice = map[string]string{"create-local": "Password account created. The member can sign in now.", "workspace-quota": "Workspace limits saved.", "group-quota": "Group limits saved.", "site-group": "Site assignment saved.", "provision": "Member added.", "workspace-save": "Workspace settings saved.", "group-create": "Group created.", "group-update": "Group updated.", "group-delete": "Group deleted.", "group-add-member": "Member added to group.", "group-remove-member": "Member removed from group.", "revoked": "Key revoked.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved."}[r.URL.Query().Get("done")]
+	p.Notice = map[string]string{"create-local": "Password account created. The member can sign in now.", "workspace-quota": "Workspace limits saved.", "quota-cleared": "Selected changes saved.", "group-quota": "Group limits saved.", "site-group": "Site assignment saved.", "provision": "Member added.", "workspace-save": "Workspace settings saved.", "group-create": "Group created.", "group-update": "Group updated.", "group-delete": "Group deleted.", "group-add-member": "Member added to group.", "group-remove-member": "Member removed from group.", "suspend": "Member suspended. Their keys have been revoked.", "restore": "Member restored. Previously revoked keys remain inactive.", "role": "Role limit saved."}[r.URL.Query().Get("done")]
+	if notice := keyRevocationNotice(r.URL.Query().Get("done")); notice != "" {
+		p.Notice = notice
+	}
+	if result, ok := adminActionTexts[r.URL.Query().Get("done")]; ok {
+		p.Notice = result.Done
+	}
 	var err error
 	p.Stats, err = a.store.WorkspaceStats(ctx, who)
 	if err != nil {
@@ -528,6 +519,10 @@ func (a *App) memberAdmin(w http.ResponseWriter, r *http.Request, c consoleConte
 		}
 		var more bool
 		p.Events, more, err = a.store.AuditPage(ctx, who, cursor, false, 25)
+		p.EventNames = make(map[string]string, len(p.Events))
+		for _, event := range p.Events {
+			p.EventNames[event.Action] = memberEventName(event.Action)
+		}
 		if more {
 			p.Next = memberNext("/admin", "activity", strconv.FormatInt(p.Events[len(p.Events)-1].Sequence, 10))
 		}

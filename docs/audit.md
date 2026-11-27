@@ -1,6 +1,6 @@
 # Workspace audit log
 
-Open **Admin → Activity** to see the newest events and page back through history. This log belongs to one workspace. It contains stable identities and resource IDs and is intended for its administrators. OpenTelemetry exports operational measurements independently.
+Open **Admin → Activity** to see the newest events and page back through history. This log belongs to one workspace. It contains stable identities and resource IDs and is intended for its administrators. To download a subset of the current page, check its rows and choose **Download selected (CSV)**. For a complete export, use the paginated JSON API described below.
 
 ![Workspace Activity shows the JSON export link and a numbered access-mode change from managed to identity, with the actor and time. This is a disposable example workspace.](media/admin/audit-log.png)
 

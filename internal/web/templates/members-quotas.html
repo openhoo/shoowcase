@@ -29,23 +29,30 @@
 <p class="muted">The service allows up to {{maxQuotaSites}} sites and {{maxQuotaStorage}} per workspace. Lowering a limit keeps existing sites and revisions. It blocks further growth for that resource until there is room.</p>
 </section>
 
-<section class="directory" aria-labelledby="group-quotas">
+<section class="directory" data-selection aria-labelledby="group-quotas">
 <div class="directory-title"><h2 id="group-quotas">Group quotas</h2><span class="directory-count">{{len .Quota.Groups}} {{if eq (len .Quota.Groups) 1}}group{{else}}groups{{end}}</span></div>
 <div class="directory-body">
 <p>Use a group to budget for a project. Each site can count toward one group. All groups share the available workspace capacity.</p>
 <p>Assign existing sites before setting the first group limit. Once a group has an explicit limit, only admins can add storage to unassigned sites.</p>
 {{with .Quota.EditBudget}}{{template "quota-form" .}}{{end}}</div>
+{{if .Quota.HasGroupLimits}}
+<form class="selection-toolbar" id="select-group-quotas" method="post" action="/admin">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="clear-group-limits">
+{{template "admin-select-all"}}<button type="submit" class="danger-action" data-selection-submit>Clear selected limits</button>
+</form>{{end}}
 {{if .Quota.Groups}}<table class="directory-table" role="table" aria-labelledby="group-quotas">
-<thead><tr><th scope="col">Group</th><th scope="col">Sites</th><th scope="col">Revision storage</th><th scope="col">Actions</th></tr></thead>
+<thead><tr>{{if .Quota.HasGroupLimits}}<th scope="col" class="selection-cell">Select</th>{{end}}<th scope="col">Group</th><th scope="col">Sites</th><th scope="col">Revision storage</th><th scope="col">Actions</th></tr></thead>
 <tbody>{{range .Quota.Groups}}<tr id="budget-{{.ID}}">
+{{if $.Quota.HasGroupLimits}}<td class="selection-cell">{{if or (ge .Limits.Sites 0) (ge .Limits.Bytes 0)}}<input type="checkbox" form="select-group-quotas" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Select {{.Name}}" data-select-row>{{else}}<span aria-label="Not applicable">—</span>{{end}}</td>{{end}}
 <th scope="row" class="entry-name-cell"><a class="site-name" href="/admin?view=groups&amp;group={{.ID}}">{{.Name}}</a></th>
 <td><span class="mobile-label" aria-hidden="true">Sites</span>{{template "site-usage" .}}</td>
 <td><span class="mobile-label" aria-hidden="true">Revision storage</span>{{template "storage-usage" .}}</td>
-<td class="entry-wide"><a href="/admin?view=quotas&amp;budget={{.ID}}#budget-editor" aria-label="Edit limits for {{.Name}}">Edit limits</a></td>
+<td class="entry-wide"><div class="toolbar"><a href="/admin?view=quotas&amp;budget={{.ID}}#budget-editor" aria-label="Edit limits for {{.Name}}">Edit limits</a>{{if or (ge .Limits.Sites 0) (ge .Limits.Bytes 0)}}<form action="/admin" method="post">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="clear-group-limits"><button class="danger-action" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Clear limits for {{.Name}}">Clear limits</button></form>{{end}}</div></td>
 </tr>{{end}}</tbody></table>{{else}}<div class="directory-empty"><h3>No groups yet</h3><p><a href="/admin?view=groups">Create a group</a> to give a project its own limits.</p></div>{{end}}
 </section>
 
-<section class="directory" aria-labelledby="site-assignments">
+<section class="directory" data-selection aria-labelledby="site-assignments">
 <div class="directory-title"><h2 id="site-assignments">Site assignments</h2><span class="directory-count">{{len .Quota.Sites}} {{if eq (len .Quota.Sites) 1}}site{{else}}sites{{end}}</span></div>
 <div class="directory-body">
 <p><strong>Unassigned:</strong> {{.Quota.Unassigned.Sites}} {{if eq .Quota.Unassigned.Sites 1}}site{{else}}sites{{end}} · {{quotaBytes .Quota.Unassigned.Bytes}}. These sites count only toward the workspace limits.</p>
@@ -57,12 +64,26 @@
 <div class="field"><label for="site-group">Group for {{.Name}}</label><div class="select-wrap"><select id="site-group" name="group"><option value=""{{if not .GroupID}} selected{{end}}>Unassigned</option>{{range $.Quota.Groups}}<option value="{{.ID}}"{{if eq $.Quota.Selected.GroupID .ID}} selected{{end}}>{{.Name}}</option>{{end}}</select></div></div>
 <div class="toolbar"><button>Save assignment</button><a href="/admin?view=quotas#site-assignments">Cancel</a></div>
 </form>{{end}}</div>
+{{if .Quota.HasAssignments}}
+<form class="selection-toolbar" id="select-site-assignments" method="post" action="/admin">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="clear-site-assignments">
+{{template "admin-select-all"}}<button type="submit" class="danger-action" data-selection-submit>Remove selected assignments</button>
+</form>{{end}}
 {{if .Quota.Sites}}<table class="directory-table" role="table" aria-labelledby="site-assignments">
-<thead><tr><th scope="col">Site</th><th scope="col">Group</th><th scope="col">Revision storage</th><th scope="col">Actions</th></tr></thead>
+<thead><tr>{{if .Quota.HasAssignments}}<th scope="col" class="selection-cell">Select</th>{{end}}<th scope="col">Site</th><th scope="col">Group</th><th scope="col">Revision storage</th><th scope="col">Actions</th></tr></thead>
 <tbody>{{range .Quota.Sites}}<tr>
-<th scope="row" class="entry-name-cell"><a class="site-name" href="/sites/{{.ID}}">{{.Name}}</a><span class="site-address">{{.ID}}</span></th>
+{{if $.Quota.HasAssignments}}<td class="selection-cell">{{if .GroupID}}<input type="checkbox" form="select-site-assignments" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Select {{.Name}}" data-select-row>{{else}}<span aria-label="Not applicable">—</span>{{end}}</td>{{end}}
+<th scope="row" class="entry-name-cell"><a class="site-name" href="{{.Href}}">{{.Name}}</a><span class="site-address">{{.ID}}</span></th>
 <td><span class="mobile-label" aria-hidden="true">Group</span>{{.GroupName}}</td>
 <td><span class="mobile-label" aria-hidden="true">Revision storage</span>{{quotaBytes .Bytes}}</td>
-<td class="entry-wide"><a href="/admin?view=quotas&amp;site={{.ID}}#assignment" aria-label="Change group for {{.Name}}">Change group</a></td>
+<td class="entry-wide"><div class="toolbar"><a href="/admin?view=quotas&amp;site={{.ID}}#assignment" aria-label="Change group for {{.Name}}">Change group</a>{{if .GroupID}}<form action="/admin" method="post">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="clear-site-assignments"><button class="danger-action" name="selected" value="{{.ID}}:{{.Version}}" aria-label="Remove assignment for {{.Name}}">Remove assignment</button></form>{{end}}</div></td>
 </tr>{{end}}</tbody></table>{{else}}<div class="directory-empty"><h3>No sites in this workspace yet.</h3></div>{{end}}
 </section>{{end}}
+
+{{define "confirm-clear-quotas"}}<section class="panel stack">
+<h1>{{.Title}}</h1><p>{{.Effect}}</p>
+<form method="post" action="/admin" class="stack"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="{{.Action}}"><input type="hidden" name="review" value="{{.Review}}">
+<ul>{{range .Rows}}<li>{{.Name}}<input type="hidden" name="selected" value="{{.Value}}"></li>{{end}}</ul>
+<div class="toolbar"><button class="danger-action" name="confirm" value="yes">{{.Title}}</button><a href="/admin?view=quotas#{{.Cancel}}">Cancel</a></div>
+</form></section>{{end}}

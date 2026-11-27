@@ -13,6 +13,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/openhoo/shoowcase/internal/routes"
+	"github.com/openhoo/shoowcase/internal/webui"
 	"golang.org/x/oauth2"
 )
 
@@ -387,8 +388,7 @@ func (s *Service) completeLogin(w http.ResponseWriter, r *http.Request, d destin
 			return
 		}
 		next := "/auth/login?ticket=" + url.QueryEscape(t)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = passwordContinue.Execute(w, next)
+		webui.Public(w, http.StatusOK, "Opening your site", "continue", passwordContinue, map[string]any{"Next": next})
 		return
 	}
 	s.returnTo(w, r, d, who, family, exp)

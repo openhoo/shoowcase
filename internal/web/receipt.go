@@ -1,12 +1,13 @@
 package web
 
 import (
-	_ "embed"
 	"html/template"
 	"mime"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/openhoo/shoowcase/internal/webui"
 )
 
 func readMethod(w http.ResponseWriter, r *http.Request) bool {
@@ -58,10 +59,7 @@ func (a *App) browserResult(w http.ResponseWriter, r *http.Request, raw map[stri
 			data["Revision"], data["Preview"] = live, a.siteURL("pv-"+live)
 		}
 	}
-	render(w, receiptPage, data)
+	webui.Public(w, http.StatusOK, title, "receipt", receiptPage, data)
 }
 
-var receiptPage = template.Must(template.New("receipt").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/ui.css"><title>{{.Title}} · Shoowcase</title><main><small>Shoowcase</small><h1>{{.Title}}</h1><p>{{.Message}}</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Revision</dt><dd><code>{{.Revision}}</code></dd></dl>{{if .Preview}}<p><a href="{{.Preview}}">Preview this revision</a></p>{{end}}{{if .SiteURL}}<p><a href="{{.SiteURL}}">Open the live site</a></p>{{end}}</main></html>`))
-
-//go:embed control.css
-var controlCSS string
+var receiptPage = template.Must(template.New("receipt").Parse(`<main><small>Shoowcase</small><h1>{{.Title}}</h1><p>{{.Message}}</p><dl><dt>Site</dt><dd>{{.Site}}</dd><dt>Revision</dt><dd><code>{{.Revision}}</code></dd></dl>{{if .Preview}}<p><a href="{{.Preview}}">Preview this revision</a></p>{{end}}{{if .SiteURL}}<p><a href="{{.SiteURL}}">Open the live site</a></p>{{end}}</main>`))

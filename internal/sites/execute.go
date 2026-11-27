@@ -276,7 +276,7 @@ func create(ctx context.Context, tx *sql.Tx, a Actor, p mutation) (record, error
 		slug = defaultSlug(p.Name)
 	}
 	r := record{group: group, site: slug, name: p.Name, visibility: "workspace", draft: id()}
-	res, e := tx.ExecContext(ctx, "INSERT INTO sc_sites(id,workspace,name,visibility,draft,live,release_id) VALUES($1,$2,$3,'workspace',$4,'','') ON CONFLICT(id) DO NOTHING", slug, a.Workspace, p.Name, r.draft)
+	res, e := tx.ExecContext(ctx, "INSERT INTO sc_reserved_sites(id) VALUES($1) ON CONFLICT(id) DO NOTHING", slug)
 	if e != nil {
 		return r, e
 	}
@@ -286,6 +286,9 @@ func create(ctx context.Context, tx *sql.Tx, a Actor, p mutation) (record, error
 	}
 	if num != 1 {
 		return r, conflict("Site slug is unavailable.")
+	}
+	if _, e = tx.ExecContext(ctx, "INSERT INTO sc_sites(id,workspace,name,visibility,draft,live,release_id) VALUES($1,$2,$3,'workspace',$4,'','')", slug, a.Workspace, p.Name, r.draft); e != nil {
+		return r, e
 	}
 	if group != "" {
 		if _, e = tx.ExecContext(ctx, "INSERT INTO sc_site_groups(workspace,site,group_id) VALUES($1,$2,$3)", a.Workspace, r.site, group); e != nil {
@@ -359,10 +362,14 @@ func upload(ctx context.Context, tx *sql.Tx, a Actor, r *record, p mutation, add
 	if _, e = tx.ExecContext(ctx, "INSERT INTO sc_revisions(id,site,created_at) VALUES($1,$2,$3)", next, r.site, time.Now().UnixMilli()); e != nil {
 		return e
 	}
-	// Insert shared digests in the same order across tenants to avoid lock inversion.
+	// Take locks on all submitted digests in digest order, including those
+	// that already exist. A conditional upsert that targets the primary key
+	// locks the conflicting PostgreSQL row without rewriting the blob body.
+	// Deletion uses NO KEY UPDATE in the same order, compatible with the
+	// manifest's later foreign-key checks on unchanged digests.
 	sort.Slice(adds, func(i, j int) bool { return adds[i].Digest < adds[j].Digest })
 	for _, v := range adds {
-		if _, e = tx.ExecContext(ctx, "INSERT INTO sc_blobs(digest,body) VALUES($1,$2) ON CONFLICT(digest) DO NOTHING", v.Digest, v.data); e != nil {
+		if _, e = tx.ExecContext(ctx, "INSERT INTO sc_blobs(digest,body) VALUES($1,$2) ON CONFLICT(digest) DO UPDATE SET digest=excluded.digest WHERE FALSE", v.Digest, v.data); e != nil {
 			return e
 		}
 	}

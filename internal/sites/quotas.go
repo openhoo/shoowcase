@@ -152,6 +152,13 @@ func (s *Store) SetQuota(ctx context.Context, a Actor, group string, limits Quot
 		return err
 	}
 	defer tx.Rollback()
+	if err := setQuotaTx(ctx, tx, a, group, limits, version); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func setQuotaTx(ctx context.Context, tx *sql.Tx, a Actor, group string, limits QuotaLimits, version int64) error {
 	if !limits.valid(group != "") {
 		return bad("Choose valid limits of at most 100 sites and 2 GiB of retained storage.")
 	}
@@ -178,7 +185,7 @@ func (s *Store) SetQuota(ctx context.Context, a Actor, group string, limits Quot
 	if err = recordAccountChange(ctx, tx, a, action, target, prev.Limits.summary(), limits.summary()); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (b QuotaBudget) check(scope string, add QuotaUsage) error {
@@ -213,6 +220,13 @@ func (s *Store) AssignSiteGroup(ctx context.Context, a Actor, siteID, group stri
 		return err
 	}
 	defer tx.Rollback()
+	if err := assignSiteGroupTx(ctx, tx, a, siteID, group, version); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func assignSiteGroupTx(ctx context.Context, tx *sql.Tx, a Actor, siteID, group string, version int64) error {
 	site, err := scanQuotaSite(tx.QueryRowContext(ctx, siteBudgetSQL+" AND s.id=$2", a.Workspace, siteID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return absent()
@@ -248,6 +262,40 @@ func (s *Store) AssignSiteGroup(ctx context.Context, a Actor, siteID, group stri
 	}
 	if err = recordAccountChange(ctx, tx, a, "site_group_changed", siteID, site.GroupID, group); err != nil {
 		return err
+	}
+	return nil
+}
+
+// QuotaSelection identifies the exact version an administrator reviewed.
+type QuotaSelection struct {
+	ID      string
+	Version int64
+}
+
+func (s *Store) ClearQuotaSelection(ctx context.Context, a Actor, assignments bool, rows []QuotaSelection) error {
+	if len(rows) == 0 || len(rows) > MaxSelection {
+		return bad("Select between 1 and 128 rows at a time.")
+	}
+	tx, err := s.adminWrite(ctx, a)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	seen := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		// Never allow an empty group ID to target the workspace ceiling.
+		if row.ID == "" || seen[row.ID] || row.Version < 1 {
+			return bad("Invalid or repeated selection.")
+		}
+		seen[row.ID] = true
+		if assignments {
+			err = assignSiteGroupTx(ctx, tx, a, row.ID, "", row.Version)
+		} else {
+			err = setQuotaTx(ctx, tx, a, row.ID, QuotaLimits{Sites: -1, Bytes: -1}, row.Version)
+		}
+		if err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

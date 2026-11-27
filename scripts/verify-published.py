@@ -79,8 +79,12 @@ def verify_repo(tag, commit):
     return r
 
 
+def notices(tag):
+    return (*NOTICES, "UI-LICENSES.txt") if tuple(map(int, tag[1:].split("."))) >= (0, 10, 0) else NOTICES
+
+
 def inventory(tag, has_chart):
-    names = {"SHA256SUMS", "image.txt", *NOTICES, f"shoowcase-{tag}-skills.zip"}
+    names = {"SHA256SUMS", "image.txt", *notices(tag), f"shoowcase-{tag}-skills.zip"}
     if has_chart:
         names.update({"chart.txt", f"shoowcase-{tag[1:]}.tgz"})
     for osname, arch in targets(tag):
@@ -149,25 +153,28 @@ def verify_skills(dest, tag, commit):
 
 
 def verify_binaries(dest, tag, commit):
-    expected_notices = {name: source(commit, "runtime/" + name if name == NOTICES[-1] else name) for name in NOTICES}
+    prefix = {"UI-LICENSES.txt": "ui/", "THIRD-PARTY-LICENSES.txt": "runtime/"}
+    expected_notices = {name: source(commit, prefix.get(name, "") + name) for name in notices(tag)}
     for name, contents in expected_notices.items():
         require((dest / name).read_bytes() == contents, "release notice differs: " + name)
     packages = json.loads(source(commit, "runtime/package-lock.json"))["packages"]
     inventory = json.loads(source(commit, "runtime/components.json"))
     expected_libs = {(n, packages["node_modules/" + n]["version"]) for n in inventory["npm"]}
     expected_libs.add(("Bellard QuickJS", inventory["quickjsCommit"]))
+    if "UI-LICENSES.txt" in expected_notices:
+        expected_libs.update((p["name"], p["version"]) for p in json.loads(source(commit, "ui/inventory.json")))
     executables = {}
     for osname, arch in targets(tag):
         base = f"shoowcase-{tag}-{osname}-{arch}"
         exe = "shoowcase.exe" if osname == "windows" else "shoowcase"
         if osname == "windows":
             with zipfile.ZipFile(dest / (base + ".zip")) as z:
-                require(sorted(z.namelist()) == sorted([exe, *NOTICES]), "unexpected Windows archive members")
+                require(sorted(z.namelist()) == sorted([exe, *expected_notices]), "unexpected Windows archive members")
                 records = {p: z.read(p) for p in z.namelist()}
         else:
             with tarfile.open(dest / (base + ".tar.gz")) as t:
                 members = t.getmembers()
-                require(sorted(t.getnames()) == sorted([exe, *NOTICES]) and all(m.isfile() and m.size <= 64 << 20 for m in members), "unexpected tar archive members")
+                require(sorted(t.getnames()) == sorted([exe, *expected_notices]) and all(m.isfile() and m.size <= 64 << 20 for m in members), "unexpected tar archive members")
                 require(t.getmember(exe).mode & 0o111, "executable has no execute bits")
                 records = {m.name: t.extractfile(m).read() for m in members}
         require(all(records[p] == b for p, b in expected_notices.items()), "archive notices differ: " + base)

@@ -41,6 +41,12 @@ Workspaces use their signed identity-provider claim as the tenant ID. In the def
 
 An existing personal key does not contact the identity provider on every request. A newer verified identity assertion updates the recorded provider role, but removing someone at the provider alone does not notify Shoowcase. For immediate offboarding, **suspend the member or revoke their keys in Shoowcase and remove access at the provider**. Another active workspace administrator can suspend an administrator immediately. No one can suspend themselves. Only the identity provider can change an administrator’s role; suspension and restoration are recorded in workspace activity. Limit OAuth token lifetimes and rotate the session signing key for emergency invalidation of existing sessions and signed links.
 
+## Upgrade to schema 7
+
+Take a restorable backup and stop all older writers **before** starting this version. Older running processes do not honor reserved addresses or coordinate with draft deletion. Rehearse the upgrade with the [restore drill](restore-drill.md). Schema 7 reserves existing site addresses and indexes file digests. Allow time and disk space to build this index. To downgrade, restore the pre-upgrade snapshot.
+
+Workspace administrators can permanently delete never-published sites from **Sites**. This removes all their revisions and previews, releases their quota, and removes stored file contents when no other revision uses them. Site addresses stay reserved. Audit records and backups retain their normal lifetimes. A site with any release, including an offline site, keeps its history.
+
 ## Upgrade to schema 6
 
 Schema 6 indexes release history by site, creation time and release ID. It does not change releases, site contents or permissions. Allow time and disk space for index creation on a large release history. Keep a pre-upgrade backup, drain older writers, and rehearse with the [restore drill](restore-drill.md) using the previous binary.

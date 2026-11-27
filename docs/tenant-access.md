@@ -23,6 +23,10 @@ Under **Groups**, search by name, filter by group role, or sort by member count.
 
 ![Member directory with search, status and role filters, and a row for each member.](media/admin/members.png)
 
+To act on one row, use its **Suspend**, **Restore**, **Delete** or **Remove** button. For several entries, check their rows and choose the action for the selection. **Select all on this page** covers the displayed rows only. The review lists every target before anything changes; if a target changes in the meantime, reopen the directory and review again.
+
+Suspending a member keeps the account record, blocks workspace access, ends their local password sessions and revokes their agent keys. Restoring access does not restore revoked keys. Administrators cannot suspend themselves. Removing a person from a group only removes that membership. Deleting a group removes its grants; if any selected group still has an assigned site, the entire deletion is refused.
+
 ## Set up a managed tenant
 
 1. Sign in with a workspace administrator account and complete enrollment. The administrator role comes from the identity provider or the configured OIDC subject mapping.
@@ -65,6 +69,14 @@ Use one group per project that needs a budget. In **Workspace admin → Quotas**
 
 ![Quota overview showing a project at its limits of one site and 18 bytes, with additional capacity available in the workspace.](media/admin/quotas.png)
 
+## Work with several rows at once
+
+Check individual rows, or choose **Select all on this page**. The count shows how many entries are selected. Filtering or moving to another page starts a new selection. On the review screen, check the names before confirming; **Cancel** leaves them unchanged.
+
+- In **Agent keys**, revoke one key or several. The workspace key list gives administrators the same controls for other members’ keys.
+- In **Quotas**, **Clear limits** makes a group inherit the workspace limits. **Remove assignment** removes a site's group and can change who may edit it. Neither action deletes a site, group, or revision.
+- In **Activity**, download the selected audit rows as a CSV. Audit entries and published release history are read-only.
+
 ## Database upgrade
 
-Stop and drain older writers before upgrading. Schema 5 adds local credentials while preserving OIDC accounts. Schema 4 retains existing sites, groups and access settings. Existing sites start unassigned, with their revision storage already counted, and workspaces keep the previous 100-site and 2-GiB ceilings. Workspaces upgrading from before schema 3 start in identity mode. Keep a restorable pre-upgrade backup; a binary built for an older schema refuses to open an upgraded database. See the [schema 6 upgrade instructions](operations.md#upgrade-to-schema-6).
+Stop and drain older writers before upgrading. Schema 5 adds local credentials while preserving OIDC accounts. Schema 4 retains existing sites, groups and access settings. Existing sites start unassigned, with their revision storage already counted, and workspaces keep the previous 100-site and 2-GiB ceilings. Workspaces upgrading from before schema 3 start in identity mode. Keep a restorable pre-upgrade backup; a binary built for an older schema refuses to open an upgraded database. See the [schema 7 upgrade instructions](operations.md#upgrade-to-schema-7).
