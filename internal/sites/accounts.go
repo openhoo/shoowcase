@@ -204,6 +204,9 @@ func (s *Store) EnrollAccount(ctx context.Context, a Actor, displayName string) 
 		return Account{}, e
 	}
 	defer tx.Rollback()
+	if err := checkSessionContext(ctx, tx, a); err != nil {
+		return Account{}, err
+	}
 	m, ok, e := member(ctx, tx, a)
 	if e != nil {
 		return Account{}, e
@@ -238,10 +241,20 @@ func (s *Store) AccountFor(ctx context.Context, a Actor) (Account, bool, error) 
 	if e := actorErr(a, 1); e != nil {
 		return Account{}, false, e
 	}
-	if e := checkSessionContext(ctx, s.db, a); e != nil {
+	// The admission marker and membership must describe the same account,
+	// even if another replica deletes and re-provisions the subject.
+	readMember := func(tx *sql.Tx) (Account, bool, error) {
+		if e := checkSessionContext(ctx, tx, a); e != nil {
+			return Account{}, false, e
+		}
+		return member(ctx, tx, a)
+	}
+	tx, e := s.readSnapshot(ctx)
+	if e != nil {
 		return Account{}, false, e
 	}
-	m, ok, e := member(ctx, s.db, a)
+	m, ok, e := readMember(tx)
+	tx.Rollback()
 	if !ok || e != nil {
 		return m, ok, e
 	}
@@ -251,7 +264,7 @@ func (s *Store) AccountFor(ctx context.Context, a Actor) (Account, bool, error) 
 			return Account{}, false, e
 		}
 		defer tx.Rollback()
-		m, ok, e = member(ctx, tx, a)
+		m, ok, e = readMember(tx)
 		if !ok || e != nil {
 			return m, ok, e
 		}

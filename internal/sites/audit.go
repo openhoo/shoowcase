@@ -3,6 +3,7 @@ package sites
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -59,6 +60,9 @@ func (s *Store) RecordSession(ctx context.Context, a Actor, action string) error
 		return err
 	}
 	defer tx.Rollback()
+	if err = checkSessionContext(ctx, tx, a); err != nil {
+		return err
+	}
 	if err = appendAudit(ctx, tx, a, AuditEvent{Action: action}); err != nil {
 		return err
 	}
@@ -84,6 +88,19 @@ func (s *Store) RecordDenied(ctx context.Context, a Actor, operation string) err
 	defer tx.Rollback()
 	if err = lockWorkspace(ctx, tx, s.driver, a.Workspace); err != nil {
 		return err
+	}
+	// A late denied request must not put an erased subject back in the ledger.
+	if denied, err := identityBlocked(ctx, tx, a); err != nil || denied {
+		return err
+	}
+	if key, ok := ctx.Value(keyCredentialID{}).(string); ok {
+		if _, err := resolveKeyID(ctx, tx, a, key); err != nil {
+			var invalid *Error
+			if errors.As(err, &invalid) {
+				return nil
+			}
+			return err
+		}
 	}
 	if err = appendAudit(ctx, tx, a, AuditEvent{Action: "access.denied", Target: operation}); err != nil {
 		return err

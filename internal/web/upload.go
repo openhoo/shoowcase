@@ -53,7 +53,7 @@ func (a *App) prepare(ctx context.Context, who sites.Actor, args json.RawMessage
 		return nil, problem("forbidden", reason)
 	}
 	expiry := time.Now().Add(5 * time.Minute)
-	t := a.sign(ticket{Kind: "upload", KeyID: sourceKey(ctx), Who: who, Args: args, Expires: expiry.Unix()})
+	t := a.sign(ticket{Kind: "upload", AssertionTime: sites.AssertionTime(ctx), KeyID: sourceKey(ctx), Who: who, Args: args, Expires: expiry.Unix()})
 	link := a.config.ControlURL + "/upload?t=" + url.QueryEscape(t)
 	return map[string]any{"upload_url": link, "browser_upload_url": link, "method": "PUT", "expires_at": expiry.UTC().Format(time.RFC3339), "size": spec.Size, "site_id": spec.Site}, nil
 }

@@ -264,7 +264,7 @@ func checkSessionContext(ctx context.Context, q queryer, a Actor) error {
 	if generation, ok := ctx.Value(localSessionKey{}).(int64); ok {
 		return verifyLocalSession(ctx, q, a, generation)
 	}
-	return nil
+	return checkIdentity(ctx, q, a)
 }
 
 func (s *Store) ChangeLocalPassword(ctx context.Context, a Actor, oldPassword, newPassword string) error {
