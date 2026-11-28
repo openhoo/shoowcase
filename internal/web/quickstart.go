@@ -25,16 +25,23 @@ import (
 //go:embed quickstartassets/install.* quickstartassets/uninstall.*
 var installers embed.FS
 
+const (
+	quickAnyClient  = "*"
+	quickSetupTTL   = 10 * time.Minute
+	quickDefaultTTL = "30"
+)
+
 type quickPage struct {
 	memberPage
 	Client, Platform, ClientName, Command, Prompt string
 	Clients                                       []agentclients.Client
-	CompanyProxy                                  bool
+	Manual, CompanyProxy                          bool
 	UninstallUnix, UninstallWindows               string
 }
 
-// The browser receives an encrypted, client-bound envelope, not the persistent
-// agent key. The shared replay store allows one redemption across all replicas.
+// The browser receives an encrypted setup key, not the persistent agent key.
+// Manual setup binds it to the chosen client. A prompt lets the receiving agent
+// identify one supported local client. Both have one redemption across replicas.
 // No recoverable credential or browser cookie is stored in the database.
 func (a *App) setupAEAD() cipher.AEAD {
 	k := hmac.New(sha256.New, a.config.Key)
@@ -64,6 +71,9 @@ func (a *App) openSetupCode(code, client string) (string, time.Time, bool) {
 		return "", time.Time{}, false
 	}
 	raw, err := box.Open(nil, nil, buf, a.setupAAD(client))
+	if err != nil {
+		raw, err = box.Open(nil, nil, buf, a.setupAAD(quickAnyClient))
+	}
 	if err != nil || len(raw) < 9 {
 		return "", time.Time{}, false
 	}
@@ -98,7 +108,7 @@ func (a *App) quickRedeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	secret, expiry, ok := a.openSetupCode(input.Code, input.Client)
-	invalid := func() { http.Error(w, "This setup command is no longer valid. Open Quickstart for a new one.", 401) }
+	invalid := func() { http.Error(w, "This setup key is no longer valid. Open Quickstart for a new one.", 401) }
 	if !ok {
 		invalid()
 		return
@@ -130,22 +140,55 @@ func quickCommand(base, client, platform, code string) string {
 	return fmt.Sprintf("curl -fsSL '%s/quickstart/install.sh' | sh -s -- '%s' '%s/mcp' '%s'", base, client, base, code)
 }
 
+func quickAgentPrompt(base, code string) string {
+	clients := make([]string, 0, len(agentclients.Clients))
+	for _, c := range agentclients.Clients {
+		clients = append(clients, "- "+c.Name+": "+c.ID)
+	}
+	return fmt.Sprintf(`Connect this AI agent to Shoowcase on the computer where it runs.
+
+Shoowcase MCP URL: %s/mcp
+One-time setup key (valid for 10 minutes): %s
+
+1. Identify the current agent and its local operating system. Choose its client ID:
+%s
+Use stdio for a custom local profile or another local stdio client. If you cannot access the computer or change this agent's MCP settings, tell me to use manual setup at %s/quickstart?setup=manual. For a cloud or HTTP-only client, direct me to %s/keys instead.
+
+2. Review the official Shoowcase installer. In a local terminal, run just the command for your OS as the current user. Replace CLIENT_ID and SETUP_KEY with the client ID and the key above. Keep the setup key out of your reply, files and logs. The installer verifies the release, saves its own credential privately and configures Shoowcase. If you use stdio, add the Shoowcase server using the command and arguments it prints. Leave other agent settings intact.
+
+macOS or Linux:
+%s
+
+Windows PowerShell:
+%s
+
+3. Reload the MCP connection if possible, then call list_sites to verify it. Tell me if I need to open a new session or approve the Shoowcase server first. Report whether it connected. Do not create, edit or publish any site as part of setup.`,
+		base, code, strings.Join(clients, "\n"), base, base,
+		quickCommand(base, "CLIENT_ID", "unix", "SETUP_KEY"),
+		quickCommand(base, "CLIENT_ID", "windows", "SETUP_KEY"))
+}
+
 func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContext, m memberPage) {
-	p := quickPage{memberPage: m, Clients: agentclients.Clients, Client: "", Platform: "unix"}
+	p := quickPage{memberPage: m, Clients: agentclients.Clients, Platform: "unix", Manual: r.URL.Query().Get("setup") == "manual"}
 	p.UninstallUnix = fmt.Sprintf("script=$(curl -fsSL '%s/quickstart/uninstall.sh') && printf '%%s\\n' \"$script\" | sh", a.config.ControlURL)
 	p.UninstallWindows = fmt.Sprintf("& ([scriptblock]::Create((Invoke-RestMethod '%s/quickstart/uninstall.ps1')))", a.config.ControlURL)
 	p.Scopes = memberScopes(c.Actor.Role)
-	p.Scope, p.Days = defaultKeyScope(p.Scopes), "30"
+	p.Scope, p.Days = defaultKeyScope(p.Scopes), quickDefaultTTL
 	if strings.Contains(strings.ToLower(r.UserAgent()), "windows") {
 		p.Platform = "windows"
 	}
 	status := 200
 	if r.Method == http.MethodPost {
-		p.Client, p.Platform = r.PostForm.Get("client"), r.PostForm.Get("platform")
-		p.CompanyProxy = r.PostForm.Get("company_proxy") == "on"
-		p.ClientName = agentclients.Name(p.Client)
-		p.Scope, p.Days = r.PostForm.Get("scope"), r.PostForm.Get("days")
-		p.NameValue = strings.TrimSpace(r.PostForm.Get("name"))
+		// A previously loaded manual form may still be submitted after an upgrade.
+		p.Manual = r.PostForm.Get("setup") != "prompt"
+		p.ClientName = "Quickstart agent"
+		if p.Manual {
+			p.Client, p.Platform = r.PostForm.Get("client"), r.PostForm.Get("platform")
+			p.CompanyProxy = r.PostForm.Get("company_proxy") == "on"
+			p.ClientName = agentclients.Name(p.Client)
+			p.Scope, p.Days = r.PostForm.Get("scope"), r.PostForm.Get("days")
+			p.NameValue = strings.TrimSpace(r.PostForm.Get("name"))
+		}
 		days := map[string]int{"7": 7, "30": 30, "90": 90}[p.Days]
 		if p.ClientName == "" || (p.Platform != "unix" && p.Platform != "windows") || !slices.Contains(p.Scopes, p.Scope) || days == 0 {
 			p.Err = "Choose an agent, a terminal and an access level available to your account."
@@ -180,11 +223,17 @@ func (a *App) quickStart(w http.ResponseWriter, r *http.Request, c consoleContex
 }
 
 func (a *App) quickReceipt(w http.ResponseWriter, c consoleContext, p quickPage, secret string) {
+	expiry := time.Now().Add(quickSetupTTL)
+	if !p.Manual {
+		p.Prompt = quickAgentPrompt(a.config.ControlURL, a.setupCode(secret, quickAnyClient, expiry))
+		consoleView(w, c, 200, "Your agent setup prompt", "quickstart", memberPages.Lookup("quick-ready"), p)
+		return
+	}
 	command := quickCommand
 	if p.CompanyProxy {
 		command = quickProxyCommand
 	}
-	p.Command = command(a.config.ControlURL, p.Client, p.Platform, a.setupCode(secret, p.Client, time.Now().Add(10*time.Minute)))
+	p.Command = command(a.config.ControlURL, p.Client, p.Platform, a.setupCode(secret, p.Client, expiry))
 	p.Prompt = "List the sites I can access in Shoowcase."
 	if p.Scope == "editor" {
 		p.Prompt = "Create a Shoowcase site with a welcome page and give me its private preview."

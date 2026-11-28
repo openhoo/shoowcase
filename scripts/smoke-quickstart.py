@@ -60,19 +60,38 @@ async def run(args, env, home, *, stdin=None):
     return output
 
 
-async def register(page, control, endpoint, client, env, home, binary, published):
+async def register(page, control, endpoint, client, env, home, binary, published, *, prompt):
     await page.goto(control + "/quickstart")
-    await page.get_by_role("radio", name=NAMES[client], exact=True).check()
-    await page.get_by_label("Where will you run the command?").select_option("unix")
-    await page.get_by_label("Key lifetime").select_option("7")
-    await page.get_by_role("button", name="Create key and get command").click()
-    await expect(page.get_by_role("heading", name="Connect " + NAMES[client], exact=True)).to_be_visible()
-    check(await page.get_by_label("First prompt").input_value() != "", "no first prompt")
-    command = await page.get_by_label("Terminal command").input_value()
-    await page.get_by_role("button", name="Copy command", exact=True).click()
+    if prompt:
+        await expect(page.get_by_role("radio")).to_have_count(0)
+        await page.get_by_role("button", name="Get setup prompt").click()
+        await expect(page.get_by_role("heading", name="Your agent setup prompt")).to_be_visible()
+        copied = await page.get_by_label("Setup prompt").input_value()
+        await page.get_by_role("button", name="Copy setup prompt").click()
+        field = "setup-prompt"
+        lines = copied.splitlines()
+        codes = [line.removeprefix("One-time setup key (valid for 10 minutes): ") for line in lines
+                 if line.startswith("One-time setup key (valid for 10 minutes): ")]
+        commands = [line for line in lines if line.startswith("curl ")]
+        check(len(codes) == len(commands) == 1 and f"- {NAMES[client]}: {client}" in lines,
+              "prompt must contain one key and identify the Linux or macOS command and client")
+        check(f"Shoowcase MCP URL: {endpoint}" in lines and "list_sites" in copied,
+              "prompt is missing the control URL or read-only connection check")
+        command = commands[0].replace("CLIENT_ID", client).replace("SETUP_KEY", codes[0])
+    else:
+        await page.get_by_role("link", name="Set up manually").click()
+        await page.get_by_role("radio", name=NAMES[client], exact=True).check()
+        await page.get_by_label("Where will you run the command?").select_option("unix")
+        await page.get_by_label("Key lifetime").select_option("7")
+        await page.get_by_role("button", name="Create key and get command").click()
+        await expect(page.get_by_role("heading", name="Connect " + NAMES[client], exact=True)).to_be_visible()
+        check(await page.get_by_label("First prompt").input_value() != "", "no first prompt")
+        command = await page.get_by_label("Terminal command").input_value()
+        await page.get_by_role("button", name="Copy command", exact=True).click()
+        field = "setup-command"
     # Only compare inside the browser so its ephemeral credentials are never logged.
-    copied = await page.evaluate('async () => (await navigator.clipboard.readText()) === document.querySelector("#setup-command").value')
-    check(copied, "the copy button did not copy the displayed command")
+    complete = await page.evaluate('async id => (await navigator.clipboard.readText()) === document.getElementById(id).value', field)
+    check(complete, "the copy button did not copy the displayed setup text")
     check(await page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "receipt overflows the viewport")
     words = shlex.split(command)
     check(len(words) == 10 and words[:-1] == ["curl", "-fsSL", control + "/quickstart/install.sh",
@@ -85,7 +104,7 @@ async def register(page, control, endpoint, client, env, home, binary, published
         output = await run([binary, "connect", client, "--url", endpoint, "--setup-code", code], env, home)
     async with httpx.AsyncClient(trust_env=False) as http:
         replay = await http.post(control + "/quickstart/redeem", json={"client": client, "code": code})
-        check(replay.status_code == 401, "a used setup command was accepted again")
+        check(replay.status_code == 401, "a used setup key was accepted again")
     return code, output
 
 
@@ -179,12 +198,13 @@ async def main(args):
             await page.get_by_label("Display name").fill("Quickstart acceptance")
             await page.get_by_role("button", name="Create account").click()
             await expect(page.get_by_role("link", name="Quickstart", exact=True).first).to_be_visible()
-            for client in args.clients.split(","):
+            clients = args.clients.split(",")
+            for client, prompt in [(clients[0], True), *((client, False) for client in clients)]:
                 check(client in NAMES, "unknown test client")
                 with tempfile.TemporaryDirectory(prefix="shoowcase-quickstart-") as temp:
                     home = Path(temp)
                     env = profile(home)
-                    code, output = await register(page, control, endpoint, client, env, home, binary, args.published_installer)
+                    code, output = await register(page, control, endpoint, client, env, home, binary, args.published_installer, prompt=prompt)
                     reg, config = registration(client, home, output)
                     credentials = list(home.rglob("agents/*.json"))
                     check(len(credentials) == 1, "expected one private personal credential file")
@@ -207,7 +227,8 @@ async def main(args):
                         check(b"Connected" in native, "Claude Code did not complete the MCP handshake")
                         print("PASS: Claude Code opened the registered connection")
                     await page.get_by_role("link", name="Agent keys", exact=True).last.click()
-                    row = page.get_by_role("table", name="Your keys").get_by_role("row").filter(has=page.get_by_role("rowheader", name=NAMES[client], exact=True))
+                    key_name = "Quickstart agent" if prompt else NAMES[client]
+                    row = page.get_by_role("table", name="Your keys").get_by_role("row").filter(has=page.get_by_role("rowheader", name=key_name, exact=True))
                     await row.locator("summary").click()
                     await row.get_by_role("checkbox", name="Disconnect agents using this key.", exact=True).check()
                     await row.get_by_role("button", name="Revoke key").click()
@@ -216,7 +237,8 @@ async def main(args):
                                             json={"jsonrpc": "2.0", "method": "tools/list", "id": 1})
                         check(r.status_code == 401, "revoked agent credential still accepted")
                     await revoked_bridge(reg, env, home, token)
-                    print(f"PASS: {NAMES[client]} – copied command, registration, MCP list_sites, single use and revocation")
+                    setup = "agent prompt" if prompt else "manual command"
+                    print(f"PASS: {NAMES[client]} – copied {setup}, registration, MCP list_sites, single use and revocation")
         finally:
             await browser.close()
 

@@ -91,7 +91,8 @@
     :is(button, a, summary):is(:hover, :focus-visible) > .action-caption {
       @apply not-sr-only absolute bottom-full left-0 z-50 mb-1 w-max max-w-48 rounded-md bg-foreground px-2 py-1 text-xs break-words whitespace-normal text-background shadow;
     }
-    td:last-child .action-caption {
+    td:last-child .action-caption,
+    .member-role-row button > .action-caption {
       left: auto;
       right: 0;
     }
@@ -102,6 +103,9 @@
       &[aria-invalid="true"] {
         @apply border-destructive;
       }
+    }
+    .member-role-row select {
+      @apply w-full min-w-0;
     }
     input[type="checkbox"],
     input[type="radio"] {

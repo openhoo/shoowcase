@@ -66,7 +66,7 @@ async def check_appearance(page, origin, browser, fits):
 
         # The same-origin startup script must apply the saved choice even
         # while the main bundle is blocked and the native form is visible.
-        async with native_page(page, origin + "/quickstart"):
+        async with native_page(page, origin + "/quickstart?setup=manual"):
             await expect(page.get_by_label("What can this agent do?")).to_be_visible()
             await expect_scheme(page, "dark", "dark")
         await expect(choice).to_have_value("dark")

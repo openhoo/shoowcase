@@ -148,18 +148,21 @@ def proxy(tls, control, backend, assets, secret):
     expected = "Basic " + base64.b64encode(("worker:" + secret).encode()).decode()
     # This fixture covers one onboarding flow. Forward only literal routes
     # for that flow; client-controlled request targets never go to the backend.
-    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/account", "/sites", "/quickstart",
+    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/account", "/sites", "/quickstart", "/quickstart?setup=manual",
                             "/quickstart/install.sh", "/quickstart/install.ps1", "/quickstart/redeem", "/mcp")}
     paths["/auth/login"] = "/auth/login?next=%2Faccount"
-    # Admit only the two immutable asset paths shipped by this fixture binary.
+    # Admit only the three immutable asset paths advertised by the fixture.
+    # The startup theme script intentionally has no stable /theme.js alias.
     conn = http.client.HTTPConnection("127.0.0.1", backend, timeout=15)
     try:
-        for name in ("ui.css", "console.js"):
-            conn.request("GET", "/" + name, headers={"Host": control})
-            asset = conn.getresponse()
-            check(asset.status == 200, f"fixture asset unavailable: {name}")
-            digest = hashlib.sha256(asset.read()).hexdigest()
-            path = f"/ui/{digest}/{name}"
+        conn.request("GET", "/", headers={"Host": control})
+        page = conn.getresponse()
+        check(page.status == 200, "fixture landing page unavailable")
+        refs = re.findall(rb'"(/ui/[0-9a-f]{64}/(ui\.css|console\.js|theme\.js))"', page.read())
+        check(len(refs) == 3 and {name for _, name in refs} == {b"ui.css", b"console.js", b"theme.js"},
+              "fixture landing page is missing bundled assets")
+        for ref, _ in refs:
+            path = ref.decode("ascii")
             paths[path] = path
     finally:
         conn.close()
@@ -181,7 +184,9 @@ def proxy(tls, control, backend, assets, secret):
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
-            elif target == control and self.command in ("GET", "POST") and (path := paths.get(self.path.partition("?")[0])):
+            elif target == control and self.command in ("GET", "POST") and (
+                path := paths.get(self.path) or paths.get(self.path.partition("?")[0])
+            ):
                 counts[path] += 1
                 connection = http.client.HTTPConnection("127.0.0.1", backend, timeout=15)
                 try:
@@ -273,6 +278,7 @@ async def main(args):
                     await page.get_by_label("Display name").fill("Proxy fixture")
                     await page.get_by_role("button", name="Create account").click()
                     await page.get_by_role("link", name="Quickstart", exact=True).first.click()
+                    await page.get_by_role("link", name="Set up manually").click()
                     await page.get_by_role("radio", name="Cursor", exact=True).check()
                     await page.get_by_label("Where will you run the command?").select_option("windows" if WINDOWS else "unix")
                     await page.get_by_label("Use a company proxy").check()

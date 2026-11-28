@@ -50,9 +50,13 @@ func (s *Service) beginFlow(w http.ResponseWriter, r *http.Request, kind, id, va
 	return true
 }
 
-// Readers and publishers re-check workspace claims at least every 15 minutes.
-// Browser cookies never outlive the ID token used to mint them.
-const sessionTTL = 15 * time.Minute
+// The work session starts with a fresh, verified ID token. After that the
+// browser uses only its Shoowcase cookie, with local access checks at use.
+const workSessionTTL = 8 * time.Hour
+
+// Local password sessions re-check the account's credential generation and
+// suspension on every use; changing the password or role ends the session.
+const passwordSessionTTL = 30 * 24 * time.Hour
 
 type destination struct {
 	Host, Path, Binding string
@@ -278,7 +282,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, d destinatio
 		return
 	}
 	if s.cfg.Dev {
-		s.completeLogin(w, r, d, s.devIdentity(), s.now().Add(sessionTTL).Unix())
+		s.completeLogin(w, r, d, s.devIdentity(), s.now().Add(workSessionTTL).Unix())
 		return
 	}
 	tx := login{State: random(), Verifier: oauth2.GenerateVerifier(), Nonce: random(), Dest: d, Exp: s.now().Add(authTTL).Unix()}
@@ -339,7 +343,7 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := tok.Extra("id_token").(string)
 	t, e := s.idVerifier.Verify(ctx, raw)
-	if e != nil || !equal(t.Nonce, tx.Nonce) {
+	if e != nil || t.Expiry.Unix() <= s.now().Unix() || !equal(t.Nonce, tx.Nonce) {
 		s.rejectCallback(w, 401, "invalid_id_token")
 		return
 	}
@@ -358,8 +362,7 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		s.rejectCallback(w, 403, "missing_identity")
 		return
 	}
-	exp := min(t.Expiry.Unix(), s.now().Add(sessionTTL).Unix())
-	s.completeLogin(w, r, tx.Dest, who, exp)
+	s.completeLogin(w, r, tx.Dest, who, s.now().Add(workSessionTTL).Unix())
 }
 func (s *Service) trustedIDAudience(aud []string, azp string) bool {
 	if azp != "" && azp != s.cfg.ClientID {
