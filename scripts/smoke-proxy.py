@@ -148,13 +148,13 @@ def proxy(tls, control, backend, assets, secret):
     expected = "Basic " + base64.b64encode(("worker:" + secret).encode()).decode()
     # This fixture covers one onboarding flow. Forward only literal routes
     # for that flow; client-controlled request targets never go to the backend.
-    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/account", "/sites", "/quickstart", "/quickstart?setup=manual",
+    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/theme.js", "/account", "/sites", "/quickstart", "/quickstart?setup=manual",
                             "/quickstart/install.sh", "/quickstart/install.ps1", "/quickstart/redeem", "/mcp")}
     paths["/auth/login"] = "/auth/login?next=%2Faccount"
-    # Admit only the two immutable asset paths shipped by this fixture binary.
+    # Admit only the immutable asset paths shipped by this fixture binary.
     conn = http.client.HTTPConnection("127.0.0.1", backend, timeout=15)
     try:
-        for name in ("ui.css", "console.js"):
+        for name in ("ui.css", "console.js", "theme.js"):
             conn.request("GET", "/" + name, headers={"Host": control})
             asset = conn.getresponse()
             check(asset.status == 200, f"fixture asset unavailable: {name}")
