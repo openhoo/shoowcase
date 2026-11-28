@@ -148,7 +148,7 @@ def proxy(tls, control, backend, assets, secret):
     expected = "Basic " + base64.b64encode(("worker:" + secret).encode()).decode()
     # This fixture covers one onboarding flow. Forward only literal routes
     # for that flow; client-controlled request targets never go to the backend.
-    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/account", "/sites", "/quickstart",
+    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/account", "/sites", "/quickstart", "/quickstart?setup=manual",
                             "/quickstart/install.sh", "/quickstart/install.ps1", "/quickstart/redeem", "/mcp")}
     paths["/auth/login"] = "/auth/login?next=%2Faccount"
     # Admit only the two immutable asset paths shipped by this fixture binary.
@@ -181,7 +181,9 @@ def proxy(tls, control, backend, assets, secret):
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
-            elif target == control and self.command in ("GET", "POST") and (path := paths.get(self.path.partition("?")[0])):
+            elif target == control and self.command in ("GET", "POST") and (
+                path := paths.get(self.path) or paths.get(self.path.partition("?")[0])
+            ):
                 counts[path] += 1
                 connection = http.client.HTTPConnection("127.0.0.1", backend, timeout=15)
                 try:
