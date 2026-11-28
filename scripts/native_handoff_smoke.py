@@ -62,7 +62,7 @@ async def save_workspace_mode(page, control, before, after):
 async def check_quickstart_handoff(page, control):
     # Exercise each kind of edit alone so one control cannot mask another.
     for kind in ("checkbox", "radio", "select"):
-        async with native_page(page, control + "/quickstart"):
+        async with native_page(page, control + "/quickstart?setup=manual"):
             if kind == "checkbox":
                 field = page.get_by_role("checkbox", name="Use a company proxy")
                 await expect(field).not_to_be_checked()

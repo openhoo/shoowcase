@@ -345,17 +345,21 @@ function MemberDetails({ p }: { p: MemberData }) {
                   hintId="sign-in-role-help"
                   hint="Admin can manage this workspace, including other members and their roles. Changing the sign-in role signs the member out. Their role limit stays in place."
                 >
-                  <Choices
-                    id="member-sign-in-role"
-                    name="role"
-                    defaultValue={m.IdentityRole}
-                    choices={[...groupChoices, ["admin", "Admin"]]}
-                    aria-describedby="sign-in-role-help"
-                  />
+                  <div className="member-role-row">
+                    <Choices
+                      id="member-sign-in-role"
+                      name="role"
+                      defaultValue={m.IdentityRole}
+                      choices={[...groupChoices, ["admin", "Admin"]]}
+                      aria-describedby="sign-in-role-help"
+                    />
+                    <ActionButton
+                      type="submit"
+                      label="Save sign-in role"
+                      icon={Save}
+                    />
+                  </div>
                 </Field>
-                <div>
-                  <ActionButton label="Save sign-in role" icon={Save} />
-                </div>
               </Post>
             ) : (
               <p>
@@ -374,20 +378,24 @@ function MemberDetails({ p }: { p: MemberData }) {
                     : "A limit can only reduce the access granted at sign-in."
                 }
               >
-                <Choices
-                  id="ceiling-member"
-                  name="ceiling"
-                  defaultValue={m.Ceiling}
-                  choices={[
-                    ["", "Use sign-in role"],
-                    ...(m.Ceilings ?? []).map((v) => [v, role(v)] as const),
-                  ]}
-                  aria-describedby="role-help-member"
-                />
+                <div className="member-role-row">
+                  <Choices
+                    id="ceiling-member"
+                    name="ceiling"
+                    defaultValue={m.Ceiling}
+                    choices={[
+                      ["", "Use sign-in role"],
+                      ...(m.Ceilings ?? []).map((v) => [v, role(v)] as const),
+                    ]}
+                    aria-describedby="role-help-member"
+                  />
+                  <ActionButton
+                    type="submit"
+                    label="Save role limit"
+                    icon={Save}
+                  />
+                </div>
               </Field>
-              <div>
-                <ActionButton label="Save role limit" icon={Save} />
-              </div>
             </Post>
             <Post
               className={stack + " border-t pt-4"}

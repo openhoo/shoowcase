@@ -273,6 +273,7 @@ async def main(args):
                     await page.get_by_label("Display name").fill("Proxy fixture")
                     await page.get_by_role("button", name="Create account").click()
                     await page.get_by_role("link", name="Quickstart", exact=True).first.click()
+                    await page.get_by_role("link", name="Set up manually").click()
                     await page.get_by_role("radio", name="Cursor", exact=True).check()
                     await page.get_by_label("Where will you run the command?").select_option("windows" if WINDOWS else "unix")
                     await page.get_by_label("Use a company proxy").check()

@@ -204,14 +204,21 @@ func TestBrowserSiteHandoffAndCSRF(t *testing.T) {
 	cfg := config(f)
 	revoke := cfg.RevokeSession
 	var revocations int
+	signedIn := time.Now().Truncate(time.Second)
+	now := signedIn
 	cfg.RevokeSession = func(ctx context.Context, key string, until time.Time, who Identity) error {
 		if who.Subject != "ada" || who.Workspace != "operations" || who.CSRF != "" {
 			t.Fatal("unverified logout actor")
+		}
+		if !until.Equal(signedIn.Add(8 * time.Hour)) {
+			t.Fatalf("logout marker must cover the entire session: %v", until)
 		}
 		revocations++
 		return revoke(ctx, key, until, who)
 	}
 	s, second := service(t, cfg), service(t, cfg)
+	s.now = func() time.Time { return now }
+	second.now = s.now
 	site := "https://a.sites.example.net"
 	ctl := cfg.ControlURL
 	first := hit(t, s, req("GET", site+"/auth/login?next=%2Fhandbook%3Fmonth%3D1"), 303)
@@ -253,6 +260,9 @@ func TestBrowserSiteHandoffAndCSRF(t *testing.T) {
 		t.Fatal("path lost")
 	}
 	siteCookie := getCookie(t, finished, s.name("session"))
+	if siteCookie.MaxAge != controlCookie.MaxAge {
+		t.Fatal("handoff changed the family deadline")
+	}
 	hit(t, s, req("GET", handoff, binding), 400)
 	if _, ok := s.Browser(req("GET", site+"/", controlCookie)); ok {
 		t.Fatal("control cookie crossed hosts")
@@ -260,6 +270,7 @@ func TestBrowserSiteHandoffAndCSRF(t *testing.T) {
 	if _, ok := s.Browser(req("GET", "https://b.sites.example.net/", siteCookie)); ok {
 		t.Fatal("cookie crossed sibling hosts")
 	}
+	now = signedIn.Add(2 * time.Hour)
 	page := req("GET", ctl+"/", controlCookie)
 	who, ok := s.Browser(page)
 	if !ok || who.Subject != "ada" || who.Workspace != "operations" || who.Role != Publisher || who.CSRF == "" {
@@ -300,10 +311,6 @@ func TestBrowserSiteHandoffAndCSRF(t *testing.T) {
 	bogus.Value = "AA" + bogus.Value
 	if _, ok := s.Browser(req("GET", site+"/", &bogus)); ok {
 		t.Fatal("modified cookie passed")
-	}
-	s.now = func() time.Time { return time.Now().Add(16 * time.Minute) }
-	if _, ok := s.Browser(req("GET", site+"/", siteCookie)); ok {
-		t.Fatal("expired session passed")
 	}
 }
 func TestAccessTokens(t *testing.T) {
@@ -465,6 +472,44 @@ func pendingLogin(t *testing.T, f *testIssuer, s *Service) (callback *url.URL, f
 		t.Fatal(err)
 	}
 	return callback, flowCookie(t, login, "oidc")
+}
+
+func TestWorkSessionLifetimeRequiresAnUnexpiredIDTokenAtSignIn(t *testing.T) {
+	start := time.Now().Truncate(time.Second)
+	tokenExpiry := start.Add(5 * time.Minute)
+	f := newIssuer(t, issuerProfile{idClaims: func(claims map[string]any) {
+		claims["iat"] = start.Unix()
+		claims["exp"] = tokenExpiry.Unix()
+	}})
+	s := service(t, config(f))
+	now := start
+	s.now = func() time.Time { return now }
+
+	u, flow := pendingLogin(t, f, s)
+	login := hit(t, s, req("GET", u.String(), flow), 303)
+	cookie := getCookie(t, login, s.name("session"))
+	const workSeconds = 8 * 60 * 60
+	if cookie.MaxAge != workSeconds {
+		t.Fatalf("work cookie lasts %d seconds, want %d", cookie.MaxAge, workSeconds)
+	}
+	now = tokenExpiry
+	if _, ok := s.Browser(req("GET", s.cfg.ControlURL+"/sites", cookie)); !ok {
+		t.Fatal("verified work session ended at the original ID token expiry")
+	}
+	u, flow = pendingLogin(t, f, s)
+	for _, c := range hit(t, s, req("GET", u.String(), flow), 401).Cookies() {
+		if c.Name == s.name("session") {
+			t.Fatal("expired ID token yielded a new session")
+		}
+	}
+	now = start.Add((workSeconds - 1) * time.Second)
+	if _, ok := s.Browser(req("GET", s.cfg.ControlURL+"/sites", cookie)); !ok {
+		t.Fatal("work cookie rejected before its own expiry")
+	}
+	now = start.Add(workSeconds * time.Second)
+	if _, ok := s.Browser(req("GET", s.cfg.ControlURL+"/sites", cookie)); ok {
+		t.Fatal("expired work cookie still authorizes requests")
+	}
 }
 
 func TestCallbackResponseBinding(t *testing.T) {

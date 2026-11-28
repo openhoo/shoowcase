@@ -127,6 +127,7 @@ export interface QuickData extends MemberData {
   Command: string;
   Prompt: string;
   Clients: { ID: string; Name: string }[];
+  Manual: boolean;
   CompanyProxy: boolean;
   UninstallUnix: string;
   UninstallWindows: string;

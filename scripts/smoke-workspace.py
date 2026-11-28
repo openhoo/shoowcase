@@ -93,10 +93,13 @@ async def create_key(page, endpoint):
         check(await narrow.evaluate("document.documentElement.scrollWidth <= innerWidth"),
               "native agent key form overflows at 320px")
         await narrow.goto(endpoint.removesuffix("/mcp") + "/quickstart")
+        await expect(narrow.get_by_role("button", name="Get setup prompt")).to_be_visible()
+        await narrow.get_by_role("link", name="Set up manually").click()
         await expect(narrow.get_by_label("What can this agent do?")).to_have_value("publisher")
     finally:
         await native.close()
     await page.get_by_role("link", name="Quickstart", exact=True).click()
+    await page.get_by_role("link", name="Set up manually").click()
     await expect(page.locator("#app > :not(#native-page) #quick-scope")).to_have_value("publisher")
     await page.get_by_role("link", name="Agent keys", exact=True).click()
     await fits(page, "agent keys")
@@ -370,6 +373,27 @@ async def check_admin_directory(page, kind, needle, name, role, media):
     await expect(table.get_by_role("link", name=name, exact=True)).to_be_visible()
 
 
+async def check_role_actions_in_row(page, member, *, password_account=False):
+    roles = [("Role limit", "Save role limit")]
+    if password_account:
+        roles.append(("Sign-in role", "Save sign-in role"))
+    previous = page.viewport_size
+    try:
+        for width in (1200, 320):
+            await page.set_viewport_size({"width": width, "height": 780})
+            for label, action in roles:
+                select = await page.get_by_label(f"{label} for {member}", exact=True).bounding_box()
+                save = await page.get_by_role("button", name=action, exact=True).bounding_box()
+                check(select is not None and save is not None, f"missing {label} controls at {width}px")
+                check(save["x"] >= select["x"] + select["width"] - 1 and
+                      save["x"] + save["width"] <= width and
+                      abs(save["y"] + save["height"] / 2 - select["y"] - select["height"] / 2) <= 2,
+                      f"{action} does not fit beside its select at {width}px")
+    finally:
+        if previous:
+            await page.set_viewport_size(previous)
+
+
 async def manage_workspace_access(page, control, media=None):
     await page.goto(control + "/admin")
     nav = page.get_by_role("navigation", name="Administration views")
@@ -383,6 +407,7 @@ async def manage_workspace_access(page, control, media=None):
     await check_admin_directory(page, "member", subject, "Sam Editor", "reader", media)
     await page.get_by_role("link", name="Sam Editor", exact=True).press("Enter")
     await expect(page.get_by_label("Role limit for Sam Editor")).to_be_visible()
+    await check_role_actions_in_row(page, "Sam Editor")
 
     await nav.get_by_role("link", name="Groups").click()
     await page.get_by_label("Group name", exact=True).fill("Authors")
@@ -591,6 +616,7 @@ async def password_accounts(binary, browser):
         await signin(member, control, first)
         await expect(member.get_by_role("link", name="Admin", exact=True)).to_have_count(0)
         await admin.get_by_role("link", name="studio-member", exact=True).click()
+        await check_role_actions_in_row(admin, "studio-member", password_account=True)
         await admin.get_by_label("Sign-in role for studio-member").select_option("admin")
         await admin.get_by_role("button", name="Save sign-in role").click()
         await expect(admin.get_by_role("status").filter(has_text="Password account role saved.")).to_be_visible()
@@ -607,6 +633,7 @@ async def password_accounts(binary, browser):
         try:
             form = await native.new_page()
             await form.goto(admin.url)
+            await check_role_actions_in_row(form, "studio-member", password_account=True)
             await expect(form.get_by_label("Sign-in role for studio-member")).to_have_value("admin")
             await form.get_by_label("Sign-in role for studio-member").select_option("editor")
             await form.get_by_role("button", name="Save sign-in role").click()

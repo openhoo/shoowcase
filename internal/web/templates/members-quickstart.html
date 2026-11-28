@@ -1,7 +1,16 @@
 {{define "quick-start"}}
-<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Connect your agent</h1><p>Choose the app you use. We’ll create a key and give you a command to run on the computer where your agent runs.</p></header>
+<header><p class="eyebrow">Workspace · {{.Workspace}}</p><h1>Connect your agent</h1><p>{{if .Manual}}Choose your app and get a command for the computer where it runs.{{else}}Copy one prompt into a private chat with your local AI agent. It includes a one-time setup key and instructions to connect to Shoowcase.{{end}}</p></header>
+{{if not .Manual}}
+<form method="post" action="/quickstart" class="panel stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="creation_token" value="{{.Creation}}"><input type="hidden" name="setup" value="prompt">
+{{if .Err}}<p class="notice" role="alert">{{.Err}}</p>{{end}}
+<p>The agent gets a <strong>{{role .Scope}}</strong> key for {{.Days}} days. The setup key in the prompt works once within 10 minutes.</p>
+<div class="toolbar"><button type="submit">{{template "icon-KeyRound"}}<span class="action-label">Get setup prompt</span></button></div>
+</form>
+<p><a href="/quickstart?setup=manual">Set up manually</a> to change access, use a company proxy or run the installer yourself. <a href="/keys">Connect a cloud agent</a> using Agent keys.</p>
+{{else}}
 <form method="post" action="/quickstart" class="panel stack quick-form">
-<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="creation_token" value="{{.Creation}}">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="creation_token" value="{{.Creation}}"><input type="hidden" name="setup" value="manual">
 {{if .Err}}<p class="notice" role="alert">{{.Err}}</p>{{end}}
 <fieldset class="quick-clients"><legend>Which agent do you use?</legend><div class="quick-choices">
 {{range .Clients}}<label class="quick-choice"><input type="radio" name="client" value="{{.ID}}" required {{if eq $.Client .ID}}checked{{end}}><strong>{{.Name}}</strong></label>{{end}}
@@ -16,14 +25,24 @@
 <div class="toolbar"><button type="submit">{{template "icon-KeyRound"}}<span class="action-label">Create key and get command</span></button></div>
 <p class="muted">Does your agent run in the cloud or only accept a server URL? <a href="/keys">Set up a remote HTTP connection instead.</a></p>
 </form>
+<p><a href="/quickstart">Get a setup prompt instead</a></p>
 <details class="panel stack"><summary>Uninstall the local connector</summary>
 <p>Close your agents first. Run the command as the same user who ran setup. It removes the connector and all local Quickstart connections for this user. Remove entries you configured manually in your agent, and revoke the corresponding keys under <a href="/keys">Agent keys</a>.</p>
 <div class="field"><label for="uninstall-unix">macOS or Linux command</label><textarea id="uninstall-unix" class="quick-command" readonly rows="2" spellcheck="false">{{.UninstallUnix}}</textarea></div>
 <div class="field"><label for="uninstall-windows">Windows PowerShell command</label><textarea id="uninstall-windows" class="quick-command" readonly rows="2" spellcheck="false">{{.UninstallWindows}}</textarea></div>
 </details>
 {{end}}
+{{end}}
 
 {{define "quick-ready"}}
+{{if not .Manual}}
+<header><p class="eyebrow">Quickstart · {{.Workspace}}</p><h1>Your agent setup prompt</h1><p>Paste the prompt into a private chat with the AI agent you want to connect.</p></header>
+<section class="panel stack"><div class="field"><label for="setup-prompt">Setup prompt</label>
+<textarea id="setup-prompt" class="quick-command" data-secret-receipt readonly rows="9" spellcheck="false" autocomplete="off" aria-describedby="setup-expiry">{{.Prompt}}</textarea>
+<div class="toolbar"><button type="button" data-copy-target="setup-prompt" hidden>{{template "icon-Copy"}}<span class="action-label">Copy setup prompt</span></button></div>
+<small id="setup-expiry">Use this setup key once within 10 minutes. The connection uses a {{role .Scope}} key named <strong>{{.NameValue}}</strong> that expires in {{.Days}} days.</small></div></section>
+<p>Manage the connection in <a href="/keys">Agent keys</a>. If setup expired, revoke the unused key and <a href="/quickstart">get a fresh prompt</a>.</p>
+{{else}}
 <header><p class="eyebrow">Quickstart · {{.ClientName}}</p><h1>Connect {{.ClientName}}</h1><p>Your {{role .Scope}} key <strong>{{.NameValue}}</strong> is ready. It expires in {{.Days}} days.</p></header>
 <section class="panel stack quick-result"><h2>1. Run this command</h2>
 {{if .CompanyProxy}}<p>Your agent will start a local MCP relay that remembers how to reach Shoowcase through your proxy. If your IT team gave you a PEM certificate bundle, set <code>SHOOWCASE_CA_FILE</code> to its local path before running the command. Enter proxy details only in your terminal.</p>{{end}}
@@ -34,5 +53,6 @@
 <small id="setup-expiry">This command contains a private setup code. Use it once within 10 minutes. Don’t share it or paste it into chat.</small></div></section>
 <section class="panel stack"><h2>2. Try it in {{.ClientName}}</h2><p>{{if eq .Client "copilot-app"}}Open a local session in the GitHub Copilot app. In Customize, check that Shoowcase is enabled.{{else if eq .Client "vscode"}}Open a new session with the Copilot agent in VS Code. You can find the server in Agent Customizations → MCP Servers under Copilot Global.{{else if eq .Client "vscode-local"}}In the default profile of VS Code Stable, start a session with the legacy Local agent. For custom profiles, use the Other local MCP client option. Run “MCP: List Servers” from the Command Palette to find Shoowcase.{{else if eq .Client "stdio"}}Add a server named shoowcase with the stdio transport and the command and arguments printed by the installer. Save the settings and restart the client.{{else if eq .Client "gemini"}}Start Gemini CLI and use /mcp to check the connection.{{else if eq .Client "opencode"}}Start a new OpenCode session. You can check the connection with <code>opencode mcp list</code>.{{else}}Restart the agent or start a new session.{{end}} If asked to trust the Shoowcase connection, review and enable it. Then try this prompt:</p>
 <div class="field"><label for="first-prompt">First prompt</label><input readonly id="first-prompt" value="{{.Prompt}}"><div><button type="button" class="secondary" data-copy-target="first-prompt" hidden>{{template "icon-Copy"}}<span class="action-caption">Copy prompt</span></button></div></div></section>
-<p>Manage or revoke this key in <a href="/keys">Agent keys</a>. If your setup command expired, revoke the unused key there, then <a href="/quickstart">start again</a>.</p>
+<p>Manage or revoke this key in <a href="/keys">Agent keys</a>. If your setup command expired, revoke the unused key there, then <a href="/quickstart?setup=manual">start again</a>.</p>
+{{end}}
 {{end}}

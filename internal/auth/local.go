@@ -168,5 +168,5 @@ func (s *Service) passwordRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	i := Identity{Subject: a.Subject, Workspace: a.Workspace, Role: role, IssuedAt: s.now().Unix(), LocalGeneration: generation}
-	s.completeLogin(w, r, p.Dest, i, s.now().Add(sessionTTL).Unix())
+	s.completeLogin(w, r, p.Dest, i, s.now().Add(passwordSessionTTL).Unix())
 }

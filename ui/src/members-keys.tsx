@@ -63,7 +63,15 @@ const quickScopes: Record<string, string> = {
   publisher: "Edit, publish and manage public access",
 };
 
-function Copy({ id, children }: { id: string; children: string }) {
+function Copy({
+  id,
+  children,
+  primary = false,
+}: {
+  id: string;
+  children: string;
+  primary?: boolean;
+}) {
   const [message, set] = useState("");
   async function copy() {
     const field = document.getElementById(id) as
@@ -81,7 +89,8 @@ function Copy({ id, children }: { id: string; children: string }) {
   return (
     <div className={toolbar}>
       <ActionButton
-        variant="outline"
+        variant={primary ? "default" : "outline"}
+        showLabel={primary}
         type="button"
         data-copy-target={id}
         onClick={copy}
@@ -113,14 +122,14 @@ function Endpoint({ value }: { value: string }) {
 // fresh GET if the browser restores the receipt.
 function useReceipt(
   data: MemberData | QuickData,
-  field: "Command" | "Secret",
+  field: "Command" | "Prompt" | "Secret",
   back: string,
 ) {
   useLayoutEffect(
     () =>
       protectReceipt(back, () => {
-        if (field === "Command") (data as QuickData).Command = "";
-        else data.Secret = "";
+        if (field === "Secret") data.Secret = "";
+        else (data as QuickData)[field] = "";
       }),
     [data, field, back],
   );
@@ -461,18 +470,52 @@ export function KeyReview({
   );
 }
 export function Quickstart({ p }: { p: QuickData }) {
+  if (!p.Manual) {
+    return (
+      <>
+        <Head tag={"Workspace · " + p.Workspace} title="Connect your agent">
+          <p>
+            Copy one prompt into a private chat with your local AI agent. It
+            includes a one-time setup key and instructions to connect to
+            Shoowcase.
+          </p>
+        </Head>
+        <Post
+          path="/quickstart"
+          className={stack + " rounded-xl border bg-card p-4 sm:p-6"}
+          fields={{ csrf: p.CSRF, creation_token: p.Creation, setup: "prompt" }}
+        >
+          <Notice text={p.Err} error />
+          <p>
+            The agent gets a <strong>{role(p.Scope)}</strong> key for {p.Days}{" "}
+            days. The setup key in the prompt works once within 10 minutes.
+          </p>
+          <div>
+            <ActionButton showLabel label="Get setup prompt" icon={KeyRound} />
+          </div>
+        </Post>
+        <p className={secondaryText}>
+          <a className={linkStyle} href="/quickstart?setup=manual">
+            Set up manually
+          </a>{" "}
+          to change access, use a company proxy or run the installer yourself.{" "}
+          <a className={linkStyle} href="/keys">
+            Connect a cloud agent
+          </a>{" "}
+          using Agent keys.
+        </p>
+      </>
+    );
+  }
   return (
     <>
       <Head tag={"Workspace · " + p.Workspace} title="Connect your agent">
-        <p>
-          Choose the app you use. We’ll create a key and give you a command to
-          run on the computer where your agent runs.
-        </p>
+        <p>Choose your app and get a command for the computer where it runs.</p>
       </Head>
       <Post
         path="/quickstart"
         className={stack + " rounded-xl border bg-card p-4 sm:p-6"}
-        fields={{ csrf: p.CSRF, creation_token: p.Creation }}
+        fields={{ csrf: p.CSRF, creation_token: p.Creation, setup: "manual" }}
       >
         <Notice text={p.Err} error />
         <fieldset className="grid min-w-0 gap-3">
@@ -585,6 +628,11 @@ export function Quickstart({ p }: { p: QuickData }) {
           </a>
         </p>
       </Post>
+      <p>
+        <a className={linkStyle} href="/quickstart">
+          Get a setup prompt instead
+        </a>
+      </p>
       <Disclosure title="Uninstall the local connector">
         <p>
           Close your agents first. Run the command as the same user who ran
@@ -640,6 +688,64 @@ const tryClient: Record<string, ReactNode> = {
   ),
 };
 export function QuickReady({ p }: { p: QuickData }) {
+  return p.Manual ? <ManualQuickReady p={p} /> : <PromptReady p={p} />;
+}
+
+function PromptReady({ p }: { p: QuickData }) {
+  useReceipt(p, "Prompt", "/quickstart");
+  return (
+    <>
+      <Head tag={"Quickstart · " + p.Workspace} title="Your agent setup prompt">
+        <p>
+          Paste the prompt into a private chat with the AI agent you want to
+          connect.
+        </p>
+      </Head>
+      <div className={stack + " rounded-xl border bg-card p-4 sm:p-6"}>
+        <Field
+          id="setup-prompt"
+          label="Setup prompt"
+          hintId="setup-expiry"
+          hint={
+            <>
+              Use this setup key once within 10 minutes. The connection uses a{" "}
+              {role(p.Scope)} key named <strong>{p.NameValue}</strong> that
+              expires in {p.Days} days.
+            </>
+          }
+        >
+          <Textarea
+            id="setup-prompt"
+            className="field-sizing-fixed max-h-[40vh] min-w-0 font-mono"
+            data-secret-receipt
+            readOnly
+            rows={9}
+            spellCheck={false}
+            autoComplete="off"
+            aria-describedby="setup-expiry"
+            defaultValue={p.Prompt}
+          />
+          <Copy id="setup-prompt" primary>
+            Copy setup prompt
+          </Copy>
+        </Field>
+      </div>
+      <p>
+        Manage the connection in{" "}
+        <a className={linkStyle} href="/keys">
+          Agent keys
+        </a>
+        . If setup expired, revoke the unused key and{" "}
+        <a className={linkStyle} href="/quickstart">
+          get a fresh prompt
+        </a>
+        .
+      </p>
+    </>
+  );
+}
+
+function ManualQuickReady({ p }: { p: QuickData }) {
   useReceipt(p, "Command", "/quickstart");
   const windows = p.Platform === "windows";
   return (
@@ -707,7 +813,7 @@ export function QuickReady({ p }: { p: QuickData }) {
           Agent keys
         </a>
         . If your setup command expired, revoke the unused key there, then{" "}
-        <a className={linkStyle} href="/quickstart">
+        <a className={linkStyle} href="/quickstart?setup=manual">
           start again
         </a>
         .

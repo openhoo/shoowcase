@@ -251,7 +251,7 @@ function mount() {
   ) {
     const receipt = native.querySelector("[data-secret-receipt]");
     if (receipt)
-      protectReceipt(receipt.id === "setup-command" ? "/quickstart" : "/keys");
+      protectReceipt(receipt.id === "agent-secret" ? "/keys" : "/quickstart");
     return;
   }
   const { kind, page } = JSON.parse(payload.text);

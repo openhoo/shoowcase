@@ -17,11 +17,16 @@ import (
 
 func quickCommandFrom(t *testing.T, page string) string {
 	t.Helper()
+	return quickReceiptFrom(t, page, "setup-command")
+}
+
+func quickReceiptFrom(t *testing.T, page, id string) string {
+	t.Helper()
 	z := html.NewTokenizer(strings.NewReader(page))
 	for {
 		switch z.Next() {
 		case html.ErrorToken:
-			t.Fatal("no setup command")
+			t.Fatalf("no setup receipt %s", id)
 		case html.StartTagToken:
 			n := z.Token()
 			if n.Data == "noscript" {
@@ -29,7 +34,7 @@ func quickCommandFrom(t *testing.T, page string) string {
 			}
 			if n.Data == "textarea" {
 				for _, a := range n.Attr {
-					if a.Key == "id" && a.Val == "setup-command" && z.Next() == html.TextToken {
+					if a.Key == "id" && a.Val == id && z.Next() == html.TextToken {
 						return string(z.Text())
 					}
 				}
@@ -48,6 +53,78 @@ func redeemResult(app *App, host, client, code string) *httptest.ResponseRecorde
 	return w
 }
 
+func TestQuickstartPromptToAgent(t *testing.T) {
+	app, db := handlerFixture(t, filepath.Join(t.TempDir(), "prompt.sqlite"), "team-a", false)
+	c, csrf := joinMemberConsole(t, app)
+	get := hitRoute(t, app, http.MethodGet, testControl+"/quickstart", c, nil)
+	requireMemberStatus(t, get, http.StatusOK)
+	if page := get.Body.String(); !strings.Contains(page, "Get setup prompt") ||
+		!strings.Contains(page, "/quickstart?setup=manual") || strings.Contains(page, `name="client"`) {
+		t.Fatal("the default Quickstart should offer one prompt without requiring a client choice")
+	}
+	data := url.Values{"creation_token": {memberControl(t, get.Body.String(), "name", "creation_token")}, "setup": {"prompt"}}
+	requireMemberStatus(t, memberPost(t, app, c, "/quickstart", data), http.StatusForbidden)
+	data.Set("csrf", csrf)
+	started := time.Now().Truncate(time.Second)
+	out := memberPost(t, app, c, "/quickstart", data)
+	requireMemberStatus(t, out, http.StatusOK)
+	requireMemberStatus(t, memberPost(t, app, c, "/quickstart", data), http.StatusConflict)
+	if strings.Contains(out.Body.String(), sites.MCPKeyPrefix) || out.Header().Get("Location") != "" ||
+		!strings.Contains(out.Header().Get("Cache-Control"), "no-store") {
+		t.Fatal("prompt disclosed a persistent key or was cacheable or redirected")
+	}
+	prompt := quickReceiptFrom(t, out.Body.String(), "setup-prompt")
+	var code string
+	for line := range strings.SplitSeq(prompt, "\n") {
+		if value, ok := strings.CutPrefix(line, "One-time setup key (valid for 10 minutes): "); ok {
+			code = value
+		}
+	}
+	if code == "" || !strings.Contains(prompt, testControl+"/mcp") || !strings.Contains(prompt, "list_sites") || strings.Contains(out.Body.String(), `id="setup-command"`) {
+		t.Fatal("expected a single prompt with the setup key, installer instructions and a read-only check")
+	}
+	secret, expiry, ok := app.openSetupCode(code, "cursor")
+	if !ok || expiry.Before(started.Add(quickSetupTTL)) || expiry.After(time.Now().Add(quickSetupTTL)) {
+		t.Fatal("prompt was not usable by the chosen client for ten minutes")
+	}
+	owner := sites.Actor{Workspace: "team-a", Subject: "tester", Role: "admin"}
+	keys, _, err := db.ListKeys(t.Context(), owner, false, "")
+	if err != nil || len(keys) != 1 || keys[0].Name != "Quickstart agent" || keys[0].Scope != "publisher" || keys[0].ExpiresAt.Sub(keys[0].CreatedAt) != 30*24*time.Hour {
+		t.Fatal("the registered agent should get an account-scoped, revocable 30-day key")
+	}
+	w := hitRoute(t, app, http.MethodPost, testControl+"/mcp", nil, map[string]string{"Authorization": "Bearer " + code})
+	requireMemberStatus(t, w, http.StatusUnauthorized)
+	if redeemResult(app, testControl, "unsupported", code).Code != http.StatusUnauthorized ||
+		redeemResult(app, testSite, "cursor", code).Code == http.StatusOK {
+		t.Fatal("setup key could be redeemed by an unknown client or on a content host")
+	}
+	replica, err := New(app.config, db, app.auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	results := make(chan *httptest.ResponseRecorder, 2)
+	wg.Go(func() { results <- redeemResult(app, testControl, "cursor", code) })
+	wg.Go(func() { results <- redeemResult(replica, testControl, "codex", code) })
+	wg.Wait()
+	close(results)
+	accepted := 0
+	for w := range results {
+		if w.Code == http.StatusUnauthorized {
+			continue
+		}
+		requireMemberStatus(t, w, http.StatusOK)
+		var v struct{ Token string }
+		if json.Unmarshal(w.Body.Bytes(), &v) != nil || v.Token != secret {
+			t.Fatal("redemption did not return the expected local connector key")
+		}
+		accepted++
+	}
+	if accepted != 1 {
+		t.Fatalf("accepted %d redemptions across different clients and replicas", accepted)
+	}
+}
+
 func TestQuickstartBrowserToAgent(t *testing.T) {
 	app, db := handlerFixture(t, filepath.Join(t.TempDir(), "setup.sqlite"), "team-a", false)
 	c, csrf := joinMemberConsole(t, app)
@@ -57,7 +134,7 @@ func TestQuickstartBrowserToAgent(t *testing.T) {
 	}
 	for _, test := range []struct{ id, platform string }{{"codex", "unix"}, {"cursor", "windows"}, {"copilot", "unix"}, {"claude", "windows"}, {"copilot-app", "unix"}, {"vscode", "windows"}, {"vscode-local", "unix"}, {"gemini", "windows"}, {"opencode", "unix"}, {"stdio", "windows"}} {
 		t.Run(test.id, func(t *testing.T) {
-			get := hitRoute(t, app, "GET", testControl+"/quickstart", c, nil)
+			get := hitRoute(t, app, "GET", testControl+"/quickstart?setup=manual", c, nil)
 			requireMemberStatus(t, get, 200)
 			data := url.Values{"creation_token": {memberControl(t, get.Body.String(), "name", "creation_token")}, "client": {test.id}, "platform": {test.platform}, "scope": {"publisher"}, "days": {"7"}}
 			requireMemberStatus(t, memberPost(t, app, c, "/quickstart", data), 403)
@@ -148,7 +225,7 @@ func TestQuickstartKeepsCompanyProxyChoice(t *testing.T) {
 	app, _ := handlerFixture(t, filepath.Join(t.TempDir(), "proxy.sqlite"), "team-a", false)
 	c, csrf := joinMemberConsole(t, app)
 	for _, platform := range []string{"windows", "unix"} {
-		get := hitRoute(t, app, "GET", testControl+"/quickstart", c, nil)
+		get := hitRoute(t, app, "GET", testControl+"/quickstart?setup=manual", c, nil)
 		form := url.Values{"csrf": {csrf}, "creation_token": {memberControl(t, get.Body.String(), "name", "creation_token")},
 			"company_proxy": {"on"}, "platform": {platform}, "scope": {"reader"}, "days": {"7"}}
 		bad := memberPost(t, app, c, "/quickstart", form)
@@ -171,7 +248,7 @@ func TestQuickstartKeepsCompanyProxyChoice(t *testing.T) {
 func TestQuickstartUninstallDownloads(t *testing.T) {
 	app, _ := handlerFixture(t, filepath.Join(t.TempDir(), "setup.sqlite"), "team-a", false)
 	c, _ := joinMemberConsole(t, app)
-	page := hitRoute(t, app, "GET", testControl+"/quickstart", c, nil)
+	page := hitRoute(t, app, "GET", testControl+"/quickstart?setup=manual", c, nil)
 	requireMemberStatus(t, page, 200)
 	for _, name := range []string{"uninstall.sh", "uninstall.ps1"} {
 		path := "/quickstart/" + name
@@ -202,7 +279,7 @@ func TestQuickstartNameConflictAndRecovery(t *testing.T) {
 	app, _ := handlerFixture(t, filepath.Join(t.TempDir(), "setup.sqlite"), "team-a", false)
 	c, csrf := joinMemberConsole(t, app)
 	submit := func(name string) *httptest.ResponseRecorder {
-		form := hitRoute(t, app, "GET", testControl+"/quickstart", c, nil)
+		form := hitRoute(t, app, "GET", testControl+"/quickstart?setup=manual", c, nil)
 		return memberPost(t, app, c, "/quickstart", url.Values{
 			"csrf": {csrf}, "creation_token": {memberControl(t, form.Body.String(), "name", "creation_token")},
 			"client": {"codex"}, "platform": {"unix"}, "scope": {"reader"}, "days": {"7"}, "name": {name},
