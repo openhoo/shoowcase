@@ -28,6 +28,8 @@
   --color-field: var(--field);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-ink);
+  --color-brand: var(--brand-surface);
+  --color-brand-foreground: var(--brand-ink);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-ink);
   --color-muted: var(--muted);
@@ -54,6 +56,8 @@
     --field: #fff;
     --primary: #176454;
     --primary-ink: #fff;
+    --brand-surface: var(--primary);
+    --brand-ink: var(--primary-ink);
     --secondary: #e1eeea;
     --secondary-ink: #144c40;
     --muted: #f0f4f2;
@@ -72,27 +76,29 @@
 
     @variant appearance-dark {
       color-scheme: dark;
-      --surface: #101b18;
-      --ink: #e6f3ee;
-      --card: #172622;
-      --field: #12201c;
-      --primary: #75d8b8;
-      --primary-ink: #102b22;
-      --secondary: #243b34;
-      --secondary-ink: #c1eee0;
-      --muted: #1e302a;
-      --muted-ink: #a8c0b7;
-      --accent: #2d4a40;
-      --accent-ink: #ddf7ed;
+      --surface: #141517;
+      --ink: #ecedf0;
+      --card: #1c1e22;
+      --field: #16171a;
+      --primary: #a8c2f1;
+      --primary-ink: #152541;
+      --brand-surface: #303844;
+      --brand-ink: #d5dfef;
+      --secondary: #282a2f;
+      --secondary-ink: #d4d7dc;
+      --muted: #24262a;
+      --muted-ink: #b2b6be;
+      --accent: #30343b;
+      --accent-ink: #f0f2f5;
       --danger: #ffa4ac;
       --danger-ink: #381118;
-      --divider: #395148;
-      --control-edge: #789087;
-      --focus: #86e8c8;
-      --status-published: #83dfb1;
+      --divider: #3b3e44;
+      --control-edge: #838790;
+      --focus: #adcbff;
+      --status-published: #c6cedc;
       --status-changes: #f1be76;
-      --status-offline: #a8c0b7;
-      --status-draft: #8dcced;
+      --status-offline: #aeb3bb;
+      --status-draft: #9ebde8;
     }
   }
   * {
