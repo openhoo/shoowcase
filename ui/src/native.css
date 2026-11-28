@@ -65,7 +65,10 @@
     }
     .danger,
     .danger-action {
-      @apply bg-destructive text-white;
+      @apply bg-destructive text-destructive-foreground;
+    }
+    [role="alert"] {
+      @apply text-destructive;
     }
     :is(button, a, summary):has(> .action-caption):not([hidden]) {
       @apply relative inline-flex size-11 shrink-0 cursor-pointer list-none items-center justify-center rounded-md p-0 align-middle;
@@ -95,7 +98,10 @@
     select,
     textarea,
     input:not([type="hidden"], [type="checkbox"], [type="radio"]) {
-      @apply max-w-full rounded-md border border-input bg-card px-2 py-1.5;
+      @apply max-w-full rounded-md border border-input bg-field px-2 py-1.5;
+      &[aria-invalid="true"] {
+        @apply border-destructive;
+      }
     }
     input[type="checkbox"],
     input[type="radio"] {

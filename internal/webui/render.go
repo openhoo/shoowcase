@@ -23,9 +23,9 @@ func Render(w http.ResponseWriter, status int, title, kind string, page any, nat
 		return
 	}
 	var doc bytes.Buffer
-	doc.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>`)
+	doc.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>`)
 	doc.WriteString(html.EscapeString(title))
-	doc.WriteString(` · Shoowcase</title><link rel="stylesheet" href="` + uiassets.Style.Path + `"><script defer src="` + uiassets.Script.Path + `"></script>`)
+	doc.WriteString(` · Shoowcase</title><script src="` + uiassets.Theme.Path + `"></script><link rel="stylesheet" href="` + uiassets.Style.Path + `"><script defer src="` + uiassets.Script.Path + `"></script>`)
 	if refresh != "" {
 		doc.WriteString(`<noscript><meta http-equiv="refresh" content="0;url=`)
 		doc.WriteString(html.EscapeString(refresh))

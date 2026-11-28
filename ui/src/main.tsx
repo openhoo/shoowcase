@@ -3,6 +3,7 @@ import {
   NavigationLink,
   ActionTooltipProvider,
 } from "@/components/icon-action";
+import { AppearancePicker } from "@/components/appearance-picker";
 import {
   Card,
   CardContent,
@@ -135,7 +136,7 @@ function Console({ page }: { page: ConsolePage }) {
   return (
     <div className="flex min-h-dvh min-w-0 flex-col">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-x-8 gap-y-3 px-4 py-3 sm:px-7 lg:flex-nowrap lg:px-10">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3 sm:px-7 lg:flex-nowrap lg:px-10 xl:gap-x-6">
           <a
             className="inline-flex items-center gap-2.5 font-semibold tracking-tight"
             href="/"
@@ -148,7 +149,7 @@ function Console({ page }: { page: ConsolePage }) {
           {c.Enrolled && (
             <nav
               aria-label="Workspace"
-              className="order-3 flex w-full flex-wrap items-center gap-0.5 sm:gap-1 lg:order-none lg:flex-1"
+              className="order-last flex w-full flex-wrap items-center gap-0.5 sm:gap-1 lg:order-none lg:flex-1"
             >
               {links.map(({ name, id, icon: Icon }) => (
                 <NavigationLink
@@ -163,12 +164,15 @@ function Console({ page }: { page: ConsolePage }) {
               ))}
             </nav>
           )}
-          {c.WorkspaceLabel && (
-            <span className="flex min-w-0 max-w-48 items-center gap-2 truncate text-xs font-medium text-muted-foreground">
-              <FileCode2 aria-hidden className="size-4 shrink-0" />
-              <span className="truncate">{c.WorkspaceLabel}</span>
-            </span>
-          )}
+          <div className="ml-auto flex min-w-0 items-center gap-4">
+            {c.WorkspaceLabel && (
+              <span className="hidden min-w-0 max-w-40 items-center gap-2 text-xs font-medium text-muted-foreground sm:flex 2xl:max-w-48">
+                <FileCode2 aria-hidden className="size-4 shrink-0" />
+                <span className="truncate">{c.WorkspaceLabel}</span>
+              </span>
+            )}
+            <AppearancePicker />
+          </div>
         </div>
       </header>
       <main

@@ -171,12 +171,12 @@ export function StateBadge({ value, label }: { value: string; label: string }) {
         className={
           "size-2 shrink-0 rounded-full " +
           (value === "published"
-            ? "bg-emerald-600"
+            ? "bg-status-published"
             : value === "changes"
-              ? "bg-amber-600"
+              ? "bg-status-changes"
               : value === "offline"
-                ? "bg-slate-500"
-                : "bg-sky-600")
+                ? "bg-status-offline"
+                : "bg-status-draft")
         }
       />
       {label}

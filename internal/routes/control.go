@@ -28,7 +28,7 @@ const (
 
 type Handlers struct {
 	Health, Ready, MCP, Approve, Upload, CSS, Audit, Metrics http.HandlerFunc
-	Redeem, Installer, Script, Auth                          http.HandlerFunc
+	Redeem, Installer, Script, Theme, Auth                   http.HandlerFunc
 	Console                                                  func(http.ResponseWriter, *http.Request, Endpoint)
 }
 
@@ -96,10 +96,11 @@ func NewControl(h Handlers) *Control {
 	} {
 		add(path, path, handler)
 	}
-	// Only this binary's exact content hashes are valid. Reuse the stable
-	// legacy labels so asset rebuilds do not add telemetry series.
+	// Only this binary's exact content hashes are valid. Keep the labels
+	// stable so asset rebuilds do not add telemetry series.
 	add(uiassets.Style.Path, "/ui.css", h.CSS)
 	add(uiassets.Script.Path, "/console.js", h.Script)
+	add(uiassets.Theme.Path, "/theme.js", h.Theme)
 	for path := range authPaths {
 		add(path, path, h.Auth)
 	}
