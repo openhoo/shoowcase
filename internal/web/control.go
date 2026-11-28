@@ -16,7 +16,7 @@ func (a *App) controlRouter() *routes.Control {
 	return routes.NewControl(routes.Handlers{
 		Health: a.health, Ready: a.ready, MCP: a.serveMCP, Approve: a.reviewApproval, Upload: a.signedUpload,
 		CSS: a.controlStyle, Audit: a.exportAudit, Metrics: a.metrics, Redeem: a.quickRedeem, Installer: serveInstaller,
-		Script: a.controlScript, Console: a.console, Auth: func(w http.ResponseWriter, r *http.Request) { a.auth.Handle(w, r) },
+		Script: a.controlScript, Theme: a.controlTheme, Console: a.console, Auth: func(w http.ResponseWriter, r *http.Request) { a.auth.Handle(w, r) },
 	})
 }
 
@@ -89,6 +89,10 @@ func (a *App) controlStyle(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) controlScript(w http.ResponseWriter, r *http.Request) {
 	serveUIAsset(w, r, "text/javascript; charset=utf-8", uiassets.Script)
+}
+
+func (a *App) controlTheme(w http.ResponseWriter, r *http.Request) {
+	serveUIAsset(w, r, "text/javascript; charset=utf-8", uiassets.Theme)
 }
 
 func (a *App) metrics(w http.ResponseWriter, r *http.Request) {

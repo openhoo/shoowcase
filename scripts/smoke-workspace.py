@@ -16,6 +16,7 @@ from importlib import import_module
 from pathlib import Path
 
 from playwright.async_api import async_playwright, expect
+from appearance_smoke import check_appearance
 from bulk_admin_smoke import check_bulk_admin, delete_password_account
 from bulk_site_smoke import check_bulk_sites
 from native_handoff_smoke import check_quickstart_handoff, native_page, save_workspace_mode
@@ -681,6 +682,7 @@ async def workspace(binary, channel, screenshot, admin_media):
             page = await ctx.new_page()
             anon = await browser.new_page(viewport={"width": 320, "height": 780})
             await enroll(page, control)
+            await check_appearance(page, control, browser, fits)
             await check_quickstart_handoff(page, control)
             await manage_workspace_access(page, control, admin_media)
             secret = await create_key(page, endpoint)

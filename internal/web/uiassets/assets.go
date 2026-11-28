@@ -13,6 +13,9 @@ var css string
 //go:embed app.js
 var js string
 
+//go:embed theme.js
+var theme string
+
 type Asset struct {
 	Path, ETag, Content string
 }
@@ -25,4 +28,5 @@ func asset(name, content string) Asset {
 var (
 	Style  = asset("ui.css", css)
 	Script = asset("console.js", js)
+	Theme  = asset("theme.js", theme)
 )

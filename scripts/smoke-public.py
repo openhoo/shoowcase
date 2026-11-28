@@ -135,14 +135,18 @@ async def check_browser(browser, origin, live, screenshots=None):
                               ("/approve?t=expired-test-value", "Unable to review this release", 400)])
             for width in (320, 1200):
                 await page.set_viewport_size({"width":width,"height":800})
+                scheme = "dark" if width == 320 else "light"
+                await page.emulate_media(color_scheme=scheme)
                 for path, heading, status in pages:
                     response = await page.goto(origin + path)
                     assert response and response.status == status, "Unexpected status for public screen"
                     h = page.get_by_role("heading", name=heading, exact=True)
                     await expect(h).to_be_visible()
+                    await expect(page.locator("html")).to_have_css("color-scheme", scheme)
                     if js:
                         # A native fallback with the correct heading must not pass the React gate.
                         await expect(page.locator("#app > :not(#native-page) main h1")).to_have_text(heading)
+                        await expect(page.get_by_role("combobox", name="Appearance", exact=True)).to_have_value("system")
                     if path.startswith("/auth/"):
                         await expect(page.get_by_label("Username", exact=True)).to_be_visible()
                         await expect(page.get_by_label("Password", exact=True)).to_have_attribute("type", "password")

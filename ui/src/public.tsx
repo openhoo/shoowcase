@@ -1,3 +1,4 @@
+import { AppearancePicker } from "@/components/appearance-picker";
 import { ActionButton, NavigationLink } from "@/components/icon-action";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -85,7 +86,7 @@ function Shell({
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b bg-card">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-8">
           <a
             href="/"
             className="inline-flex items-center gap-2.5 font-semibold tracking-tight"
@@ -98,11 +99,15 @@ function Shell({
           {landing && (
             <NavigationLink
               variant="ghost"
+              className="ml-auto"
               href={signIn}
               label="Login"
               icon={LogIn}
             />
           )}
+          <div className={landing ? "ml-auto sm:ml-0" : "ml-auto"}>
+            <AppearancePicker />
+          </div>
         </div>
       </header>
       <main
