@@ -91,7 +91,7 @@ function Shell({
             href="/"
             className="inline-flex items-center gap-2.5 font-semibold tracking-tight"
           >
-            <span className="inline-flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <span className="inline-flex size-8 items-center justify-center rounded-lg bg-brand text-brand-foreground">
               <Layers3 className="size-4" aria-hidden="true" />
             </span>
             Shoowcase
@@ -214,7 +214,7 @@ function Landing({ signup }: { signup?: string }) {
                 Team site
               </span>
             </div>
-            <div className="flex h-24 items-end rounded-xl bg-primary p-4 text-primary-foreground">
+            <div className="flex h-24 items-end rounded-xl bg-brand p-4 text-brand-foreground">
               <Globe2 className="size-10" />
             </div>
             <div className="space-y-2">

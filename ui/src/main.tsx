@@ -141,7 +141,7 @@ function Console({ page }: { page: ConsolePage }) {
             className="inline-flex items-center gap-2.5 font-semibold tracking-tight"
             href="/"
           >
-            <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <span className="grid size-8 place-items-center rounded-lg bg-brand text-brand-foreground">
               <Layers3 className="size-5" aria-hidden />
             </span>
             Shoowcase
