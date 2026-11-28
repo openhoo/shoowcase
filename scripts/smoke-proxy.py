@@ -148,18 +148,21 @@ def proxy(tls, control, backend, assets, secret):
     expected = "Basic " + base64.b64encode(("worker:" + secret).encode()).decode()
     # This fixture covers one onboarding flow. Forward only literal routes
     # for that flow; client-controlled request targets never go to the backend.
-    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/theme.js", "/account", "/sites", "/quickstart", "/quickstart?setup=manual",
+    paths = {p: p for p in ("/", "/healthz", "/ui.css", "/console.js", "/account", "/sites", "/quickstart", "/quickstart?setup=manual",
                             "/quickstart/install.sh", "/quickstart/install.ps1", "/quickstart/redeem", "/mcp")}
     paths["/auth/login"] = "/auth/login?next=%2Faccount"
-    # Admit only the immutable asset paths shipped by this fixture binary.
+    # Admit only the three immutable asset paths advertised by the fixture.
+    # The startup theme script intentionally has no stable /theme.js alias.
     conn = http.client.HTTPConnection("127.0.0.1", backend, timeout=15)
     try:
-        for name in ("ui.css", "console.js", "theme.js"):
-            conn.request("GET", "/" + name, headers={"Host": control})
-            asset = conn.getresponse()
-            check(asset.status == 200, f"fixture asset unavailable: {name}")
-            digest = hashlib.sha256(asset.read()).hexdigest()
-            path = f"/ui/{digest}/{name}"
+        conn.request("GET", "/", headers={"Host": control})
+        page = conn.getresponse()
+        check(page.status == 200, "fixture landing page unavailable")
+        refs = re.findall(rb'"(/ui/[0-9a-f]{64}/(ui\.css|console\.js|theme\.js))"', page.read())
+        check(len(refs) == 3 and {name for _, name in refs} == {b"ui.css", b"console.js", b"theme.js"},
+              "fixture landing page is missing bundled assets")
+        for ref, _ in refs:
+            path = ref.decode("ascii")
             paths[path] = path
     finally:
         conn.close()
